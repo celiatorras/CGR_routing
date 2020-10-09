@@ -4,7 +4,7 @@ Modular implementation of CGR/SABR routing algorithm for DTN space networks. It 
 
 Although it is fully compliant with CCSDS standard on SABR, it also contains a series of experimental features that can be optionally enabled or disabled. A comprehensive description can be found in:
 
-C. Caini, G. M. De Cola, L. Persampieri, “Scheduled Aware Bundle Routing: Analysis and Enhancements”, accepted for publication on Wiley International Journal of Satellite Communications and Networking, Sept. 2020
+C. Caini, G. M. De Cola, L. Persampieri, “Scheduled Aware Bundle Routing: Analysis and Enhancements”, accepted for publication on Wiley International Journal of Satellite Communications and Networking, Sept. 2020.
 
 Unibo-CGR has been designed in a modular way, to be independent of the specific bundle protocol implementation in use. It consists of a core module, written in C, and multiple interfaces, one for each BP implementation supported. At present, we have developed two interfaces to ION (one for bpv6 and another for bpv7, as in ION-3.7.1 and 4.0.0), and one for DTN2 (DTNME, the NASA MSFC version).
 
@@ -15,14 +15,42 @@ Some advanced features of Unibo-CGR rely on two experimental bundle extensions, 
     Unibo-CGR               _the root directory (README, etc.)_
 
         core                _core files independent of the BP implementation_
-
-        library_from_ion
+        
+            bundles
+            
+            cgr
+            
+            contact_plan
+            
+                contacts
+                 
+                nodes
+                
+                ranges
+                
+            library
+                
+                log
+                    
+                list
+                    
+            library_from_ion
+                    
+                rbt
+                    
+                scalar
+                    
+            msr
+                
+            routes
 
         ion_bpv6            _interface interface code core for ION BP v6_
+        
+            interface       _interface code core for ION BP v6_
 
-            utility_functions_from_ion
+                utility_functions_from_ion
 
-            extensions      _CGRR and RGR code_
+            extensions      _CGRR and RGR code (BP v6)_
 
             aux_files       _auxiliary files for building in ION BP v6 (ipnfw.c, etc.)_
 
@@ -42,19 +70,21 @@ Packages for a specific implementation will include only the interface(s) involv
 
 Copyright (c) 2020, University of Bologna. Auxiliary files maintain their original copyright.
 
-**Licence**
+**License**
 
-Unibo-CGR is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
-Unibo-CGR is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+Unibo-CGR is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.  
+Unibo-CGR is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.  
 You should have received a copy of the GNU General Public License along with Unibo-CGR. If not, see <http://www.gnu.org/licenses/>.
 
 Auxiliary files maintain their original licences.
 
 **Additional information**
 
-Including Unibo-CGR in a pre-existent BP release.
+_Including Unibo-CGR in a pre-existent BP release._
 
-Although Unibo-CGR has been designed to be as much independent as possible from the BP implementation to the modification of few files in pre-existing BP releases that do not include Unibo-CGR is obviously necessary. The files to be replaced or added outside the Unibo-CGR root are included in BP-specific aux_files directories.
+Although Unibo-CGR has been designed to be as much independent as possible from the BP implementation to the modification of few files in pre-existing BP releases that do not include Unibo-CGR is obviously necessary. The files to be replaced or added outside the Unibo-CGR root are included in BP-specific aux_files directories.  
+_Note (ION)_: After the download rename the root directory to "Unibo-CGR" and put it under (ION's root directory)/bpv*/cgr/ then read the files Unibo-CGR/ion_bpv*/aux_files/README.txt and Unibo-CGR/ion_bpv*/extensions/README.txt.  
+_Note (DTN2)_: After the download rename the root directory to "uniboCGR" and put it under (DTN2's root directory)/servlib/routing/ then read the file uniboCGR/dtn2/aux_files/README.txt.
 
 _Compilation Switches_
 
@@ -72,10 +102,10 @@ Configuration file: The Unibo-cgr bundle router must be selected in the DTN2 con
 
 _DTN2 Limitations_
 
-1. DTN2 does not support, at present, scheduled contacts. As a result, bundle enqueued by CGR to a neighbor are immediately sent if the link is active, independently of what reported in the contact plan. In other words, in DTN2, by contrast to ION, the contact plan is used only by CGR, not to enforce link activity. 
-1. contacts cannot be updated/changed once the dtnd daemon has started. This limitation could be partially removed, should CGR be used in production on DTN2 nodes, by allowing subsequent reading of the contact plan file.
-1. As said before, at present DTN2 interface lacks RGR and CGRR. As a result, MSR and anti-loop mechanism cannot be enabled.
-1. The previous hop mechanism, based on the addition of a specific extension block to each bundle (see RFC 6259), seems to rely on a different mechanism in DTN2. This prevents ION nodes from knowing the EID of the previous hop in mixed environments, whenever the previous node is a DTN2 node (even if declared and advertised with an ipn EID). As a result, ping-pong events may occur. In tests we had to disable reverse contact to prevent them.
+1. DTN2 does not support, at present, scheduled contacts. As a result, bundle enqueued by CGR to a neighbor are immediately sent if the link is active, independently of what reported in the contact plan. In other words, in DTN2, by contrast to ION, the contact plan is used only by CGR, not to enforce link activity.  
+2. contacts cannot be updated/changed once the dtnd daemon has started. This limitation could be partially removed, should CGR be used in production on DTN2 nodes, by allowing subsequent reading of the contact plan file.  
+3. As said before, at present DTN2 interface lacks RGR and CGRR. As a result, MSR and anti-loop mechanism cannot be enabled.  
+4. The previous hop mechanism, based on the addition of a specific extension block to each bundle (see RFC 6259), seems to rely on a different mechanism in DTN2. This prevents ION nodes from knowing the EID of the previous hop in mixed environments, whenever the previous node is a DTN2 node (even if declared and advertised with an ipn EID). As a result, ping-pong events may occur. In tests we had to disable reverse contact to prevent them.
 
 _Logs_
 
@@ -83,10 +113,10 @@ As Unibo-CGR was designed with research in mind, logs are one of the most distin
 
 **Credits**
 
-Lorenzo Persampieri (main author)
+Lorenzo Persampieri (main author), lorenzo.persampieri@studio.unibo.it
 
-Giacomo Gori (DTN2 interface)
+Giacomo Gori (DTN2 interface), giacomo.gori3@studio.unibo.it
 
-Carlo Caini (supervisor)
+Carlo Caini (supervisor), carlo.caini@unibo.it
 
 Acknowledgments: Gian Marco De Cola, Federico Marchetti, Laura Mazzuca.
