@@ -1,11 +1,8 @@
 This directory contains a few auxiliary files necessary to enable the use of Unibo-CGR in DTN2/DTNME.
 They are taken from homonimous original files, or are directly derived from them. Therefore they maintain their original copyright and license.
 
-To include Unibo-CGR in DTN2/DTNME
-
-1) insert the whole Unibo-CGR's root directory under ./servlib/routing/.
-
-2) copy these auxilairy files in the following directories ("." is DTNME's root directory)
+To include Unibo-CGR in DTN2/DTNME, rename Unibo-CGR directory as uniboCGR and insert it under ./servlib/routing/. 
+Then copy these auxilairy files in the following directories ("." is DTNME's root directory)
 
 BundleRouter.cc:            ./servlib/routing/
 UniboCGRBundleRouter.cc:    ./servlib/routing/
@@ -36,15 +33,7 @@ route local_eid_ipn "ipn:your_node_number.0"
 # Parameter Tuning
 param set announce_ipn true
 
-Notes on usage
-Insert the wanted contact plan in the "contact_plan.txt" file. This file must be placed in the directory from which the dtnd daemon is launched.
-Exaustive Unibo-CGR logs are provided in the sub-directory CGR_log.
-
-Unibo_CGR behavior (optional features)
-Unibo_CGR defaults can be overriden be switching on/off optional features listed in the file config.txt.
-
-Limitations
-Bundle extensions RGR and CGRR have not implemented in DTN2 yet. Therefore, the antiloop enhancements, which rely on RGR, and MSR, which rely on CGRR, cannot be enabled in DTN2.  
+For use and limitations in DTN2/DTNME, see the general Unibo-CGR README.txt 
 
 
 
