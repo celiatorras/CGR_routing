@@ -4,11 +4,11 @@ Modular implementation of CGR/SABR routing algorithm for DTN space networks. It 
 
 Although it is fully compliant with CCSDS standard on SABR, it also contains a series of experimental features that can be optionally enabled or disabled. A comprehensive description can be found in:
 
-C. Caini, G. M. De Cola, L. Persampieri, “Scheduled Aware Bundle Routing: Analysis and Enhancements”, accepted for publication on Wiley International Journal of Satellite Communications and Networking, Sept. 2020.
+C. Caini, G. M. De Cola, L. Persampieri, “Schedule-Aware Bundle Routing: Analysis and Enhancements”, accepted for publication on Wiley International Journal of Satellite Communications and Networking, Sept. 2020. https://doi.org/10.1002/sat.1384
 
 Unibo-CGR has been designed in a modular way, to be independent of the specific bundle protocol implementation in use. It consists of a core module, written in C, and multiple interfaces, one for each BP implementation supported. At present, we have developed two interfaces to ION (one for bpv6 and another for bpv7, as in ION-3.7.1 and 4.0.0), and one for DTN2 (DTNME, the NASA MSFC version).
 
-Some advanced features of Unibo-CGR rely on two experimental bundle extensions, developed to this end: RGR (Record Geographical Route) for anti-loop mechanisms, and CGRR (CGR route), for MSR (Moderate Source Routing). At present these two extensions have been developed only for ION.
+Some advanced features of Unibo-CGR rely on two experimental bundle extensions, developed to this end: RGR (Record Geographical Route) for anti-loop mechanisms and CGRR (CGR Route), for MSR (Moderate Source Routing). At present these two extensions have been developed only for ION.
 
 **Unibo-CGR Directory Structure**
 
@@ -16,11 +16,11 @@ Some advanced features of Unibo-CGR rely on two experimental bundle extensions, 
 
         core                _core files independent of the BP implementation_
         
-            bundles
+            bundles         _implemnetation of internal bundle structures_
             
-            cgr
+            cgr             _implementation of the 3 CGR phases_
             
-            contact_plan
+            contact_plan    _implementation of the (internal to Unibo-CGR) contact plan_
             
                 contacts
                  
@@ -34,15 +34,15 @@ Some advanced features of Unibo-CGR rely on two experimental bundle extensions, 
                     
                 list
                     
-            library_from_ion
+            library_from_ion 
                     
                 rbt
                     
                 scalar
                     
-            msr
+            msr              _implementation of Moderate Source Routing_
                 
-            routes
+            routes           _implementation of Unibo-CGR routes structures_
 
         ion_bpv6            _interface interface code core for ION BP v6_
         
