@@ -1,7 +1,7 @@
 This directory contains a few auxiliary files necessary to enable the use of Unibo-CGR in DTN2/DTNME.
 They are taken from homonimous original files, or are directly derived from them. Therefore they maintain their original copyright and license.
 
-To include Unibo-CGR in DTN2/DTNME, rename Unibo-CGR directory as uniboCGR and insert it under ./servlib/routing/. 
+To include Unibo-CGR in DTN2/DTNME insert Unibo-CGR directory under ./servlib/routing/. 
 Then copy these auxilairy files in the following directories ("." is DTNME's root directory)
 
 BundleRouter.cc:            ./servlib/routing/
