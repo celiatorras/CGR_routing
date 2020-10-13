@@ -75,7 +75,7 @@ BundleRouter::create_router(const char* type)
     else if (strcmp(type, "flood") == 0) {
         return new FloodBundleRouter();
     }
-    else if (strcmp(type, "uniboCGR") == 0) {
+    else if (strcmp(type, "uniboCGR") == 0 || strcmp(type, "Unibo-CGR") == 0) {
         return new UniboCGRBundleRouter();
     }
 #if defined(XERCES_C_ENABLED) && defined(EXTERNAL_DP_ENABLED)

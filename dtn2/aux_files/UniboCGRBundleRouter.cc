@@ -39,7 +39,7 @@
 *  This is a modification of BundleRouter made by Giacomo Gori
 *  on Summer 2020 with Carlo Caini as supervisor.
 *  It's purpose is to make possible for DTN2 to work with interface_unibocgr_dtn2
-*  to use UniboCGR as routing mechanism
+*  to use Unibo-CGR as routing mechanism
 */
 
 #ifdef HAVE_CONFIG_H
@@ -57,8 +57,8 @@
 #include "reg/Registration.h"
 #include "session/Session.h"
 
-//Interface for UniboCGR
-#include "uniboCGR/dtn2/interface/interface_unibocgr_dtn2.h"
+//Interface for Unibo-CGR
+#include "Unibo-CGR/dtn2/interface/interface_unibocgr_dtn2.h"
 //Giacomo Gori
 #define NOMINAL_PRIMARY_BLKSIZE	29 // from ION 4.0.0: bpv7/library/libbpP.c
 namespace dtn {

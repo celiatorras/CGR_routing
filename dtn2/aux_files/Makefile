@@ -205,24 +205,24 @@ REGISTRATION_SRCS :=				\
 ########## MODIFIED FOR Unibo-CGR ##########
 
 UNIBOCGR_SRCS :=				\
-	routing/uniboCGR/core/bundles/bundles.c	\
-	routing/uniboCGR/core/cgr/cgr.c		\
-	routing/uniboCGR/core/cgr/phase_one.c	\
-	routing/uniboCGR/core/cgr/phase_two.c	\
-	routing/uniboCGR/core/cgr/phase_three.c	\
-	routing/uniboCGR/core/contact_plan/contactPlan.c \
-	routing/uniboCGR/core/contact_plan/ranges/ranges.c \
-	routing/uniboCGR/core/contact_plan/nodes/nodes.c \
-	routing/uniboCGR/core/contact_plan/contacts/contacts.c \
-	routing/uniboCGR/dtn2/interface/interface_unibocgr_dtn2.cc \
-	routing/uniboCGR/core/library/commonFunctions.c \
-	routing/uniboCGR/core/library/log/log.c	\
-	routing/uniboCGR/core/library/list/list.c	\
-	routing/uniboCGR/core/msr/msr_utils.c		\
-	routing/uniboCGR/core/msr/msr.c		\
-	routing/uniboCGR/core/library_from_ion/scalar/scalar.c \
-	routing/uniboCGR/core/library_from_ion/rbt/rbt.c	\
-	routing/uniboCGR/core/routes/routes.c	\
+	routing/Unibo-CGR/core/bundles/bundles.c	\
+	routing/Unibo-CGR/core/cgr/cgr.c		\
+	routing/Unibo-CGR/core/cgr/phase_one.c	\
+	routing/Unibo-CGR/core/cgr/phase_two.c	\
+	routing/Unibo-CGR/core/cgr/phase_three.c	\
+	routing/Unibo-CGR/core/contact_plan/contactPlan.c \
+	routing/Unibo-CGR/core/contact_plan/ranges/ranges.c \
+	routing/Unibo-CGR/core/contact_plan/nodes/nodes.c \
+	routing/Unibo-CGR/core/contact_plan/contacts/contacts.c \
+	routing/Unibo-CGR/dtn2/interface/interface_unibocgr_dtn2.cc \
+	routing/Unibo-CGR/core/library/commonFunctions.c \
+	routing/Unibo-CGR/core/library/log/log.c	\
+	routing/Unibo-CGR/core/library/list/list.c	\
+	routing/Unibo-CGR/core/msr/msr_utils.c		\
+	routing/Unibo-CGR/core/msr/msr.c		\
+	routing/Unibo-CGR/core/library_from_ion/scalar/scalar.c \
+	routing/Unibo-CGR/core/library_from_ion/rbt/rbt.c	\
+	routing/Unibo-CGR/core/routes/routes.c	\
 
 ROUTING_SRCS :=					\
 	routing/router.cc			\
