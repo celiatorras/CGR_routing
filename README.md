@@ -85,6 +85,7 @@ _Including Unibo-CGR in a pre-existent BP release._
 Although Unibo-CGR has been designed to be as much independent as possible from the BP implementation to the modification of few files in pre-existing BP releases that do not include Unibo-CGR is obviously necessary. The files to be replaced or added outside the Unibo-CGR root are included in BP-specific aux_files directories.  
 _Note (ION)_: After the download rename the root directory to "Unibo-CGR" and put it under (ION's root directory)/bpv*/cgr/ then read the files Unibo-CGR/ion_bpv*/aux_files/README.txt and Unibo-CGR/ion_bpv*/extensions/README.txt.  
 _Note (DTN2)_: After the download rename the root directory to "Unibo-CGR" and put it under (DTN2's root directory)/servlib/routing/ then read the file Unibo-CGR/dtn2/aux_files/README.txt.
+Alternatively, the script mv_unibo_cgr.sh allows the user to carry out an automatic inclusion (launch it without parameters to print the help).
 
 _Compilation Switches_
 
