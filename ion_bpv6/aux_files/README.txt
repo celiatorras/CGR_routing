@@ -9,12 +9,15 @@ cgrfetch.c:        ./bpv6/utils/
 configure.ac:      ./
 ipnfw.c            ./bpv6/ipn/
 libcgr.c:          ./bpv6/cgr/
+Makefile.am:       ./
 Makefile.noBP:     ./
 
 The Unibo-CGR's root directory must be inserted under ./bpv6/cgr/ (next to libcgr.c).
 
 In ION 4.0.0, by default, dependency tracking in the Makefile is disabled, which prevents the "make" command from
-intercepting changes made in the header files (e.g. to switch on/off Unibo-CGR's optional features), which is inconvenient and error prone. Therefore, we have inserted here the solution provided to us by Patricia Lindner, of Ohio University, which consists of the following files: Makefile.noBP, bpv6_Makefile, configure.ac. Note that bpv7_Makefile compiles Unibo-CGR with the RGR and CGRR extensions.
+intercepting changes made in the header files (e.g. to switch on/off Unibo-CGR's optional features), which is inconvenient and error prone. 
+Therefore, we have inserted here the solution provided to us by Patricia Lindner, of Ohio University, which consists of the following files: Makefile.am, Makefile.noBP, bpv6_Makefile, configure.ac. 
+Note that bpv6_Makefile compiles Unibo-CGR with the RGR and CGRR extensions.
 
 After having copyed the auxiliary files and the unibo-CGR directory, you can compile (and install) with this sequence of commands: 
 autoreconf -fi && ./configure --enable-bpv6 && make && make install
