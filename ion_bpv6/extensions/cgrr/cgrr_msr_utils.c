@@ -66,7 +66,7 @@ static int encode_unique_cgrr_route(ExtensionBlock *blk, Object extBlkAddr, Bund
 	unsigned int oldLength;
 	unsigned char * tempBuffer;
 	CGRRouteBlock tempBlk;
-	uint32_t tempLength;
+	uvast tempLength;
 	int result;
 
 	cgrr_debugPrint("[cgrr_msr_utils.c/encode_unique_cgrr_route] Encoding route...");

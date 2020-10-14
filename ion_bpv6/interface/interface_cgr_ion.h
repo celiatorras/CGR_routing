@@ -31,15 +31,16 @@
 #ifndef SOURCES_INTERFACE_CGR_ION_H_
 #define SOURCES_INTERFACE_CGR_ION_H_
 
-#include <sys/time.h>
+#ifndef UNIBO_CGR
+/**
+ * \brief Enable (1) or disable (0) Unibo-CGR as dynamic routing algorithm.
+ *
+ * \hideinitializer
+ */
+#define UNIBO_CGR 1
+#endif
 
-//include from ion
-#include "ion.h"
-#include "platform.h"
-#include "sdrstring.h"
-#include "cgr.h"
-#include "bpP.h"
-#include "bp.h"
+#if UNIBO_CGR
 
 
 #ifdef __cplusplus
@@ -50,6 +51,8 @@ extern "C"
 
 #ifdef __cplusplus
 }
+#endif
+
 #endif
 
 #endif /* SOURCES_INTERFACE_CGR_ION_H_ */

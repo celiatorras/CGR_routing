@@ -28,7 +28,6 @@
  */
 
 #include "cgrr.h"
-#include <inttypes.h>
 
 /******************************************************************************
  *
@@ -61,8 +60,9 @@
  *****************************************************************************/
  int cgrr_attach(ExtensionBlock *blk, CGRRouteBlock *cgrrBlk) {
 
-	int8_t			result = 0;
+	int			result = 0;
 	unsigned char	*serializedCgrr;
+	uvast			length = 0;
 
 	CHKERR(blk);
 	CHKERR(cgrrBlk);
@@ -72,9 +72,9 @@
 	//cgrr_debugPrint("cgrr_attach: dataLength = %u", blk->dataLength);
 	//cgrr_debugPrint("cgrr_attach: serializing CGRR block with custom function...");
 		/* 1.1 - Create a serialized version of the cgrr block. */
-		if((serializedCgrr = cgrr_serializeCGRR((uint32_t *) &(blk->dataLength), cgrrBlk)) == NULL)
+		if((serializedCgrr = cgrr_serializeCGRR(&length, cgrrBlk)) == NULL)
 		{
-
+			blk->dataLength = length;
 			cgrr_debugPrint("[x: cgrr.c/cgrr_attach] Unable to serialize CGRRouteBlock.  blk->dataLength = %d",
 						  blk->dataLength);
 			result = -1;
@@ -84,6 +84,8 @@
 			cgrr_debugPrint("[cgrr.c/cgrr_attach] result --> %d", result);
 			return result;
 		}
+		blk->dataLength = length;
+
 		//cgrr_debugPrint("[cgrr.c/cgrr_attach] done.");
 		cgrr_debugPrint("[cgrr.c/cgrr_attach] dataLength = %u", blk->dataLength);
 		//cgrr_debugPrint("[cgrr.c/cgrr_attach] serializing block with bei function...");
@@ -134,7 +136,7 @@ int	cgrr_offer(ExtensionBlock *blk, Bundle *bundle)
 {
 /*	Sdr				bpSdr = getIonsdr();*/
 	CGRRouteBlock		cgrrBlk;
-	int8_t			result = 0;
+	int			result = 0;
 	/* Step 1 - Sanity Checks. */
 	/* Step 1.1 - Make sure we have parameters...*/
 	CHKERR(blk);

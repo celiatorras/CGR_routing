@@ -12,17 +12,6 @@
 
 #include "ipnfw.h"
 
-#if(CGR_UNIBO == 0)
-//Added by A. Stramiglio 19/11/19
-#include "../library/ext/rgr/rgr.h"
-//Added by A. Stramiglio 21/11/19
-#include "../library/ext/rgr/rgr_utils.h"
-//Added by A.Stramiglio 28/11/19
-#include <strings.h>
-
-#include "ext/cgrr/cgrr.h"
-#endif
-
 #ifdef	ION_BANDWIDTH_RESERVED
 #define	MANAGE_OVERBOOKING	0
 #endif
@@ -32,24 +21,12 @@
 #endif
 
 #ifndef	MIN_PROSPECT
-#define	MIN_PROSPECT	(0.0)
+#define	MIN_PROSPECT		(0.0)
 #endif
 
 #ifndef CGR_DEBUG
-#define CGR_DEBUG	1
+#define CGR_DEBUG		0
 #endif
-
-static CgrSAP	cgrSap(CgrSAP *newSap)
-{
-	static CgrSAP	sap;
-
-	if (newSap)
-	{
-		sap = *newSap;
-	}
-
-	return sap;
-}
 
 #if CGR_DEBUG == 1
 static void	printCgrTraceLine(void *data, unsigned int lineNbr,
@@ -73,7 +50,6 @@ static void	printCgrTraceLine(void *data, unsigned int lineNbr,
 	}
 
 	putchar('\n');
-	//Added by G.M. De Cola
 	fflush(stdout);
 	va_end(args);
 }
@@ -99,6 +75,18 @@ static sm_SemId		_ipnfwSemaphore(sm_SemId *newValue)
 	temp = (uaddr) value;
 	sem = temp;
 	return sem;
+}
+
+static CgrSAP	cgrSap(CgrSAP *newSap)
+{
+	static CgrSAP	sap;
+
+	if (newSap)
+	{
+		sap = *newSap;
+	}
+
+	return sap;
 }
 
 static void	shutDown(int signum)
@@ -294,8 +282,8 @@ static void	deleteObject(LystElt elt, void *userdata)
 
 static int	excludeNode(Lyst excludedNodes, uvast nodeNbr)
 {
-	//NodeId	*node = (NodeId *) MTAKE(sizeof(NodeId));
-	uvast	*node = (uvast *) MTAKE(sizeof(uvast));
+	uvast *node = (uvast *) MTAKE(sizeof(uvast));
+
 	if (node == NULL)
 	{
 		return -1;
@@ -378,10 +366,6 @@ static int	proactivelyFragment(Bundle *bundle, Object *bundleObj,
 	{
 		fragmentLength = bundle->payload.length - 1;
 	}
-	debugPrint(
-			"[ipnfw.c/proactivelyFragment] Fragmenting bundle - bundle source: %llu, bundle timestamp: %u, fragm. offset: %u\n\t\t\t",
-			bundle->id.source.ssp.ipn.nodeNbr, bundle->id.creationTime.seconds,
-			bundle->id.fragmentOffset);
 
 	if (bpFragment(bundle, *bundleObj, NULL, fragmentLength,
 			&firstBundle, &firstBundleObj, &secondBundle,
@@ -416,8 +400,6 @@ static int	proactivelyFragment(Bundle *bundle, Object *bundleObj,
 
 	*bundleObj = firstBundleObj;
 	memcpy((char *) bundle, (char *) &firstBundle, sizeof(Bundle));
-	debugPrint(
-			"[ipnfw.c/proactivelyFragment] Bundle fragmented, enqueueing first fragment and sending second fragment back through the routing procedure");
 	return 0;
 }
 
@@ -467,7 +449,6 @@ static int	enqueueToEntryNode(CgrRoute *route, Bundle *bundle,
 		&& bundle->payload.length > 1
 		&& !(bundle->bundleProcFlags & BDL_DOES_NOT_FRAGMENT))
 		{
-//printf("*** fragmenting; to node %lu, volume avbl %lu, bundle ECCC %lu.\n", route->toNodeNbr, route->maxVolumeAvbl, route->bundleECCC);
 			if (proactivelyFragment(bundle, &bundleObj, route) < 0)
 			{
 				putErrmsg("Anticipatory fragmentation failed.",
@@ -515,25 +496,9 @@ static int	enqueueToEntryNode(CgrRoute *route, Bundle *bundle,
 
 	/*	And we reserve transmission volume for this bundle
 	 *	on every contact along the end-to-end path for the
-	 *	bundle.			
-	 				*/
-	 debugPrint(
-			"[ipnfw.c/enqueueToEntryNode] Bundle sent - bundle source: %llu, bundle timestamp (DTN time): %u\n\t\t\tbundle timestamp (ION start offset): %u, fragm. offset: %u, sent to: %llu",
-			bundle->id.source.ssp.ipn.nodeNbr, bundle->id.creationTime.seconds,
-			(bundle->id.creationTime.seconds + EPOCH_2000_SEC) - ionReferenceTime(NULL),
-			bundle->id.fragmentOffset, route->toNodeNbr);
-	 
+	 *	bundle.							*/
 
 	priority = bundle->priority;
-	#if !CGR_UNIBO && CGRREB && WISE_NODE //modified by F. Marchetti
-
-
-	/****************added by LMazzuca****************/
-	int j = 0;
-	int hopCount = sm_list_length(ionwm, route->hops);
-	CGRRHop routeHopList[hopCount];
-	/*************************************************/
-#endif
 	for (elt = sm_list_first(ionwm, route->hops); elt;
 			elt = sm_list_next(ionwm, elt))
 	{
@@ -549,21 +514,7 @@ static int	enqueueToEntryNode(CgrRoute *route, Bundle *bundle,
 
 		sdr_write(sdr, contactObj, (char *) &contactBuf,
 				sizeof(IonContact));
-#if !CGR_UNIBO && CGRREB && WISE_NODE //modified by F. Marchetti
-		/****************added by LMazzuca****************/
-		routeHopList[j].fromNode = contact->fromNode;
-		routeHopList[j].toNode = contact->toNode;
-		routeHopList[j].fromTime = contact->fromTime;
-		j++;
-		/*************************************************/
-#endif
 	}
-#if !CGR_UNIBO && CGRREB && WISE_NODE //modified by F. Marchetti
-	/****************added by LMazzuca****************/
-	debugPrint("[ipnfw.c/enqueueToEntryNode] Should saveRouteToExtBlock");
-	saveRouteToExtBlock(hopCount, routeHopList, bundle);
-	/*************************************************/
-#endif
 
 	return 0;
 }
@@ -825,10 +776,10 @@ static int	sendCriticalBundle(Bundle *bundle, Object bundleObj,
 	{
 		return 0;	/*	Potential future fwd unneeded.	*/
 	}
-
-	if(result_cgr == 0)
+	
+	if (result_cgr == 0) 
 	{
-		return 0; /*	No potential future forwarding.	*/
+		return 0; 	/*	No potential future forwarding.	*/
 	}
 
 	/*	Must put bundle in limbo, keep on trying to send it.	*/
@@ -911,341 +862,10 @@ static int	forwardOkay(CgrRoute *route, Bundle *bundle)
 
 	return 1;
 }
-#if MODERATE_SOURCE_ROUTING
-/******************************************************************************
- *
- * \par Function Name: trySourceRouting()
- *
- * \par Purpose: This function tests if it is possible to use a route computed
- *               by one of the preceding nodes. If such a route is found and
- *               is safe to be used then it is possible to avoid the use of CGR.
- *
- * \par Date Written:  07/02/19
- *
- * \retval int		MSR_SUCCESS - Success.
- *               	MSR_UNSPECIFIED_ERROR Generic / unspecified error.
- *               	MSR_EXTENSION_NOT_FOUND - The extension is not be present.
- *               	MSR_CANNOT_COMPUTE_NEW_ROUTE - Unable to compute new route to follow
- *               	MSR_UNABLE_TO_COMPUTE_EQIV_ROUTE - Unable to compute an equivalent route
- *               	MSR_LAST_COMP_ROUTE_NOT_VIABLE - Last computed route cannot be used to forward bundle
- *               	MSR_UNABLE_TO_QUEUE - Unable to queue bundle to neighbor
- *               	MSR_UNKNOWN_TERMINUS - This node does not know terminus node
- *               	MSR_CANNOT_RETRIEVE_EXT_BLOCK - Unable to retrieve extension block from memory
- *
- * \param[in]      bundle  	     A pointer to the Bundle arrived from which
- *                               the route has to be extracted.
- * \param[in]      trace
- *
- * \param[in]      terminusNodeNbr
- *                               Identifier for terminus node
- *
- * \param[in]      bundleObj     Bundle object
- *
- * \par Revision History:
- *
- *  DD/MM/YY  AUTHOR                DESCRIPTION
- *  --------  ------------  -----------------------------------------------
- *  07/02/19  F. Marchetti          Created function
- *  08/02/19  F. Marchetti          Added functionalities. Added checks.
- *                                  Added documentation
- *  12/02/19  F. Marchetti          Added route search. Added functionalities
- *  13/02/19  F. Marchetti          Added checks. Added documentation.
- *                                  Added functionalities
- *  14/02/19  F. Marchetti          Major refactor
- *  15/02/19  F. Marchetti          Major refactor
- *  05/03/19  F. Marchetti          Bug fixing
- *  07/03/19  F. Marchetti          Bug fixing
- *  10/03/19  F. Marchetti          Minor refactor
- *  13/03/19  F. Marchetti          Bug fixing
- *  02/10/19  G.M. De Cola			Changed cgrrBlk allocation to psm large pool;
- *  								Anticipated cgrrBlk deallocation.
- *  08/11/19  G.M. De Cola			Ported and moved function from bp/cgr/libcgr.c to
- *  								bp/ipn/ipnfw.c to stay true to ion-3.7.0 function
- *  								refactoring
- *****************************************************************************/
-
-int trySourceRouting(Bundle *bundle, CgrTrace *trace, uvast terminusNodeNbr, Object bundleObj)
-{
-	Sdr sdr = getIonsdr();
-	CGRRouteBlock *cgrrBlk = NULL;
-	CGRRoute myRoute;
-	CGRRoute newRoute;
-	Object extBlkAddr;
-	Object extBlockElt;
-	time_t currentTime = 0;
-	IonNode *terminusNode = NULL;
-	CgrRoute *route = NULL;
-	PsmPartition ionwm = 0;
-	unsigned char routeFound = 0;
-
-	// Initial setup
-	ionwm = getIonwm();
-	CHKERR(ionwm != 0);
-
-	OBJ_POINTER(ExtensionBlock, blk);
-
-	// Sanity checks
-	CHKERR(bundle != NULL);
-
-	debugPrint("[i: ipnfw.c/trySourceRouting] sanity checks done.");
-
-	//Added by G.M. De Cola
-	/* Step 0 - Check if this node is the source node. In that case, call CGR*/
-	//Added by G.M. De Cola
-	debugPrint("\n################################################################\n"
-			"[ipnfw.c/trySourceRouting] Step 0 - Check if this node is the source node. In that case, call CGR\n"
-			"################################################################\n");
-	if(getOwnNodeNbr() == bundle->id.source.ssp.ipn.nodeNbr)
-	{
-		debugPrint("[i: ipnfw.c/trySourceRouting] This is the source node, exiting function and calling CGR.");
-		return MSR_UNSPECIFIED_ERROR;
-	}
-
-	/* Step 1 - Check for the presence of CGRR extension*/
-	//Added by G.M. De Cola
-	debugPrint("\n################################################################\n"
-			"[ipnfw.c/trySourceRouting] Step 1 - Check for the presence of CGRR extension\n"
-			"################################################################\n");
-
-	if (!(extBlockElt = findExtensionBlock(bundle, CGRRBlk, 0, 0, 0)))
-	{
-		debugPrint("[i: ipnfw.c/trySourceRouting] No CGRR Extension Block found in bundle.");
-		return MSR_EXTENSION_NOT_FOUND;
-	}
-
-	debugPrint("[!: ipnfw.c/trySourceRouting] CGRR Extension Block found in bundle.");
-
-	/* Step 2 - Get deserialized version of CGRR extension block*/
-	//Added by G.M. De Cola
-	debugPrint("\n################################################################\n"
-			"[ipnfw.c/trySourceRouting] Step 2 - Get deserialized version of CGRR extension block\n"
-			"################################################################\n");
-
-	//CHKERR(sdr_begin_xn(sdr));
-	extBlkAddr = sdr_list_data(sdr, extBlockElt);
-
-	GET_OBJ_POINTER(sdr, ExtensionBlock, blk, extBlkAddr);
-	//CHKERR(sdr_end_xn(sdr));
-	cgrrBlk = (CGRRouteBlock*) psp(ionwm, psm_malloc(ionwm, sizeof(CGRRouteBlock)));
-
-	if (cgrrBlk == NULL)
-	{
-		debugPrint("[x: ipnfw.c/trySourceRouting] cannot instantiate memory for newCGRRouteBlock.");
-		return MSR_UNSPECIFIED_ERROR;
-	}
-
-	debugPrint("[!: ipnfw.c/trySourceRouting] instantiated memory for newCGRRouteBlock.");
-
-	if (cgrr_getCGRRFromExtensionBlock(blk, cgrrBlk) <= 0)
-	{
-		debugPrint(
-				"[!: ipnfw.c/trySourceRouting] unable to get extension from extension block");
-		releaseCgrrBlkMemory(cgrrBlk);
-		return MSR_CANNOT_RETRIEVE_EXT_BLOCK;
-	}
-
-	/* Step 3 - Find last computed route */
-	//Added by G.M. De Cola
-	debugPrint("\n################################################################\n"
-			"[ipnfw.c/trySourceRouting] Step 3 - Find last computed route\n"
-			"################################################################\n");
-
-	debugPrint("[i: ipnfw.c/trySourceRouting] looking for an earlier computed route inside extension");
-
-	if (cgrrBlk->recRoutesLength == 0)
-	{
-		// Since recomputedRoute array's length is zero
-		// we only have the route computed by source node
-		myRoute = cgrrBlk->originalRoute;
-		debugPrint("[i: ipnfw.c/trySourceRouting] found original route");
-	}
-	else
-	{
-		// RecomputedRoute array's length is not zero, so we take
-		// last computed route
-		myRoute = cgrrBlk->recomputedRoutes[cgrrBlk->recRoutesLength - 1];
-		debugPrint("[i: ipnfw.c/trySourceRouting] found last recomputed route");
-	}
-
-	// Route could be empty as CGRRExtensions is created at bundle's creation time
-	// If this route is empty (i.e. there are no hops) we are source node or we have found an error
-	if (myRoute.hopCount == 0)
-	{
-		debugPrint("[!: ipnfw.c/trySourceRouting] route found has no hops");
-		releaseCgrrBlkMemory(cgrrBlk);
-		return MSR_UNSPECIFIED_ERROR;
-	}
-
-	/* Step 4 - Compute new route to follow*/
-	//Added by G.M. De Cola
-	debugPrint("\n################################################################\n"
-			"[ipnfw.c/trySourceRouting] Step 4 - Compute new route to follow\n"
-			"################################################################\n");
-	releaseCgrrBlkMemory(cgrrBlk);// Added by G.M. De Cola: Releasing memory for cgrrBlk because from now on it is never used
-
-	if (computeNewRoute(&myRoute, &newRoute, terminusNodeNbr) < 0)
-	{
-		debugPrint(
-				"[!: ipnfw.c/trySourceRouting] unable to compute a new route based on last computed route");
-		//MRELEASE(cgrrBlk);
-		return MSR_CANNOT_COMPUTE_NEW_ROUTE;
-	}
-
-	debugPrint("[!: ipnfw.c/trySourceRouting] been able to compute a new route based on last computed route");
-
-	/* Step 5   - Find an existing ION-formatted route Find an existing ION-formatted route or compute it from scratch and test it */
-	//Added by G.M. De Cola
-	debugPrint("\n################################################################\n"
-			"[ipnfw.c/trySourceRouting] Step 5 - Find an existing ION-formatted route or compute it from scratch and test it\n"
-			"################################################################\n");
-	currentTime = getCtime();
-
-	/* Does this node know terminus node?
-	 * Knowledge of terminus node is essential since we need to know
-	 * if next node is embargoed for terminus destination */
-	if (getTerminusNode(terminusNodeNbr, &terminusNode)
-			< 0|| terminusNode == NULL)
-	{
-		//This node does not know terminusNode
-		debugPrint(
-				"[!: ipnfw.c/trySourceRouting] this node does not have knowledge about the existence of terminusNode");
-		//MRELEASE(cgrrBlk);
-		return MSR_UNKNOWN_TERMINUS;
-	}
-
-	// A reference to terminus node has been found. I.e. this node knows terminus node
-
-	// Modified by G.M. De Cola
-	// Initialize routing object if not
-	if (terminusNode->routingObject == 0)
-	{
-		if (initializeRoutingObject(terminusNode) < 0)
-		{
-			debugPrint("[!: ipnfw.c/trySourceRouting] Can't initialize routing object.");
-			return MSR_UNSPECIFIED_ERROR;
-		}
-		debugPrint("[i: ipnfw.c/trySourceRouting] Successfully initialized routing object");
-	}
-
-	// Try to search a previously computed route among CGR computed ones
-	if (findExistingIonRoute(terminusNode, currentTime, &newRoute, &route) < 0)
-	{
-		/* Unable to find an already CGR-computed route that could lead us to terminusNode in time */
-		debugPrint("[!: ipnfw.c/trySourceRouting] unable to find an existing route");
-	}
-	else
-	{
-		routeFound = 1;
-		debugPrint("[!: ipnfw.c/trySourceRouting] found an existing route");
-	}
-
-	/* Try to compute route from known contacts */
-	if (!routeFound)
-	{
-		if (computeRouteFromContacts(bundle, &newRoute, &route, currentTime)
-				< 0)
-		{
-			debugPrint(
-					"[!: ipnfw.c/trySourceRouting] unable to compute route found in extension block using known contacts");
-			//MRELEASE(cgrrBlk);
-			return MSR_UNABLE_TO_COMPUTE_EQIV_ROUTE;
-		}
-		else
-		{
-			debugPrint(
-					"[!: ipnfw.c/trySourceRouting] computed route found in extension block using known contacts");
-		}
-	}
-
-	if (route == NULL)
-	{
-		debugPrint("[x: ipnfw.c/trySourceRouting] unexpected null pointer at line: %d",__LINE__);
-		//MRELEASE(cgrrBlk);
-		return MSR_UNSPECIFIED_ERROR;
-	}
-
-	PsmAddress routeAddr = psa(ionwm, route);
-
-	/* ATTENTION
-	 * In order to avoid a segmentation fault we TEMPORARILY need to store
-	 * route->hops in a variable; the original value is changed because of a bug,
-	 * probably a buffer overflow (not yet found), inside saveRouteToExtBlock()
-	 * or enqueueToNeighbor().
-	 * This bug happens only in routes that have more than 3 hops and only on
-	 * route's second and third node. Nodes with an Intel 64-bit architecture
-	 * are apparently immune to this bug.
-	 *
-	 * EDIT(BY G.M. De Cola)
-	 * The bug has been found in serializeExtBlock() called by the cgrr_attach() function, called by the addRoute()
-	 * function, called by the saveRouteToExtBlock() in the enqueueToNeighbor() function.
-	 * The bugfix is located and explained in the function computeRouteFromContacts():3389 in this file.
-	 *
-	 *
-	 */
-	PsmAddress hopsAddr = route->hops;
-	// Try this route in order to know if it can be used to forward bundle
-	//Modified by G.M. De Cola : 08/11/19 - Changed tryNewRoute to trySRRoute due to function renaming
-	if (trySRRoute(route, bundle, trace, currentTime) < 0)
-	{
-		debugPrint("[!: ipnfw.c/trySourceRouting] last computed route cannot be used to forward bundle");
-		sm_list_destroy(ionwm, route->hops, NULL, NULL);
-		psm_free(ionwm, routeAddr);
-		//MRELEASE(cgrrBlk);
-		return MSR_LAST_COMP_ROUTE_NOT_VIABLE;
-	}
-
-	debugPrint("[!: ipnfw.c/trySourceRouting] last computed route can be used in order to forward bundle");
-
-	//Modified by G.M. De Cola : 08/11/19 - Changed enqueueToNeighbor call to enqueueToEntryNode due to function renaming in ion-3.7.0
-	/* Step 6   - enqueue bundle to route's entry node */
-	//Added by G.M. De Cola
-	debugPrint("\n################################################################\n"
-			"[ipnfw.c/trySourceRouting] Step 6 - enqueue bundle to route's entry node\n"
-			"################################################################\n");
-
-	debugPrint("[i: ipnfw.c/trySourceRouting] queuing bundle to route's entry node");
-	if (enqueueToEntryNode(route, bundle, bundleObj, terminusNode))
-	{
-		debugPrint("[i: ipnfw.c/trySourceRouting] unable to queue bundle to route's entry node");
-		sm_list_destroy(ionwm, route->hops, NULL, NULL);
-		psm_free(ionwm, routeAddr);
-		//MRELEASE(cgrrBlk);
-		return MSR_UNABLE_TO_QUEUE;
-	}
-
-	debugPrint("\n################################################################\n"
-			"[ipnfw.c/trySourceRouting] Step 6.1 - Check for PSM memory bug\n"
-			"################################################################\n");
-
-	debugPrint("0 -> bug; 1 -> all clear");
-	debugPrint("Ris: %d", hopsAddr == route->hops);
-
-	debugPrint("[!: ipnfw.c/trySourceRouting] bundle queued to neighbor");
-
-	/* Step 7 - Releasing allocated memory */
-	//Added by G.M. De Cola
-	debugPrint("\n################################################################\n"
-			"[ipnfw.c/trySourceRouting] Step 7 - Releasing allocated memory\n"
-			"################################################################\n");
-
-	sm_list_destroy(ionwm, route->hops, NULL, NULL);
-	psm_free(ionwm, routeAddr);
-	//MRELEASE(cgrrBlk);
-
-	return MSR_SUCCESS;
-}
-#endif
 
 static int 	tryCGR(Bundle *bundle, Object bundleObj, IonNode *terminusNode,
 			time_t atTime, CgrTrace *trace, int preview)
 {
-debugPrint(
-			"[ipnfw.c/tryCGR] Trying CGR for this bundle\n\t\t\t"
-					"bundle source: %llu, bundle timestamp (DTN time): %u, bundle timestamp (ION start offset): %u, fragm. offset: %u",
-			bundle->id.source.ssp.ipn.nodeNbr, bundle->id.creationTime.seconds,
-			(bundle->id.creationTime.seconds + EPOCH_2000_SEC) - ionReferenceTime(NULL),
-			bundle->id.fragmentOffset);
-
 	IonVdb		*ionvdb = getIonVdb();
 	CgrVdb		*cgrvdb = cgr_get_vdb();
 	int		ionMemIdx;
@@ -1260,8 +880,10 @@ debugPrint(
 	 *	terminus node identifies one or more routes over
 	 *	which the bundle may be sent in order to get it
 	 *	delivered to the terminus node.  If so, use the
-	 *	Plan asserted for the entry node of each of the
-	 *	best route ("dynamic route").
+	 *	Plan asserted for the entry node of the best route
+	 *	or - for a critical bundle - the Plans asserted
+	 *	for each neighboring node for which there is at
+	 *	least one route to the terminus node.
 	 *
 	 *	Note that CGR can be used to compute a route to an
 	 *	intermediate "station" node selected by another
@@ -1277,7 +899,7 @@ debugPrint(
 
 	CHKERR(bundle && bundleObj && terminusNode);
 	TRACE(CgrBuildRoutes, terminusNode->nodeNbr, bundle->payload.length,
-			(unsigned int) (atTime - ionReferenceTime(NULL)));
+			(unsigned int) atTime);
 
 	if (ionvdb->lastEditTime.tv_sec > cgrvdb->lastLoadTime.tv_sec
 	|| (ionvdb->lastEditTime.tv_sec == cgrvdb->lastLoadTime.tv_sec
@@ -1319,116 +941,6 @@ debugPrint(
 		}
 	}
 
-	/************************************************************
-	 Added by A. Stramiglio - 19/11/19
-	 - Take RGR extension
-	 - Convert it into a GeoRouteBlock
-	 - find loopNode
-	 *************************************************************/
-
-#if (AVOID_LOOP_ENTRY_NODE == 1)
-	//take sdr instance
-	Sdr sdr = getIonsdr();
-	Address extBlkAddr;
-	Object extBlockElt;
-	uvast nodeNum;
-	GeoRoute rgrBlk;
-
-	//Added by L. Persampieri
-	int result_rgr_read = -3;
-	uvast loopNode;
-	loopNode = 0;
-
-	OBJ_POINTER(ExtensionBlock, blk);
-
-	// Sanity checks
-	CHKERR(bundle != NULL);
-
-	debugPrint("[i: ipnfw.c/tryCGR] sanity checks done.");
-
-	//Step1 - Check for the presence of RGR extension
-	debugPrint("\n################################################################\n"
-			"[ipnfw.c/tryCGR] Step 1 - Check for the presence of RGR extension\n"
-			"################################################################\n");
-
-	rgrBlk.nodes = NULL;
-
-	if ((extBlockElt = findExtensionBlock(bundle, RGRBlk, 0, 0, 0)))
-	{
-
-		debugPrint("[!: ipnfw.c/tryCGR] RGR Extension Block found in bundle.\n");
-
-		nodeNum = getOwnNodeNbr();
-
-		debugPrint("[ipnfw.c/tryCGR] Own node Number: " UVAST_FIELDSPEC, nodeNum);
-
-		//Start sdr transaction
-		//CHKERR(sdr_begin_xn(sdr));
-		//debugPrint("[i: ipnfw.c/tryCGR] Start sdr transaction.\n");
-
-		extBlkAddr = sdr_list_data(sdr, extBlockElt);
-		//debugPrint("[i: ipnfw.c/tryCGR] Value of extBlkAddress = %d.\n", extBlkAddr);
-
-		GET_OBJ_POINTER(sdr, ExtensionBlock, blk, extBlkAddr);
-		//debugPrint("[i: ipnfw.c/tryCGR] Print before sdr_read");
-		//sdr_read(sdr, (char *) &rgrBlk, extBlkAddr, sizeof(ExtensionBlock));
-
-		//this function converts the extension block into a GeoRouteBlock
-		result_rgr_read = rgr_read(blk, &rgrBlk);
-		if (result_rgr_read == 0)
-		{
-			debugPrint("[i: ipnfw.c/tryCGR] Print length of blk  = %d.\n", rgrBlk.length);
-			/*
-			 //create the lyst
-			 ionMemIdx = getIonMemoryMgr();
-			 loopEntryNodes = lyst_create_using(ionMemIdx);
-			 if (loopEntryNodes == NULL)
-			 {
-			 putErrmsg("Can't create lists for loopEntryNodes.", NULL);
-			 return -1;
-			 }
-
-			 lyst_delete_set(loopEntryNodes, deleteObject, NULL);
-			 */
-			loopNode = findLoopEntryNode(&rgrBlk, nodeNum);
-
-			if (loopNode != 0)
-			{
-				debugPrint("[ipnfw.c/tryCGR]LoopNode found");
-			}
-
-			MRELEASE(&(rgrBlk.nodes));
-
-		}
-		else if (result_rgr_read == -2)
-		{
-			debugPrint("[i: ipnfw.c/tryCGR]Empty GeoRoute");
-		}
-		else if (result_rgr_read == -3)
-		{
-			debugPrint("[i: ipnfw.c/tryCGR]Empty Extension");
-		}
-		else
-		{
-			debugPrint("[i: ipnfw.c/tryCGR]Memory allocation error.");
-			return -1;
-		}
-
-	}
-	else
-	{
-		debugPrint("[i: ipnfw.c/tryCGR] No RGR Extension Block found in bundle.\n");
-	}
-
-	//end transaction
-	//CHKERR(sdr_end_xn(sdr));
-	//debugPrint("[i: ipnfw.c/tryCGR] End sdr transaction.\n");
-
-#endif
-
-	/*** A. Stramiglio ********************************************/
-
-
 	/*	Consult the contact graph to identify the neighboring
 	 *	node(s) to forward the bundle to.			*/
 
@@ -1440,19 +952,17 @@ debugPrint(
 			return -1;
 		}
 	}
-
-	CgrSAP sap = cgrSap(NULL);
+	
 	int result_cgr = cgr_identify_best_routes(terminusNode, bundle,
-		excludedNodes, atTime, sap, trace, bestRoutes);
+		excludedNodes, atTime, cgrSap(NULL), trace, bestRoutes);
 
-	if(result_cgr < 0)
+	if (result_cgr < 0)
 	{
 		putErrmsg("Can't identify best route(s) for bundle.", NULL);
 		lyst_destroy(excludedNodes);
 		lyst_destroy(bestRoutes);
 		return -1;
 	}
-
 
 	lyst_destroy(excludedNodes);
 	TRACE(CgrSelectRoutes);
@@ -1467,23 +977,6 @@ debugPrint(
 
 	/*	Non-critical bundle; send to the most preferred
 	 *	neighbor.						*/
-
-	/*************************************************************************/
-#if (ONE_ROUTE_PER_NEIGHBOR == 1 && CGR_UNIBO == 0)
-	debugPrint("[ipnfw.c/tryCGR] Comparing all best routes of neighboring nodes to understand which is the best among them\n");
-
-//16/12/19 A.Stramiglio added loopEntryNode in tryNeighboringBestRoutes
-if (tryNeighboringBestRoutes(bundle, bestRoutes, loopNode) < 0)
-{
-	putErrmsg("Failed trying to consider route calling tryNeighboringBestRoutes.", NULL);
-	return -1;
-}
-
-#endif
-
-//A. Stramiglio
-//lyst_destroy(loopEntryNodes);
-	/*************************************************************************/
 
 	elt = lyst_first(bestRoutes);
 	if (elt)
@@ -1516,7 +1009,6 @@ if (tryNeighboringBestRoutes(bundle, bestRoutes, loopNode) < 0)
 		TRACE(CgrNoRoute);
 	}
 
-
 	lyst_destroy(bestRoutes);
 	if (bundle->dlvConfidence >= MIN_NET_DELIVERY_CONFIDENCE
 	|| bundle->id.source.ssp.ipn.nodeNbr
@@ -1524,12 +1016,10 @@ if (tryNeighboringBestRoutes(bundle, bestRoutes, loopNode) < 0)
 	{
 		return 0;	/*	Potential future fwd unneeded.	*/
 	}
-
-	//Added by L. Persampieri
-
-	if(result_cgr == 0)
+	
+	if(result_cgr == 0) 
 	{
-		return 0; /*	No potential future forwarding.	*/
+		return 0;	/*	No potential future forwarding.	*/
 	}
 
 	/*	Must put bundle in limbo, keep on trying to send it.	*/
@@ -1604,7 +1094,6 @@ static int	openCgr()
 	CgrSAP	sap;
 
 	sap = cgrSap(NULL);
-
 	if (sap)	/*	CGR is already open.			*/
 	{
 		writeMemo("[i] CGR service access point is already open.");
@@ -1629,8 +1118,7 @@ static void	closeCgr()
 	oK(cgrSap(&noSap));
 }
 
-
-static int	enqueueBundle(Bundle *bundle, Object bundleObj)
+static int	enqueueBundle(Bundle *bundle, Object bundleObj, CgrSAP sap)
 {
 	Sdr		sdr = getIonsdr();
 	IonVdb		*ionvdb = getIonVdb();
@@ -1719,30 +1207,11 @@ static int	enqueueBundle(Bundle *bundle, Object bundleObj)
 		/*	Destination node resides in a region in which
 		 *	the local node resides.  Consult contact plan.	*/
 
-		/************* Added by F. Marchetti *************/
-		/************* Ported by G.M. De Cola ************/
-#if MODERATE_SOURCE_ROUTING && (CGR_UNIBO == 0)
-		if (trySourceRouting(bundle, trace, nodeNbr, bundleObj) < 0)
-		{
-			/*Something went wrong. We might have not found an extension,
-			 * the actual node might not exists in the extension,
-			 * or the residual route may be invalid. Use CGR instead.
-			 */
-
-			debugPrint("[i: ipnfw.c/enqueueBundle] unable to use previously computed route");
-#endif
 		if (tryCGR(bundle, bundleObj, node, getCtime(), trace, 0))
 		{
 			putErrmsg("CGR failed.", NULL);
 			return -1;
 		}
-#if MODERATE_SOURCE_ROUTING && (CGR_UNIBO == 0)
-		}
-		else
-		{
-			debugPrint("[!: ipnfw.c/enqueueBundle] used previously computed route");
-		}
-#endif
 	}
 
 	/*	If dynamic routing succeeded in enqueuing the bundle
@@ -1824,6 +1293,7 @@ int	main(int argc, char *argv[])
 	VScheme		*vscheme;
 	PsmAddress	vschemeElt;
 	Scheme		scheme;
+	CgrSAP		sap;
 	Object		elt;
 	Object		bundleAddr;
 	Bundle		bundle;
@@ -1843,13 +1313,6 @@ int	main(int argc, char *argv[])
 	}
 
 	cgr_start();
-
-	if(openCgr() < 0) {
-		putErrmsg("ipnfw can't open cgr", NULL);
-		return -1;
-	}
-
-	sdr = getIonsdr();
 	findScheme("ipn", &vscheme, &vschemeElt);
 	if (vschemeElt == 0)
 	{
@@ -1857,12 +1320,18 @@ int	main(int argc, char *argv[])
 		return 1;
 	}
 
+	sdr = getIonsdr();
 	CHKZERO(sdr_begin_xn(sdr));
 	sdr_read(sdr, (char *) &scheme, sdr_list_data(sdr,
 			vscheme->schemeElt), sizeof(Scheme));
 	sdr_exit_xn(sdr);
 	oK(_ipnfwSemaphore(&vscheme->semaphore));
 	isignal(SIGTERM, shutDown);
+	if (openCgr(getOwnNodeNbr(), ionReferenceTime(NULL), &sap) < 0)
+	{
+		putErrmsg("Can't open CGR service access point.", NULL);
+		return -1;
+	}
 
 	/*	Main loop: wait until forwarding queue is non-empty,
 	 *	then drain it.						*/
@@ -1891,12 +1360,11 @@ int	main(int argc, char *argv[])
 
 		bundleAddr = (Object) sdr_list_data(sdr, elt);
 		sdr_stage(sdr, (char *) &bundle, bundleAddr, sizeof(Bundle));
-        
-        bundle.priority = bundle.classOfService;
-        bundle.ordinal = bundle.ancillaryData.ordinal;
 
 		/*	Note any applicable class of service override.	*/
 
+		bundle.priority = bundle.classOfService;
+		bundle.ordinal = bundle.ancillaryData.ordinal;
 		if (ipn_lookupOvrd(bundle.ancillaryData.dataLabel,
 				bundle.id.source.ssp.ipn.nodeNbr,
 				bundle.destination.ssp.ipn.nodeNbr, &ovrdAddr))
@@ -1905,7 +1373,8 @@ int	main(int argc, char *argv[])
 					sizeof(IpnOverride));
 			if (ovrd.priority != (unsigned char) -1)
 			{
-                /*	Override requested CoS.		*/
+				/*	Override requested CoS.		*/
+
 				bundle.priority = ovrd.priority;
 				bundle.ordinal = ovrd.ordinal;
 			}
@@ -1922,7 +1391,7 @@ int	main(int argc, char *argv[])
 		 *	database.					*/
 
 		sdr_write(sdr, bundleAddr, (char *) &bundle, sizeof(Bundle));
-		if (enqueueBundle(&bundle, bundleAddr) < 0)
+		if (enqueueBundle(&bundle, bundleAddr, sap) < 0)
 		{
 			sdr_cancel_xn(sdr);
 			putErrmsg("Can't enqueue bundle.", NULL);

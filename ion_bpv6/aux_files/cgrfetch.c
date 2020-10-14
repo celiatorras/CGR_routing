@@ -627,7 +627,7 @@ static void run_cgrfetch(void)
 		DIES("Can't lock database");
 	}
 
-	if (cgr_preview_forward(destNode, &bundle, (Object)(&bundle),
+	if (cgr_preview_forward(destNode, &bundle, 
 			dispatchTime, NULL, &trace)  < 0)
 	{
 		DIES("unable to simulate cgr");
@@ -934,3 +934,4 @@ int	main(int argc, char **argv)
 }
 
 // vim: sw=8 noexpandtab
+

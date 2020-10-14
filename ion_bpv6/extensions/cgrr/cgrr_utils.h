@@ -31,8 +31,9 @@
 #ifndef _CGRR_UTIL_H_
 #define _CGRR_UTIL_H_
 
-#include "../../bpP.h"
-#include "../../bei.h"
+#include "bpP.h"
+#include "bei.h"
+#include <stdlib.h>
 
 #ifndef CGRR_DEBUG
 /**
@@ -72,7 +73,7 @@ typedef struct
 
 extern void printCGRRoute(CGRRoute *cgrRoute);
 extern void printCGRRouteBlock(CGRRouteBlock *cgrrBlk);
-extern unsigned char *cgrr_serializeCGRR(uint32_t *length, CGRRouteBlock *cgrrBlk);
+extern unsigned char *cgrr_serializeCGRR(uvast *length, CGRRouteBlock *cgrrBlk);
 extern int	cgrr_deserializeCGRR(AcqExtBlock *blk, AcqWorkArea *wk);
 extern int	cgrr_getCGRRFromExtensionBlock(ExtensionBlock *blk, CGRRouteBlock *cgrrBlk);
 int saveRouteToExtBlock(int hopCount, CGRRHop* hopList, Bundle* bundle);

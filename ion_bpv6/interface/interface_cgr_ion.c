@@ -31,6 +31,18 @@
  */
 #include "interface_cgr_ion.h"
 
+#if UNIBO_CGR
+
+#include <sys/time.h>
+
+//include from ion
+#include "ion.h"
+#include "platform.h"
+#include "sdrstring.h"
+#include "cgr.h"
+#include "bpP.h"
+#include "bp.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include "../../core/bundles/bundles.h"
@@ -2688,3 +2700,16 @@ int	cgr_start_SAP(uvast ownNode, time_t time, CgrSAP *sap)
 	sdr_exit_xn(sdr);
 	return result;
 }
+
+#else
+#include <stdlib.h>
+#include "../../core/cgr/cgr_phases.h"
+#include "../../core/library_from_ion/scalar/scalar.h"
+
+int computeApplicableBacklog(unsigned long long neighbor, int priority, unsigned int ordinal, CgrScalar *CgrApplicableBacklog,
+		CgrScalar *CgrTotalBacklog) {
+	loadCgrScalar(CgrApplicableBacklog, 0);
+	loadCgrScalar(CgrTotalBacklog, 0);
+	return 0;		
+}
+#endif

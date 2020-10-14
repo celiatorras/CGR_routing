@@ -14,72 +14,7 @@
 #ifndef _CGR_H_
 #define _CGR_H_
 
-/******************************************************************************
- * Added by Gian Marco De Cola gianmarco.decola@studio.unibo.it
- *
- * MODERATE_SOURCE_ROUTING and WISE_NODE added by Federico Marchetti and
- * ported to ion-3.7.0 by Gian Marco De Cola
- *
- * Supervisor Carlo Caini carlo.caini@unibo.it
- *
- * FLAGS explanation (at 07/12/2019)
- *
- * DIJKSTRA_ENHANCED: Dijkstra and computeSpurRoutes enhancements
- * ONE_ROUTE_PER_NEIGHBOR: it always saves at least one route per each neighbor,
- * 						   as for critical bundles (but it still replicates only critical bundles)
- * QUEUE_DELAY: queueDelay extension (i.e. ETO on hops following the first) on computePBAT
- * MODERATE_SOURCE_ROUTING: Moderate source routing (alias “Path Encoding” in 2015 IEEE Comm.Mag)”.
- * 						    It requires CGRREB extension on
- * WISE_NODE: it sets the level of control in moderate source routing (1->full, 0->min)
- * 			  It has no effect if moderate source routing is off. Wise nodes are the
- * 			  nodes aware of all contacts, unwise nodes are nodes aware of only the contacts to proximate nodes.
- *
- *
- *****************************************************************************/
-
-//Added by L. Persampieri
-#ifndef CGR_UNIBO
-#define CGR_UNIBO 1
-#endif
-
-#if (CGR_UNIBO == 0)
-
-#ifndef ONE_ROUTE_PER_NEIGHBOR
-#define ONE_ROUTE_PER_NEIGHBOR 0
-#endif
-
-//Added by A. Stramiglio 19/12/19
-#ifndef AVOID_LOOP_ENTRY_NODE
-#define AVOID_LOOP_ENTRY_NODE 0
-#endif
-
-#ifndef QUEUE_DELAY
-#define QUEUE_DELAY 1
-#endif
-
-#ifndef MODERATE_SOURCE_ROUTING
-#define MODERATE_SOURCE_ROUTING 0
-#endif
-
-#ifndef	WISE_NODE
-#define	WISE_NODE	0
-#endif
-
-#ifndef DIJKSTRA_ENHANCED
-#define DIJKSTRA_ENHANCED 1
-#endif
-
-#endif
-
 #include "bpP.h"
-
-#include "ext/cgrr/cgrr.h"
-
-//Added by L. Persampieri
-#if (CGR_UNIBO == 1)
-#include "../cgr/Unibo-CGR/ion_bpv6/interface/interface_cgr_ion.h"
-#endif
-
 
 #ifdef __cplusplus
 extern "C" {
@@ -213,7 +148,10 @@ typedef struct
 
 /*		IPN-specific RFX data structures.			*/
 
-typedef void *CgrSAP;
+// Added by L. Persampieri									
+#include "../cgr/Unibo-CGR/ion_bpv6/interface/interface_cgr_ion.h"
+
+typedef void *	CgrSAP;
 
 typedef struct
 {
@@ -329,7 +267,6 @@ typedef struct
 extern void		cgr_start();
 extern CgrVdb		*cgr_get_vdb();
 extern void		cgr_clear_vdb(CgrVdb *);
-extern int		cgr_create_routing_object(IonNode *node);
 extern int		cgr_start_SAP(uvast, time_t, CgrSAP *sap);
 extern int		cgr_identify_best_routes(IonNode *terminusNode,
 				Bundle *bundle, Lyst excludedNodes, time_t currentTime,
@@ -337,51 +274,12 @@ extern int		cgr_identify_best_routes(IonNode *terminusNode,
 extern void		cgr_stop_SAP(CgrSAP sap);
 extern float		cgr_get_dlv_confidence(Bundle *bundle, CgrRoute *route);
 extern int		cgr_preview_forward(uvast terminusNodeNbr,
-				Bundle *bundle, Object bundleObj,
+				Bundle *bundle,
 				time_t atTime, CgrSAP sap, CgrTrace *trace);
 extern int		cgr_prospect(uvast terminusNode, unsigned int deadline);
 extern const char	*cgr_tracepoint_text(CgrTraceType traceType);
 extern const char	*cgr_reason_text(CgrReason reason);
 extern void		cgr_stop();
-
-
-/************ Added by G.M. De Cola *************/
-#if ONE_ROUTE_PER_NEIGHBOR
-extern int tryNeighboringBestRoutes(Bundle *bundle, Lyst bestRoutes, uvast loopNode);
-#endif
-
-/************* Added by F. Marchetti *************/
-/************ Ported by G.M. De Cola *************/
-#if MODERATE_SOURCE_ROUTING
-extern int trySourceRouting(Bundle *bundle, CgrTrace *trace,uvast terminusNodeNbr, Object bundleObj);
-extern int computeNewRoute(CGRRoute* extensionRoute, CGRRoute* newRoute, uvast terminusNodeNbr);
-extern int getTerminusNode(uvast terminusNodeNbr, IonNode** terminusNode);
-extern int findExistingIonRoute(IonNode* terminusNode, time_t currentTime, CGRRoute* newRoute, CgrRoute** route);
-extern int computeRouteFromContacts(Bundle* bundle, CGRRoute *extensionRoute, CgrRoute** route, time_t currentTime);
-extern int trySRRoute(CgrRoute* route, Bundle* bundle, CgrTrace* trace,	time_t currentTime);
-
-//constant definition
-#define MSR_SUCCESS 0
-#define MSR_UNSPECIFIED_ERROR -1
-#define MSR_EXTENSION_NOT_FOUND -2
-#define MSR_CANNOT_COMPUTE_NEW_ROUTE -3
-#define MSR_UNABLE_TO_COMPUTE_EQIV_ROUTE -4
-#define MSR_LAST_COMP_ROUTE_NOT_VIABLE -5
-#define MSR_UNABLE_TO_QUEUE -6
-#define MSR_UNKNOWN_TERMINUS -7
-#define MSR_CANNOT_RETRIEVE_EXT_BLOCK -8
-#define MSR_NODE_NOT_FOUND_IN_ROUTE -9
-#define MSR_UNABLE_TO_TRY_ROUTE -10
-#define MSR_NO_KNOWN_ROUTES -11
-#define MSR_NO_PRIOR_ROUTE_VIABLE -12
-#define MSR_DIFFERENT_NO_HOPS -13
-#define MSR_ROUTES_ARE_DIFFERENT -14
-#define MSR_NO_MATCHING_CONTACT -15
-#define MSR_CANNOT_GET_TRANSIT_TIME -16
-
-#endif
-/*************************************************/
-
 #ifdef __cplusplus
 }
 #endif

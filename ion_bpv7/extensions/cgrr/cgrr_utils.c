@@ -29,7 +29,6 @@
 
 #include "cgrr.h"
 #include "cgrr_help.h"
-#include <inttypes.h> //Added by F. Marchetti
 
 /*	We hitchhike on the ZCO heap space management system to
  *	manage the space occupied by Bundle objects.  In effect,
@@ -47,7 +46,7 @@ void printCGRRoute(CGRRoute *cgrRoute)
 
 	CHKVOID(cgrRoute);
 
-	cgrr_debugPrint("[cgrr_utils.c/printCGRRoute] Hop Count= %" PRIu16"\n Printing Hop List...", cgrRoute->hopCount);
+	cgrr_debugPrint("[cgrr_utils.c/printCGRRoute] Hop Count= %u\n Printing Hop List...", cgrRoute->hopCount);
 
 	for (j = 0; j < cgrRoute->hopCount; j++)
 	{
@@ -73,7 +72,7 @@ void printCGRRouteBlock(CGRRouteBlock *cgrrBlk)
 
 		cgrr_debugPrint("[cgrr_utils.c/printCGRRouteBlock] done.");
 
-		cgrr_debugPrint("[cgrr_utils.c/printCGRRouteBlock] Recomputed routes length: %" PRIu16"\n Printing Recomputed Routes...", cgrrBlk->recRoutesLength);
+		cgrr_debugPrint("[cgrr_utils.c/printCGRRouteBlock] Recomputed routes length: %u\n Printing Recomputed Routes...", cgrrBlk->recRoutesLength);
 
 		for (i = 0; i < cgrrBlk->recRoutesLength; i++)
 		{
@@ -179,7 +178,7 @@ static int decode_cgrr_route(unsigned char **buffer, unsigned int *unparsedBytes
  *  23/10/18 | L. Mazzuca     |       | Initial Implementation and documentation.
  *  21/04/20 | L. Persampieri |       | Changed encoding to CBOR for BPv7.
  *****************************************************************************/
-unsigned char *cgrr_serializeCGRR(uint32_t *length, CGRRouteBlock *cgrrBlk)
+unsigned char *cgrr_serializeCGRR(uvast *length, CGRRouteBlock *cgrrBlk)
 {
 	unsigned char	*serializedCgrr;
 	unsigned char	*cursor;
