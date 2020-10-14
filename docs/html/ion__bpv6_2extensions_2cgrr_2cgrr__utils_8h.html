@@ -90,10 +90,10 @@ Data Structures</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="define-members"></a>
 Macros</h2></td></tr>
-<tr class="memitem:afcd9f8477d0251b44bca3a7678832d03"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="ion__bpv6_2extensions_2cgrr_2cgrr__utils_8h.html#afcd9f8477d0251b44bca3a7678832d03">CGRR_DEBUG</a>&#160;&#160;&#160;0</td></tr>
+<tr class="memitem:afcd9f8477d0251b44bca3a7678832d03"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="ion__bpv6_2extensions_2cgrr_2cgrr__utils_8h.html#afcd9f8477d0251b44bca3a7678832d03">CGRR_DEBUG</a>&#160;&#160;&#160;1</td></tr>
 <tr class="memdesc:afcd9f8477d0251b44bca3a7678832d03"><td class="mdescLeft">&#160;</td><td class="mdescRight">Enable (1) or disable (0) CGRR debug print.  <a href="ion__bpv6_2extensions_2cgrr_2cgrr__utils_8h.html#afcd9f8477d0251b44bca3a7678832d03">More...</a><br /></td></tr>
 <tr class="separator:afcd9f8477d0251b44bca3a7678832d03"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a6859af012553b89a5016fdc4ac6c5014"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="ion__bpv6_2extensions_2cgrr_2cgrr__utils_8h.html#a6859af012553b89a5016fdc4ac6c5014">cgrr_debugPrint</a>(f_, ...)&#160;&#160;&#160;do {  } while(0)</td></tr>
+<tr class="memitem:a6859af012553b89a5016fdc4ac6c5014"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="ion__bpv6_2extensions_2cgrr_2cgrr__utils_8h.html#a6859af012553b89a5016fdc4ac6c5014">cgrr_debugPrint</a>(f_, ...)&#160;&#160;&#160;debugPrint((f_), ##__VA_ARGS__)</td></tr>
 <tr class="separator:a6859af012553b89a5016fdc4ac6c5014"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="func-members"></a>
@@ -102,8 +102,8 @@ Functions</h2></td></tr>
 <tr class="separator:a782a844ff91de2d13985010741782c08"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ac37ea808c1c1d49a66697887ef7c1df7"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="ion__bpv6_2extensions_2cgrr_2cgrr__utils_8h.html#ac37ea808c1c1d49a66697887ef7c1df7">printCGRRouteBlock</a> (<a class="el" href="struct_c_g_r_route_block.html">CGRRouteBlock</a> *cgrrBlk)</td></tr>
 <tr class="separator:ac37ea808c1c1d49a66697887ef7c1df7"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ae70a75c441626e3a639385aed4616116"><td class="memItemLeft" align="right" valign="top">unsigned char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="ion__bpv6_2extensions_2cgrr_2cgrr__utils_8h.html#ae70a75c441626e3a639385aed4616116">cgrr_serializeCGRR</a> (uint32_t *length, <a class="el" href="struct_c_g_r_route_block.html">CGRRouteBlock</a> *cgrrBlk)</td></tr>
-<tr class="separator:ae70a75c441626e3a639385aed4616116"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a871193aca761695afb52e6a596019eb9"><td class="memItemLeft" align="right" valign="top">unsigned char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="ion__bpv6_2extensions_2cgrr_2cgrr__utils_8h.html#a871193aca761695afb52e6a596019eb9">cgrr_serializeCGRR</a> (uvast *length, <a class="el" href="struct_c_g_r_route_block.html">CGRRouteBlock</a> *cgrrBlk)</td></tr>
+<tr class="separator:a871193aca761695afb52e6a596019eb9"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ad3ecea7faa1c8737a5f9f93b2c9368b2"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="ion__bpv6_2extensions_2cgrr_2cgrr__utils_8h.html#ad3ecea7faa1c8737a5f9f93b2c9368b2">cgrr_deserializeCGRR</a> (AcqExtBlock *blk, AcqWorkArea *wk)</td></tr>
 <tr class="separator:ad3ecea7faa1c8737a5f9f93b2c9368b2"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ac9d7ffa72220f42013e086769941b3ee"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="ion__bpv6_2extensions_2cgrr_2cgrr__utils_8h.html#ac9d7ffa72220f42013e086769941b3ee">cgrr_getCGRRFromExtensionBlock</a> (ExtensionBlock *blk, <a class="el" href="struct_c_g_r_route_block.html">CGRRouteBlock</a> *cgrrBlk)</td></tr>
@@ -143,7 +143,7 @@ Functions</h2></td></tr>
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname">#define CGRR_DEBUG&#160;&#160;&#160;0</td>
+          <td class="memname">#define CGRR_DEBUG&#160;&#160;&#160;1</td>
         </tr>
       </table>
 </div><div class="memdoc">
@@ -173,7 +173,7 @@ Functions</h2></td></tr>
         <tr>
           <td></td>
           <td>)</td>
-          <td></td><td>&#160;&#160;&#160;do {  } while(0)</td>
+          <td></td><td>&#160;&#160;&#160;debugPrint((f_), ##__VA_ARGS__)</td>
         </tr>
       </table>
 </div><div class="memdoc">
@@ -472,8 +472,8 @@ Functions</h2></td></tr>
 
 </div>
 </div>
-<a id="ae70a75c441626e3a639385aed4616116"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ae70a75c441626e3a639385aed4616116">&#9670;&nbsp;</a></span>cgrr_serializeCGRR()</h2>
+<a id="a871193aca761695afb52e6a596019eb9"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a871193aca761695afb52e6a596019eb9">&#9670;&nbsp;</a></span>cgrr_serializeCGRR()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -481,7 +481,7 @@ Functions</h2></td></tr>
         <tr>
           <td class="memname">unsigned char* cgrr_serializeCGRR </td>
           <td>(</td>
-          <td class="paramtype">uint32_t *&#160;</td>
+          <td class="paramtype">uvast *&#160;</td>
           <td class="paramname"><em>length</em>, </td>
         </tr>
         <tr>

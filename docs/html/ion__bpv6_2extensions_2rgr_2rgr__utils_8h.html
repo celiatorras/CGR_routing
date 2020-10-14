@@ -86,10 +86,10 @@ Data Structures</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="define-members"></a>
 Macros</h2></td></tr>
-<tr class="memitem:a14a1f587407f19381d13ddce5679d21f"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="ion__bpv6_2extensions_2rgr_2rgr__utils_8h.html#a14a1f587407f19381d13ddce5679d21f">RGR_DEBUG</a>&#160;&#160;&#160;0</td></tr>
+<tr class="memitem:a14a1f587407f19381d13ddce5679d21f"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="ion__bpv6_2extensions_2rgr_2rgr__utils_8h.html#a14a1f587407f19381d13ddce5679d21f">RGR_DEBUG</a>&#160;&#160;&#160;1</td></tr>
 <tr class="memdesc:a14a1f587407f19381d13ddce5679d21f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Enable (1) or disable (0) RGR debug print.  <a href="ion__bpv6_2extensions_2rgr_2rgr__utils_8h.html#a14a1f587407f19381d13ddce5679d21f">More...</a><br /></td></tr>
 <tr class="separator:a14a1f587407f19381d13ddce5679d21f"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ac66c4566c749f93288170af458c35106"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="ion__bpv6_2extensions_2rgr_2rgr__utils_8h.html#ac66c4566c749f93288170af458c35106">rgr_debugPrint</a>(f_, ...)&#160;&#160;&#160;do {  } while(0)</td></tr>
+<tr class="memitem:ac66c4566c749f93288170af458c35106"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="ion__bpv6_2extensions_2rgr_2rgr__utils_8h.html#ac66c4566c749f93288170af458c35106">rgr_debugPrint</a>(f_, ...)&#160;&#160;&#160;debugPrint((f_), ##__VA_ARGS__)</td></tr>
 <tr class="separator:ac66c4566c749f93288170af458c35106"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="func-members"></a>
@@ -131,7 +131,7 @@ Functions</h2></td></tr>
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname">#define RGR_DEBUG&#160;&#160;&#160;0</td>
+          <td class="memname">#define RGR_DEBUG&#160;&#160;&#160;1</td>
         </tr>
       </table>
 </div><div class="memdoc">
@@ -161,7 +161,7 @@ Functions</h2></td></tr>
         <tr>
           <td></td>
           <td>)</td>
-          <td></td><td>&#160;&#160;&#160;do {  } while(0)</td>
+          <td></td><td>&#160;&#160;&#160;debugPrint((f_), ##__VA_ARGS__)</td>
         </tr>
       </table>
 </div><div class="memdoc">

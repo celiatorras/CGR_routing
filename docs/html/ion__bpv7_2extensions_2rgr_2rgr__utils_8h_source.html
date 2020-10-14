@@ -80,13 +80,13 @@ $(function() {
 <div class="line"><a name="l00038"></a><span class="lineno">   38</span>&#160;<span class="preprocessor">#include &lt;stdlib.h&gt;</span></div>
 <div class="line"><a name="l00039"></a><span class="lineno">   39</span>&#160; </div>
 <div class="line"><a name="l00040"></a><span class="lineno">   40</span>&#160;<span class="preprocessor">#ifndef RGR_DEBUG</span></div>
-<div class="line"><a name="l00046"></a><span class="lineno"><a class="line" href="ion__bpv7_2extensions_2rgr_2rgr__utils_8h.html#a14a1f587407f19381d13ddce5679d21f">   46</a></span>&#160;<span class="preprocessor">#define RGR_DEBUG 0</span></div>
+<div class="line"><a name="l00046"></a><span class="lineno"><a class="line" href="ion__bpv7_2extensions_2rgr_2rgr__utils_8h.html#a14a1f587407f19381d13ddce5679d21f">   46</a></span>&#160;<span class="preprocessor">#define RGR_DEBUG 1</span></div>
 <div class="line"><a name="l00047"></a><span class="lineno">   47</span>&#160;<span class="preprocessor">#endif</span></div>
 <div class="line"><a name="l00048"></a><span class="lineno">   48</span>&#160; </div>
 <div class="line"><a name="l00049"></a><span class="lineno">   49</span>&#160;<span class="preprocessor">#if (RGR_DEBUG == 1)</span></div>
-<div class="line"><a name="l00050"></a><span class="lineno">   50</span>&#160;<span class="preprocessor">#define rgr_debugPrint(f_, ...) debugPrint((f_), ##__VA_ARGS__)</span></div>
+<div class="line"><a name="l00050"></a><span class="lineno"><a class="line" href="ion__bpv7_2extensions_2rgr_2rgr__utils_8h.html#ac66c4566c749f93288170af458c35106">   50</a></span>&#160;<span class="preprocessor">#define rgr_debugPrint(f_, ...) debugPrint((f_), ##__VA_ARGS__)</span></div>
 <div class="line"><a name="l00051"></a><span class="lineno">   51</span>&#160;<span class="preprocessor">#else</span></div>
-<div class="line"><a name="l00052"></a><span class="lineno"><a class="line" href="ion__bpv7_2extensions_2rgr_2rgr__utils_8h.html#ac66c4566c749f93288170af458c35106">   52</a></span>&#160;<span class="preprocessor">#define rgr_debugPrint(f_, ...) do {  } while(0)</span></div>
+<div class="line"><a name="l00052"></a><span class="lineno">   52</span>&#160;<span class="preprocessor">#define rgr_debugPrint(f_, ...) do {  } while(0)</span></div>
 <div class="line"><a name="l00053"></a><span class="lineno">   53</span>&#160;<span class="preprocessor">#endif</span></div>
 <div class="line"><a name="l00054"></a><span class="lineno">   54</span>&#160; </div>
 <div class="line"><a name="l00055"></a><span class="lineno">   55</span>&#160;<span class="keyword">typedef</span> <span class="keyword">struct</span></div>
