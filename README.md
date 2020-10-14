@@ -105,7 +105,7 @@ _DTN2 Limitations_
 
 1. DTN2 does not support, at present, scheduled contacts. As a result, bundle enqueued by CGR to a neighbor are immediately sent if the link is active, independently of what reported in the contact plan. In other words, in DTN2, by contrast to ION, the contact plan is used only by CGR, not to enforce link activity.  
 2. contacts cannot be updated/changed once the dtnd daemon has started. This limitation could be partially removed, should CGR be used in production on DTN2 nodes, by allowing subsequent reading of the contact plan file.  
-3. As said before, at present DTN2 interface lacks RGR and CGRR. As a result, MSR and anti-loop mechanism cannot be enabled.  
+3. As said before, at present DTN2 interface lacks RGR and CGRR. As a result, MSR and anti-loop mechanism must be disabled in Unibo-CGR/core/config.h. This switches are automatically disabled if the inclusion is carried out by means of the script mv_unibo_cgr.sh.  
 4. The previous hop mechanism, based on the addition of a specific extension block to each bundle (see RFC 6259), seems to rely on a different mechanism in DTN2. This prevents ION nodes from knowing the EID of the previous hop in mixed environments, whenever the previous node is a DTN2 node (even if declared and advertised with an ipn EID). As a result, ping-pong events may occur. In tests we had to disable reverse contact to prevent them.
 
 _Logs_
