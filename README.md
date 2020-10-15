@@ -89,7 +89,7 @@ Alternatively, the script mv_unibo_cgr.sh allows the user to carry out an automa
 
 _Compilation Switches_
 
-The exact behavior of Unibo-CGR depends on configuration switch settings. Researchers proficient in CGR routing can override defaults by editing the Unibo-CGR/core/config.h file. Some experimental features are not available on specific BP implementations.
+The exact behavior of Unibo-CGR depends on the settings of configuration switches. Researchers proficient in CGR routing can override defaults by editing the Unibo-CGR/core/config.h file. Some experimental features are not available on specific BP implementations.
 
 _Use in ION_
 
@@ -97,9 +97,9 @@ The use of Unibo-CGR in ION does not differ from the use of previous implementat
 
 _Use in DTN2_
 
-Contact plan: The use of Unibo-CGR requires that the contact plan be provided as an external file (contact-plan.txt, to be placed in the directory from which the dtnd daemon is launched) at dtnd daemon start-up. The syntax is exactly the same as that used in ION, including the possible bidirectional interpretation of single “range” instructions, for the sake of commonality. A simple example file is provided for user convenience.
+Contact plan: The use of Unibo-CGR requires that the contact plan be provided as an external file (contact-plan.txt, to be placed in the directory from which the dtnd daemon is launched) at dtnd daemon start-up. The syntax is exactly the same as that used in ION, including the possible bidirectional interpretation of single “range” instructions, for the sake of commonality. A simple example file is provided for user convenience in Unibo-CGR/dtn2/aux_files.
 
-Configuration file: The Unibo-CGR bundle router must be selected in the DTN2 configuration file (usually in /etc/dtn.conf). As CGR support only the “ipn” scheme, only bundles with an “ipn” destination will be processed by Unibo-CGR. Others will be processed by static routing. The generalized use and advertisement of ipn scheme also for DTN2 nodes is therefore recommended (compulsory in space by CCSDS rules). It requires the declaration of an “ipn” node and its advertising in TCPCL links. The advertising is necessary to let CGR know the ipn identity of the previous hop.
+Configuration file: The Unibo-CGR bundle router must be selected in the DTN2 configuration file (usually in /etc/dtn.conf). See Unibo-CGR/dtn2/aux_files/README for more details.
 
 _DTN2 Limitations_
 
@@ -107,6 +107,7 @@ _DTN2 Limitations_
 2. contacts cannot be updated/changed once the dtnd daemon has started. This limitation could be partially removed, should CGR be used in production on DTN2 nodes, by allowing subsequent reading of the contact plan file.  
 3. As said before, at present DTN2 interface lacks RGR and CGRR. As a result, MSR and anti-loop mechanism must be disabled in Unibo-CGR/core/config.h. This switches are automatically disabled if the inclusion is carried out by means of the script mv_unibo_cgr.sh.  
 4. The previous hop mechanism, based on the addition of a specific extension block to each bundle (see RFC 6259), seems to rely on a different mechanism in DTN2. This prevents ION nodes from knowing the EID of the previous hop in mixed environments, whenever the previous node is a DTN2 node (even if declared and advertised with an ipn EID). As a result, ping-pong events may occur. In tests we had to disable reverse contact to prevent them.
+5. Bundle reforwarding after forfait time has not been implemented yet.
 
 _Logs_
 
