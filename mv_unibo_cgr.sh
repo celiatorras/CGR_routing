@@ -27,10 +27,13 @@
 #
 ##
 
+#set -euxo pipefail
+set -euo pipefail
+
 function help_fun() {
-	echo "Usage: $0 <ion | dtn2> </path/to/Unibo-CGR/> </path/to/ION/ | /path/to/DTN2/>"
-	echo "This script includes Unibo-CGR in either ION or DTN2."
-	echo "Launch this script with the three parameters explicited in the Usage string."
+	echo "Usage: $0 <ion | dtn2> </path/to/Unibo-CGR/> </path/to/ION/ | /path/to/DTN2/>" 1>&2
+	echo "This script includes Unibo-CGR in either ION or DTN2." 1>&2
+	echo "Launch this script with the three parameters explicited in the Usage string." 1>&2
 }
 
 if test $# -ne 3
@@ -154,15 +157,28 @@ function mv_unibo_cgr_to_ion() {
 
 	echo
 
-	if command -v autoreconf > /dev/null 2>&1
+	AUTORECONF=""
+	LIBTOOLIZE=""
+
+	if ! command -v autoreconf > /dev/null 2>&1
 	then
-		echo "Updating the configure script..."
-		cd "$ION" && autoreconf -fi && echo -e "\nNow you can compile and install in the usual way with configure/make/make install"
-	else
-		echo "Please install and launch \"autoreconf (with options -fi)\" to update the ION's configure script."
+		echo "autoreconf: not found. Please install autoconf package." 1>&2
+		AUTORECONF="missing"
 	fi
 
-	echo
+	if ! command -v libtoolize > /dev/null 2>&1
+	then
+		echo "libtoolize: not found. Please install libtool package." 1>&2
+		LIBTOOLIZE="missing"
+	fi
+
+	if test "$AUTORECONF" != "missing" -a "$LIBTOOLIZE" != "missing"
+	then
+		echo "Updating the configure script..."
+		cd "$ION" && autoreconf -fi && echo -e "\nNow you can compile and install in the usual way with configure/make/make install\n"
+	else
+		echo -e "\nPlease install missing packages and launch autoreconf -fi in $ION to update the configure script.\n" 1>&2
+	fi
 }
 
 function mv_unibo_cgr_to_dtn2() {

@@ -158,6 +158,7 @@ int	rgr_offer(ExtensionBlock *blk, Bundle *bundle)
 	blk->blkProcFlags = BLK_MUST_BE_COPIED | BLK_REPORT_IF_NG;
 	blk->bytes = 0;
 	blk->length = 0;
+	blk->object = 0;
 	/* Step 2 - Initialize rgr structures. */
 	rgr_debugPrint("[rgr.c/rgr_offer] Initializing rgr structures...");
 	/* Step 2.1 - Populate the rgr block. */

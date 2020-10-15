@@ -1594,6 +1594,7 @@ static int convert_routes_from_cgr_to_ion(time_t reference_time, PsmPartition io
 	PsmAddress addr, hops;
 	CgrRoute *IonRoute = NULL;
 	Route *current;
+	int tmp;
 #if (STORE_ROUTES_IN_ION_SELECTED_ROUTES)
 	CgrRtgObject *rtgObj = (CgrRtgObject*) psp(ionwm, terminusNode->routingObject);
 	PsmAddress ref;
@@ -1657,8 +1658,9 @@ static int convert_routes_from_cgr_to_ion(time_t reference_time, PsmPartition io
 								&(IonRoute->committed));
 						convert_scalar_from_cgr_to_ion(&(current->overbooked),
 								&(IonRoute->overbooked));
-						if (convert_hops_list_from_cgr_to_ion(reference_time, ionwm, ionvdb, current->hops, hops)
-								>= 0)
+
+						tmp = convert_hops_list_from_cgr_to_ion(reference_time, ionwm, ionvdb, current->hops, hops);
+						if (tmp >= 0)
 						{
 							IonRoute->hops = hops;
 							printDebugIonRoute(ionwm, IonRoute);
@@ -1666,6 +1668,11 @@ static int convert_routes_from_cgr_to_ion(time_t reference_time, PsmPartition io
 							{
 								result = -2;
 							}
+						}
+						else if(tmp == -3)
+						{
+							writeLog("(Interface) Skipped route to neighbor %llu, conversion failed.", current->neighbor);
+							removeRoute(ionwm, addr);
 						}
 						else
 						{

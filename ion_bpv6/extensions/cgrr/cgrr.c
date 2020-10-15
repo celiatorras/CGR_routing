@@ -161,6 +161,7 @@ int	cgrr_offer(ExtensionBlock *blk, Bundle *bundle)
 	blk->length = 0;
 	blk->dataLength = 0;
 	blk->size = 0;
+	blk->object = 0;
 
 	/**********Modified by F. Marchetti**************/
 	/* Step 2 - Initialize cgrr structures. */
@@ -191,7 +192,7 @@ void cgrr_release(ExtensionBlock *blk)
 {
 	Sdr			sdr = getIonsdr();
 
-	cgrr_debugPrint("[cgrr.c/cgrr_release] Releasing CGRRouteBlock sdr memory...(%lu)(%u)", blk->object, blk->size);
+//	cgrr_debugPrint("[cgrr.c/cgrr_release] Releasing CGRRouteBlock sdr memory...(%lu)(%u)", blk->object, blk->size);
 
 	CHKVOID(blk);
 
