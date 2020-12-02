@@ -373,7 +373,7 @@ int	cgrr_deserializeCGRR(AcqExtBlock *blk, AcqWorkArea *wk)
 		//cgrr_debugPrint("i cgrr_deserializeCGRR value in cgrrBlk=%u", cgrrBlk.recomputedRoutes[j].hopCount);
 
 		//Modified by G.M. De Cola
-		cgrrBlk.recomputedRoutes[j].hopList = (CGRRHop*) MTAKE(sizeof(CGRRHop)*cgrrBlk.originalRoute.hopCount);
+		cgrrBlk.recomputedRoutes[j].hopList = (CGRRHop*) MTAKE(sizeof(CGRRHop)*cgrrBlk.recomputedRoutes[j].hopCount);
 		if (cgrrBlk.recomputedRoutes[j].hopList == NULL)
 		{
 			cgrr_debugPrint("[i: cgrr_utils.c/cgrr_deserializeCGRR] not enough space for recomputed route %d Hop List. Need %d bytes.",
