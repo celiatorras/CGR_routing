@@ -146,7 +146,7 @@ int	cgrr_offer(ExtensionBlock *blk, Bundle *bundle)
 	CHKERR(bundle);
 
 	//findExtensionBlock(bundle, EXTENSION_TYPE_CGRR, 0, 0, 0) TODO
-	if (findExtensionBlock(bundle, CGRRBlk, 0, 0, 0))
+	if (findExtensionBlock(bundle, CGRRBlk, 0))
 	{
 		/*	Don't create a CGRRouteBlock because it already exist.	*/
 		cgrr_debugPrint("[x: cgrr.c/cgrr_offer] CGRR already exists.");

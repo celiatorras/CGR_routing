@@ -120,7 +120,7 @@ int rgr_offer(ExtensionBlock *blk, Bundle *bundle)
 	CHKERR(blk);
 	CHKERR(bundle);
 
-	if (findExtensionBlock(bundle, RGRBlk, 0, 0, 0))
+	if (findExtensionBlock(bundle, RGRBlk, 0))
 	{
 		rgr_debugPrint("[rgr.c/rgr_offer] Offer already exists.");
 		/*	Don't create a Route because it already exist.	*/

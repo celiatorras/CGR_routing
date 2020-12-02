@@ -17,12 +17,11 @@
 #include "bae.h"
 #include "hcb.h"
 #include "snw.h"
+#include "imc.h"
 #include "rgr.h"
 #include "cgrr.h"
-#if defined(BPSEC)
 #include "bib.h"
 #include "bcb.h"
-#endif
 
 /*	... and here.							*/
 
@@ -30,41 +29,43 @@ static ExtensionDef	extensionDefs[] =
 			{
 		{ "pnb", PreviousNodeBlk,
 				pnb_offer,
-				{pnb_processOnFwd,
-				pnb_processOnAccept,
-				pnb_processOnEnqueue,
+				pnb_serialize,
+				{0,
+				0,
+				0,
 				pnb_processOnDequeue,
 				0},
-				pnb_release,
-				pnb_copy,
+				0,
+				0,
 				0,
 				0,
 				0,
 				pnb_parse,
 				pnb_check,
-				pnb_record,
-				pnb_clear
+				0,
+				0
 		},
-#if defined(BPSEC)
 		{ "bcb", BlockConfidentialityBlk,
-				bcbOffer,
+				0,
+				bcbSerialize,
 				{0,
 				0,
 				0,
-				bcbProcessOnDequeue,
+				0,
 				0},
 				bcbRelease,
 				bcbCopy,
 				bcbAcquire,
-				bcbReview,
-				bcbDecrypt,
+				0,
+				0,
 				0,
 				0,
                                 bcbRecord,
 				bcbClear
 		},
 		{ "bib", BlockIntegrityBlk,
-				bibOffer,
+				0,
+				bibSerialize,
 				{0,
 				0,
 				0,
@@ -73,102 +74,125 @@ static ExtensionDef	extensionDefs[] =
 				bibRelease,
 				bibCopy,
 				0,
-				bibReview,
+				0,
 				0,
 				bibParse,
-				bibCheck,
+				0,
 				bibRecord,
 				bibClear
 		},
-#endif
 		{ "bpq", QualityOfServiceBlk,
 				qos_offer,
-				{qos_processOnFwd,
-				qos_processOnAccept,
-				qos_processOnEnqueue,
-				qos_processOnDequeue,
+				qos_serialize,
+				{0,
+				0,
+				0,
+				0,
 				0},
-				qos_release,
-				qos_copy,
+				0,
+				0,
 				0,
 				0,
 				0,
 				qos_parse,
 				qos_check,
-				qos_record,
-				qos_clear
+				0,
+				0
 		},
 		{ "meb", MetadataBlk,
 				meb_offer,
-				{meb_processOnFwd,
-				meb_processOnAccept,
-				meb_processOnEnqueue,
-				meb_processOnDequeue,
+				meb_serialize,
+				{0,
+				0,
+				0,
+				0,
 				0},
-				meb_release,
-				meb_copy,
-				meb_acquire,
 				0,
 				0,
 				0,
+				0,
+				0,
+				meb_parse,
 				meb_check,
-				meb_record,
-				meb_clear
+				0,
+				0
 		},
 		{ "bae", BundleAgeBlk,
 				bae_offer,
-				{bae_processOnFwd,
-				bae_processOnAccept,
-				bae_processOnEnqueue,
+				bae_serialize,
+				{0,
+				0,
+				0,
 				bae_processOnDequeue,
 				0},
-				bae_release,
-				bae_copy,
+				0,
+				0,
 				0,
 				0,
 				0,
 				bae_parse,
 				bae_check,
-				bae_record,
-				bae_clear
+				0,
+				0
 		},
 		{ "hcb", HopCountBlk,
 				hcb_offer,
-				{hcb_processOnFwd,
-				hcb_processOnAccept,
-				hcb_processOnEnqueue,
+				hcb_serialize,
+				{0,
+				0,
+				0,
 				hcb_processOnDequeue,
 				0},
-				hcb_release,
-				hcb_copy,
+				0,
+				0,
 				0,
 				0,
 				0,
 				hcb_parse,
 				hcb_check,
-				hcb_record,
-				hcb_clear
+				0,
+				0
 		},
 		{ "snw", SnwPermitsBlk,
 				snw_offer,
-				{snw_processOnFwd,
-				snw_processOnAccept,
-				snw_processOnEnqueue,
+				snw_serialize,
+				{0,
+				0,
+				0,
 				snw_processOnDequeue,
 				0},
-				snw_release,
-				snw_copy,
+				0,
+				0,
 				0,
 				0,
 				0,
 				snw_parse,
 				snw_check,
-				snw_record,
-				snw_clear
+				0,
+				0
+		},
+		{ "imc", ImcDestinationsBlk,
+				imc_offer,
+				imc_serialize,
+				{0,
+				0,
+				0,
+				imc_processOnDequeue,
+				0},
+				imc_release,
+				imc_copy,
+				0,
+				0,
+				0,
+				imc_parse,
+				imc_check,
+				imc_record,
+				imc_clear
 		},
 #if RGREB
 		{ "rgr", RGRBlk,
 				rgr_offer,
+				0,
 				{rgr_processOnFwd,
 				 rgr_processOnAccept,
 				 rgr_processOnEnqueue,
@@ -188,6 +212,7 @@ static ExtensionDef	extensionDefs[] =
 #if CGRREB
 		{ "cgrr", CGRRBlk,
 				cgrr_offer,
+				0,
 				{0,
 				0,
 				0,
@@ -204,29 +229,21 @@ static ExtensionDef	extensionDefs[] =
 				cgrr_clear
 		},
 #endif
-				{ "unknown",-1,0,{0,0,0,0,0},0,0,0,0,0,0,0,0,0 }
+		{ "unknown",-1,0,0,{0,0,0,0,0},0,0,0,0,0,0,0,0,0 }
 			};
 
-/*	NOTE: the order of appearance of extension definitions in the
- *	baseline extensionSpecs array determines the order in which
- *	these extension blocks will be inserted into locally sourced
- *	bundles between the primary block and the payload block.	*/
-
-static ExtensionSpec	extensionSpecs[] =
-			{
-				{ PreviousNodeBlk, 0, 0, 0, 0 },
-				{ QualityOfServiceBlk, 0, 0, 0, 0 },
-				{ BundleAgeBlk, 0, 0, 0, 0 },
-				{ SnwPermitsBlk, 0, 0, 0, 0 },
+static ExtensionSpec		extensionSpecs[] =
+				{
+					{ PreviousNodeBlk, 0, 0 },
+					{ QualityOfServiceBlk, 0, 0 },
+					{ BundleAgeBlk, 0, 0 },
+					{ SnwPermitsBlk, 0, 0 },
+					{ ImcDestinationsBlk, 0, 0 },
 #if RGREB
-				{ RGRBlk, 0, 0, 0, 0 },
+					{ RGRBlk, 0, 0 },
 #endif
 #if CGRREB
-				{ CGRRBlk, 0, 0, 0, 0 },
+					{ CGRRBlk, 0, 0 },
 #endif
-#if defined(BPSEC)
-				{ BlockIntegrityBlk, 0, 0, 0, 0 },
-				{ BlockConfidentialityBlk, 1, 0, 0, 0 },
-#endif
-				{ UnknownBlk, 0, 0, 0, 0 }
-			};
+					{ UnknownBlk, 0, 0 }
+				};

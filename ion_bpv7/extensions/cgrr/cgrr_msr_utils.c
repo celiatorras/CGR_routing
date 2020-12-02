@@ -144,7 +144,7 @@ int storeMsrRoute(CGRRoute *cgrr_route, Bundle* bundle) {
 
     cgrr_debugPrint("[cgrr_msr_utils.c/storeMsrRoute] Entry point.");
 
-	if ((elt = findExtensionBlock(bundle, CGRRBlk, 0, 0, 0)) <= 0 )
+	if ((elt = findExtensionBlock(bundle, CGRRBlk, 0)) <= 0 )
 	{
 		cgrr_debugPrint("[cgrr_msr_utils.c/storeMsrRoute] No CGRR Extension Block found in bundle.");
 		return -1;
@@ -201,7 +201,7 @@ int updateLastCgrrRoute(Bundle *bundle) {
 
 	cgrr_debugPrint("[cgrr_msr_utils.c/updateLastCgrrRoute] Entry point.");
 
-	if ((extBlkElt = findExtensionBlock(bundle, CGRRBlk, 0, 0, 0)) <= 0 )
+	if ((extBlkElt = findExtensionBlock(bundle, CGRRBlk, 0)) <= 0 )
 	{
 		cgrr_debugPrint("[cgrr_msr_utils.c/updateLastCgrrRoute] No CGRR Extension Block found in bundle.");
 		return -1;
