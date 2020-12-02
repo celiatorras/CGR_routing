@@ -5,7 +5,6 @@ They are intended to replace the homonimous original files contained in ION, thu
 
 bp.h:           ./bpv7/include/
 bpextensions.c: ./bpv7/library/ext/
-cgr.h:          ./bpv7/library/
 libcgr.c:       ./bpv7/cgr/
 Makefile.am:    ./
 
