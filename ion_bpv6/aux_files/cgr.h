@@ -148,9 +148,6 @@ typedef struct
 
 /*		IPN-specific RFX data structures.			*/
 
-// Added by L. Persampieri									
-#include "../cgr/Unibo-CGR/ion_bpv6/interface/interface_cgr_ion.h"
-
 typedef void *	CgrSAP;
 
 typedef struct

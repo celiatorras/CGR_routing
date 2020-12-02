@@ -777,7 +777,7 @@ static int	proxNodeRedundant(Bundle *bundle, vast nodeNbr)
 }
 
 static int	sendCriticalBundle(Bundle *bundle, Object bundleObj,
-			IonNode *terminusNode, Lyst bestRoutes, int preview, int result_cgr)
+			IonNode *terminusNode, Lyst bestRoutes, int potential, int preview)
 {
 	LystElt		elt;
 	LystElt		nextElt;
@@ -835,7 +835,7 @@ static int	sendCriticalBundle(Bundle *bundle, Object bundleObj,
 		return 0;	/*	Potential future fwd unneeded.	*/
 	}
 
-	if(result_cgr == 0)
+	if(potential == 0)
 	{
 		return 0;	/*	No potential future forwarding.	*/
 	}
@@ -930,6 +930,7 @@ static int 	tryCGR(Bundle *bundle, Object bundleObj, IonNode *terminusNode,
 	int		ionMemIdx;
 	Lyst		bestRoutes;
 	Lyst		excludedNodes;
+	int		potential;
 	PsmAddress	embElt;
 	Embargo		*embargo;
 	LystElt		elt;
@@ -1038,10 +1039,10 @@ static int 	tryCGR(Bundle *bundle, Object bundleObj, IonNode *terminusNode,
 		}
 	}
 	
-	int result_cgr = cgr_identify_best_routes(terminusNode, bundle,
+	potential = cgr_identify_best_routes(terminusNode, bundle,
 			excludedNodes, atTime, cgrSap(NULL), trace, bestRoutes);
 
-	if (result_cgr < 0)
+	if (potential < 0)
 	{
 		putErrmsg("Can't identify best route(s) for bundle.", NULL);
 		lyst_destroy(excludedNodes);
@@ -1057,7 +1058,7 @@ static int 	tryCGR(Bundle *bundle, Object bundleObj, IonNode *terminusNode,
 
 		TRACE(CgrUseAllRoutes);
 		return sendCriticalBundle(bundle, bundleObj, terminusNode,
-				bestRoutes, preview, result_cgr);
+				bestRoutes, potential, preview);
 	}
 
 	/*	Non-critical bundle; send to the most preferred
@@ -1101,7 +1102,7 @@ static int 	tryCGR(Bundle *bundle, Object bundleObj, IonNode *terminusNode,
 		return 0;	/*	Potential future fwd unneeded.	*/
 	}
 
-	if(result_cgr == 0)
+	if(potential == 0)
 	{
 		return 0;	/*	No potential future forwarding.	*/
 	}

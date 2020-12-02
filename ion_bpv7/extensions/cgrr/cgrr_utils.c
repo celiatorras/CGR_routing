@@ -534,7 +534,7 @@ int saveRouteToExtBlock(int hopCount, CGRRHop* hopList, Bundle* bundle)
 	/* Step 0: Check if applicable (i.e. an Extension Block of type CGRR(23)
 	 * 		   has been defined. If not return N/A (i.e. 0). */
 
-	if ((elt = findExtensionBlock(bundle, CGRRBlk, 0, 0, 0)) <= 0 )
+	if ((elt = findExtensionBlock(bundle, CGRRBlk, 0)) <= 0 )
 	{
 		cgrr_debugPrint("[cgrr_utils.c/saveRouteToExtBlock] No CGRR Extesion Block found in bundle.");
 		return -2;

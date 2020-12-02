@@ -6,7 +6,7 @@ Although it is fully compliant with CCSDS standard on SABR, it also contains a s
 
 C. Caini, G. M. De Cola, L. Persampieri, “Schedule-Aware Bundle Routing: Analysis and Enhancements”, accepted for publication on Wiley International Journal of Satellite Communications and Networking, Sept. 2020. https://doi.org/10.1002/sat.1384
 
-Unibo-CGR has been designed in a modular way, to be independent of the specific bundle protocol implementation in use. It consists of a core module, written in C, and multiple interfaces, one for each BP implementation supported. At present, we have developed two interfaces to ION (one for bpv6 and another for bpv7, as in ION-3.7.1 and 4.0.0), and one for DTN2 (DTNME, the NASA MSFC version).
+Unibo-CGR has been designed in a modular way, to be independent of the specific bundle protocol implementation in use. It consists of a core module, written in C, and multiple interfaces, one for each BP implementation supported. At present, we have developed two interfaces to ION (one for bpv6 and another for bpv7, as in ION-3.7.2 and 4.0.1), and one for DTN2 (DTNME, the NASA MSFC version).
 
 Some advanced features of Unibo-CGR rely on two experimental bundle extensions, developed to this end: RGR (Record Geographical Route) for anti-loop mechanisms and CGRR (CGR Route), for MSR (Moderate Source Routing). At present these two extensions have been developed only for ION.
 

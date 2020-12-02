@@ -816,7 +816,7 @@ static int get_rgr_ext_block(Bundle *bundle, GeoRoute *resultBlk)
 
 	/* Step 1 - Check for the presence of RGR extension*/
 
-	if (!(extBlockElt = findExtensionBlock(bundle, RGRBlk, 0, 0, 0)))
+	if (!(extBlockElt = findExtensionBlock(bundle, RGRBlk, 0)))
 	{
 		result = -1;
 	}
@@ -900,7 +900,7 @@ static int get_cgrr_ext_block(Bundle *bundle, time_t reference_time, CGRRouteBlo
 	*/
 	/* Step 1 - Check for the presence of CGRR extension*/
 
-	if (!(extBlockElt = findExtensionBlock(bundle, CGRRBlk, 0, 0, 0)))
+	if (!(extBlockElt = findExtensionBlock(bundle, CGRRBlk, 0)))
 	{
 		result = -1;
 	}
@@ -2297,7 +2297,7 @@ static int update_contact_plan(PsmPartition ionwm, IonVdb *ionvdb, time_t refere
 static int exclude_neighbors(Lyst excludedNodes, CurrentCallSAP *sap)
 {
 	LystElt elt;
-	uvast *node;
+	uaddr node;
 	unsigned long long *nodeToUniboCGR;
 	int result = 0, error = 0;
 
@@ -2306,13 +2306,13 @@ static int exclude_neighbors(Lyst excludedNodes, CurrentCallSAP *sap)
 	for (elt = lyst_first(excludedNodes); elt && !error; elt = lyst_next(elt))
 	{
 		//	node = (NodeId *) lyst_data(elt);
-		node = (uvast *) lyst_data(elt);
-		if (node != NULL && *node != 0)
+		node = (uaddr) lyst_data(elt);
+		if (node)
 		{
 			nodeToUniboCGR = MWITHDRAW(sizeof(unsigned long long));
 			if (nodeToUniboCGR != NULL)
 			{
-				*nodeToUniboCGR = *node;
+				*nodeToUniboCGR = node;
 				if (list_insert_last(sap->excludedNeighbors, nodeToUniboCGR) == NULL)
 				{
 					error = 1;
