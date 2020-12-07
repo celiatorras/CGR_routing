@@ -1085,8 +1085,8 @@ static int suppress_neighbor(List suppressedNeighbors, unsigned long long *neigh
  *****************************************************************************/
 static int suppress_destination_excluded_neighbors(Node *destination, List suppressedNeighbors, List excludedNeighbors)
 {
-	ListElt *elt, *next;
-	unsigned long long *current;
+	ListElt *elt, *elt_suppr, *next, *next_suppr;
+	unsigned long long *current, *current_suppr;
 	int result = 0;
 
 	// initially remove all previously excluded neighbors from list
@@ -1099,10 +1099,31 @@ static int suppress_destination_excluded_neighbors(Node *destination, List suppr
 		if(elt->data != NULL)
 		{
 			current = (unsigned long long *) elt->data;
-			if(search_ipn_node(suppressedNeighbors, *current) == 0)
+
+			elt_suppr = suppressedNeighbors->first;
+
+			while(elt_suppr != NULL)
 			{
-				list_remove_elt(elt);
+
+				next_suppr = elt_suppr->next;
+
+				if(elt_suppr->data != NULL)
+				{
+					current_suppr = (unsigned long long *) elt_suppr->data;
+
+					if(*current == *current_suppr)
+					{
+						list_remove_elt(elt_suppr);
+						elt_suppr = NULL; // exit condition from nested while
+					}
+				}
+
+				if(elt_suppr != NULL)
+				{
+					elt_suppr = next_suppr;
+				}
 			}
+
 		}
 
 		elt = next;
