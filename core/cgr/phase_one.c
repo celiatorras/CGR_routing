@@ -1309,8 +1309,10 @@ static Route* get_best_known_route(RtgObject *rtgObj, unsigned long long neighbo
 		{
 			current = (Route*) elt->data;
 
+#if (MAX_DIJKSTRA_ROUTES != 1)
 			if (current->neighbor == neighbor)
 			{
+#endif
 				if (bestRoute == NULL)
 				{
 					bestRoute = current;
@@ -1340,7 +1342,9 @@ static Route* get_best_known_route(RtgObject *rtgObj, unsigned long long neighbo
 						}
 					}
 				}
+#if (MAX_DIJKSTRA_ROUTES != 1)
 			}
+#endif
 		}
 	}
 
@@ -1354,6 +1358,12 @@ static Route* get_best_known_route(RtgObject *rtgObj, unsigned long long neighbo
 		verbose_debug_printf(
 				"Best known route found but its values hasn't been updated, discard it.");
 	}
+#if (MAX_DIJKSTRA_ROUTES == 1)
+	else if(!neighbor_is_excluded(bestRoute->neighbor))
+	{
+		exclude_current_neighbor(bestRoute);
+	}
+#endif
 
 	return bestRoute;
 }
@@ -1786,16 +1796,19 @@ static int compute_spur_route(time_t current_time, Route *fromRoute, int isFirst
 
 		if (result == 0)
 		{
-
+#if (MAX_DIJKSTRA_ROUTES != 1)
 			if (resultRoute->neighbor == fromRoute->neighbor)
 			{
+#endif
 				resultRoute->citationToFather = list_insert_last(fromRoute->children, resultRoute);
 				if (resultRoute->citationToFather == NULL)
 				{
 					result = -2;
 				}
 
+#if (MAX_DIJKSTRA_ROUTES != 1)
 			}
+#endif
 
 		}
 	}
@@ -1918,7 +1931,14 @@ static int compute_all_spurs(Route *fromRoute, Node *terminusNode, ListElt *uppe
 			if (ok == 0)
 			{
 				result++;
+#if (MAX_DIJKSTRA_ROUTES == 1)
+				if (insert_known_route(rtgObj, last_computed_route) < 0)
+				{
+					result = -2;
+					stop = 1;
+				}
 
+#else
 				if (last_computed_route->neighbor == fromRoute->neighbor)
 				{
 					if (insert_known_route(rtgObj, last_computed_route) < 0)
@@ -1950,6 +1970,7 @@ static int compute_all_spurs(Route *fromRoute, Node *terminusNode, ListElt *uppe
 						stop = 1;
 					}
 				}
+#endif
 
 				if (result != -2) //Success case
 				{
