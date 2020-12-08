@@ -1720,7 +1720,8 @@ int getCandidateRoutes(Node *terminusNode, CgrBundle *bundle, List excludedNeigh
 						check == -4 ||
 						check == -5 ||
 						check == -6 ||
-						check == -9)
+						check == -9 ||
+						(check == -8 && MAX_DIJKSTRA_ROUTES == 1))
 				{
 					//Ok, this route isn't viable
 					//but the checkRoute() said that
