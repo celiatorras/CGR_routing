@@ -293,10 +293,7 @@ static int build_msr_route(time_t current_time, CGRRoute* cgrrRoute, CgrBundle *
 				}
 				else
 				{
-					if(contact->toTime <= current_time)
-					{
-						contact = prevContact;
-					}
+					contact = prevContact;
 					stop = 2;
 				}
 #endif
