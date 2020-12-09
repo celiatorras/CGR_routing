@@ -646,7 +646,6 @@ static int exclude_all_neighbors_from_computed_routes(List computedRoutes)
 	return result;
 }
 
-
 /******************************************************************************
  *
  * \par Function Name:
@@ -1187,82 +1186,59 @@ static int update_cost_values(time_t current_time, Route *route)
 
 	first = route->hops->first;
 	contact = (Contact*) first->data;
-	route->arrivalTime = 0;
-	route->owltSum = 0;
 	owlt = 1;
 	owltSum = 0;
-	arrivalTime = 0;
+	arrivalTime = current_time;
 
 	/*
 	 * This function could be called before the clear_work_areas, so don't assume
 	 * anything about previous range found
 	 */
 
-	earliestTransmissionTime =
-			(contact->fromTime > current_time) ? contact->fromTime : current_time;
-	if (get_applicable_range(contact->fromNode, contact->toNode, earliestTransmissionTime, &owlt)
-			< 0)
+	for (elt = first; elt != NULL && result == 0; elt = elt->next)
 	{
-		//Range not found
-		contact->routingObject->rangeFlag = RangeNotFound;
-
-		result = -1;
-		route->arrivalTime = MAX_POSIX_TIME;
-		route->owltSum = UINT_MAX;
-	}
-	else
-	{
-		// Ok, range found
-		contact->routingObject->rangeFlag = RangeFound;
-		contact->routingObject->owlt = owlt;
-
-		owltMargin = ((MAX_SPEED_MPH / 3600) * owlt) / 186282;
-		owlt += owltMargin;
-		owltSum += owlt;
-
-		arrivalTime = earliestTransmissionTime + owlt;
-
-		for (elt = first->next; elt != NULL && result == 0; elt = elt->next)
+		contact = elt->data;
+		owlt = 1;
+		earliestTransmissionTime =
+				(contact->fromTime > arrivalTime) ? contact->fromTime : arrivalTime;
+		if (earliestTransmissionTime > contact->toTime)
 		{
-			owlt = 1;
-			earliestTransmissionTime =
-					(contact->fromTime > arrivalTime) ? contact->fromTime : arrivalTime;
-			if (earliestTransmissionTime > contact->toTime)
-			{
-				//The best-case delivery time for the contact is greater than
-				//the end time of the contact
-				arrivalTime = MAX_POSIX_TIME;
-				owltSum = UINT_MAX;
-				result = -2;
-				verbose_debug_printf("Can't update route's values.");
-			}
-			// in phase one we search the range ALWAYS at the start time of the contact
-			// this depends on the destination's neighbors management.
-			else if (get_applicable_range(contact->fromNode, contact->toNode,
-					contact->fromTime, &owlt) < 0)
-			{
-				//Range not found
-				contact->routingObject->rangeFlag = RangeNotFound;
+			//The best-case delivery time for the contact is greater than
+			//the end time of the contact
+			arrivalTime = MAX_POSIX_TIME;
+			owltSum = UINT_MAX;
+			result = -2;
+			verbose_debug_printf("Can't update route's values.");
+		}
+		// in phase one we search the range ALWAYS at the start time of the contact
+		// this depends on the destination's neighbors management.
+		else if (get_applicable_range(contact->fromNode, contact->toNode,
+				contact->fromTime, &owlt) < 0)
+		{
+			//Range not found
+			contact->routingObject->rangeFlag = RangeNotFound;
 
-				result = -1;
-				arrivalTime = MAX_POSIX_TIME;
-				owltSum = UINT_MAX;
-				verbose_debug_printf("Can't update route's values.");
-			}
-			else
-			{
-				contact->routingObject->rangeFlag = RangeFound;
-				contact->routingObject->owlt = owlt;
+			result = -1;
+			arrivalTime = MAX_POSIX_TIME;
+			owltSum = UINT_MAX;
+			verbose_debug_printf("Can't update route's values.");
+		}
+		else
+		{
+			contact->routingObject->rangeFlag = RangeFound;
+			contact->routingObject->owlt = owlt;
 
-				owltMargin = ((MAX_SPEED_MPH / 3600) * owlt) / 186282;
-				owlt += owltMargin;
-				owltSum += owlt;
+			owltMargin = ((MAX_SPEED_MPH / 3600) * owlt) / 186282;
+			owlt += owltMargin;
+			owltSum += owlt;
 
-				arrivalTime = earliestTransmissionTime + owlt;
-			}
-
+			arrivalTime = earliestTransmissionTime + owlt;
 		}
 
+	}
+
+	if (result == 0)
+	{
 		route->arrivalTime = arrivalTime;
 		route->owltSum = owltSum;
 	}
@@ -1309,8 +1285,10 @@ static Route* get_best_known_route(RtgObject *rtgObj, unsigned long long neighbo
 		{
 			current = (Route*) elt->data;
 
+#if (MAX_DIJKSTRA_ROUTES != 1)
 			if (current->neighbor == neighbor)
 			{
+#endif
 				if (bestRoute == NULL)
 				{
 					bestRoute = current;
@@ -1337,10 +1315,21 @@ static Route* get_best_known_route(RtgObject *rtgObj, unsigned long long neighbo
 							{
 								bestRoute = current;
 							}
+#if (MAX_DIJKSTRA_ROUTES == 1)
+							else if (bestRoute->arrivalConfidence == current->arrivalConfidence)
+							{
+								if (bestRoute->neighbor > current->neighbor)
+								{
+									bestRoute = current;
+								}
+							}
+#endif
 						}
 					}
 				}
+#if (MAX_DIJKSTRA_ROUTES != 1)
 			}
+#endif
 		}
 	}
 
@@ -1786,16 +1775,19 @@ static int compute_spur_route(time_t current_time, Route *fromRoute, int isFirst
 
 		if (result == 0)
 		{
-
+#if (MAX_DIJKSTRA_ROUTES != 1)
 			if (resultRoute->neighbor == fromRoute->neighbor)
 			{
+#endif
 				resultRoute->citationToFather = list_insert_last(fromRoute->children, resultRoute);
 				if (resultRoute->citationToFather == NULL)
 				{
 					result = -2;
 				}
 
+#if (MAX_DIJKSTRA_ROUTES != 1)
 			}
+#endif
 
 		}
 	}
@@ -1918,7 +1910,14 @@ static int compute_all_spurs(Route *fromRoute, Node *terminusNode, ListElt *uppe
 			if (ok == 0)
 			{
 				result++;
+#if (MAX_DIJKSTRA_ROUTES == 1)
+				if (insert_known_route(rtgObj, last_computed_route) < 0)
+				{
+					result = -2;
+					stop = 1;
+				}
 
+#else
 				if (last_computed_route->neighbor == fromRoute->neighbor)
 				{
 					if (insert_known_route(rtgObj, last_computed_route) < 0)
@@ -1950,6 +1949,7 @@ static int compute_all_spurs(Route *fromRoute, Node *terminusNode, ListElt *uppe
 						stop = 1;
 					}
 				}
+#endif
 
 				if (result != -2) //Success case
 				{
@@ -2182,6 +2182,7 @@ static int computeOtherRoutes(Node *terminusNode, List subsetComputedRoutes, lon
 		sap->knownRoutesUpdated = 1;
 	}
 
+#if (MAX_DIJKSTRA_ROUTES != 1)
 	if (!sap->alreadyExcluded)
 	{
 		if(exclude_all_neighbors_from_computed_routes(rtgObj->selectedRoutes) < 0)
@@ -2191,6 +2192,7 @@ static int computeOtherRoutes(Node *terminusNode, List subsetComputedRoutes, lon
 
 		sap->alreadyExcluded = 1;
 	}
+#endif
 
 	yenPerformedCorrectly = 0;
 	updateNeighbors = 0;
@@ -2236,7 +2238,9 @@ static int computeOtherRoutes(Node *terminusNode, List subsetComputedRoutes, lon
 				// ------ DISCOVERED ALL NEIGHBORS TO REACH DESTINATION ------
 				// Yen's algorithm doesn't find any route
 				// So there aren't new neighbors
-
+#if (MAX_DIJKSTRA_ROUTES == 1)
+				exclude_all_neighbors_from_computed_routes(rtgObj->selectedRoutes);
+#endif
 				temp_result = insert_neighbors_to_reach_destination(sap->excludedNeighbors, terminusNode);
 				if(temp_result < 0)
 				{
@@ -2487,7 +2491,6 @@ static int computeOneRoutePerNeighbor(Node *terminusNode, long unsigned int miss
 		sap->alreadyExcluded = 1;
 
 	}
-
 	/*
 	 * We have excluded all neighbors for whom we already have at least a route
 	 *
@@ -2610,6 +2613,10 @@ static int computeOneRoutePerNeighbor(Node *terminusNode, long unsigned int miss
 	{
 		verbose_debug_printf("0 missing neighbors...");
 	}
+
+#if (MAX_DIJKSTRA_ROUTES == 1)
+	free_list_elts(sap->excludedNeighbors);
+#endif
 
 	return result;
 }
