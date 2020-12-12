@@ -208,6 +208,7 @@ extern Contact* get_first_contact_from_node_to_node(unsigned long long fromNodeN
 		unsigned long long toNodeNbr, RbtNode **node);
 extern Contact* get_next_contact(RbtNode **node);
 extern Contact* get_prev_contact(RbtNode **node);
+extern Contact * get_contact_with_time_tolerance(unsigned long long fromNode, unsigned long long toNode, time_t fromTime, unsigned int tolerance);
 
 #if REVISABLE_CONFIDENCE
 extern int revise_confidence(unsigned long long fromNode, unsigned long long toNode, time_t fromTime, float newConfidence);
@@ -218,6 +219,8 @@ extern int revise_xmit_rate(unsigned long long fromNode, unsigned long long toNo
 #if REVISABLE_CONTACT
 extern int revise_contact(unsigned long long fromNode, unsigned long long toNode, time_t fromTime, float newConfidence, unsigned long int xmitRate, int copyMTV, double mtv[]);
 #endif
+
+extern int refill_mtv(unsigned long long fromNode, unsigned long long toNode, time_t fromTime, unsigned int tolerance, unsigned int refillSize, int priority);
 
 #if (LOG == 1)
 extern int printContactsGraph(FILE *file, time_t currentTime);

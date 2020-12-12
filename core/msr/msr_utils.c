@@ -29,15 +29,6 @@
  */
 #include "msr_utils.h"
 
-/**
- * \brief Get the absolute value of "a"
- *
- * \param[in]   a   The real number for which we want to know the absolute value
- *
- * \hideinitializer
- */
-#define absolute(a) (((a) < 0) ? (-(a)) : (a))
-
 /******************************************************************************
  *
  * \par Function Name:
@@ -118,74 +109,6 @@ int populate_msr_route(time_t current_time, Contact *finalContact, Route *result
 	return result;
 }
 
-/******************************************************************************
- *
- * \par Function Name:
- * 		get_msr_contact
- *
- * \brief Search a contact into contact graph. The contact has to match with
- *        the id {fromNode, toNode, fromTime}.
- *
- * \details contact->fromTime can be included in
- *          fromTime - MSR_TIME_TOLERANCE <= contact->fromTime <= fromTime + MSR_TIME_TOLERANCE
- *
- * \par Date Written:
- * 		23/04/20
- *
- * \return Contact*
- *
- * \retval  Contact*   The contact found
- * \retval  NULL       Contact not found
- *
- * \param[in]      fromNode     The sender node of the contact
- * \param[in]      toNode       The receiver node of the contact
- * \param[in]      fromTime     The start time of the contact
- *
- * \par Revision History:
- *
- *  DD/MM/YY | AUTHOR          |   DESCRIPTION
- *  -------- | --------------- |  -----------------------------------------------
- *  23/04/20 | L. Persampieri  |   Initial Implementation and documentation.
- *****************************************************************************/
-Contact * get_msr_contact(unsigned long long fromNode, unsigned long long toNode, time_t fromTime)
-{
-	Contact *result = NULL;
-	Contact *current;
-	RbtNode *node;
-	int stop = 0;
-	time_t difference;
-
-	for(current = get_first_contact_from_node_to_node(fromNode, toNode, &node);
-			current != NULL && !stop; current = get_next_contact(&node))
-	{
-		if(current->fromNode == fromNode && current->toNode == toNode)
-		{
-			// difference in absolute value
-			difference = absolute(current->fromTime - fromTime);
-
-			if(difference <= MSR_TIME_TOLERANCE)
-			{
-				result = current;
-				stop = 1;
-			}
-			else if(current->fromTime > fromTime + MSR_TIME_TOLERANCE)
-			{
-				// not found
-				stop = 1;
-			}
-		}
-		else
-		{
-			// not found
-			stop = 1;
-		}
-	}
-
-	return result;
-}
-
-
-
 #if (CGRR == 1 && MSR == 1)
 
 /******************************************************************************
@@ -251,9 +174,9 @@ static int build_msr_route(time_t current_time, CGRRoute* cgrrRoute, CgrBundle *
 
 		for (i = localNodePosition; i < cgrrRoute->hopCount && !stop; i++)
 		{
-			contact = get_msr_contact(cgrrRoute->hopList[i].fromNode,
+			contact = get_contact_with_time_tolerance(cgrrRoute->hopList[i].fromNode,
 					cgrrRoute->hopList[i].toNode,
-					cgrrRoute->hopList[i].fromTime);
+					cgrrRoute->hopList[i].fromTime, MSR_TIME_TOLERANCE);
 
 			if (contact != NULL && contact->toTime > current_time)
 			{

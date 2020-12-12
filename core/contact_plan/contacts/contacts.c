@@ -57,6 +57,15 @@
 #define ADD_AND_REVISE_CONTACT 1
 #endif
 
+/**
+ * \brief Get the absolute value of "a"
+ *
+ * \param[in]   a   The real number for which we want to know the absolute value
+ *
+ * \hideinitializer
+ */
+#define absolute(a) (((a) < 0) ? (-(a)) : (a))
+
 
 static void erase_contact(Contact*);
 
@@ -450,14 +459,13 @@ int revise_contact(unsigned long long fromNode, unsigned long long toNode, time_
 			/* TODO ION DOESN'T DO THIS, but MTVs now aren't accurate
 			else
 			{
-				prevVolume = (double) (contact->xmitRate * ((long unsigned int) (contact->toTime - contact->fromTime)));
+				double prevMaxVolume = (double) (contact->xmitRate * ((long unsigned int) (contact->toTime - contact->fromTime)));
 				volume = (double) (xmitRate * ((long unsigned int) (toTime - fromTime)));
 				for(i = 0; i < 3; i++)
 				{
-					contact->mtv[i] = volume;
-					// TODO contact->mtv[i] = volume - (prevVolume - contact->mtv[i]); //consider also previous booking informations
-					// TODO consider that transmit rate is changed so previous booking informations
-					// maybe aren't accurate.				}
+					double prevUsedVolume = prevMaxVolume - contact->mtv[i];
+					contact->mtv[i] = volume - prevUsedVolume;
+				}
 			}
 			*/
 			result = 0;
@@ -520,17 +528,15 @@ int revise_xmit_rate(unsigned long long fromNode, unsigned long long toNode, tim
 					contact->mtv[i] = mtv[i];
 				}
 			}
-			/* TODO ION DON'T DO THIS, but MTVs now aren't accurate
+			/* TODO ION DOESN'T DO THIS, but MTVs now aren't accurate
 			else
 			{
-				prevVolume = (double) (contact->xmitRate * ((long unsigned int) (contact->toTime - contact->fromTime)));
+				double prevMaxVolume = (double) (contact->xmitRate * ((long unsigned int) (contact->toTime - contact->fromTime)));
 				volume = (double) (xmitRate * ((long unsigned int) (toTime - fromTime)));
 				for(i = 0; i < 3; i++)
 				{
-					contact->mtv[i] = volume;
-					// TODO contact->mtv[i] = volume - (prevVolume - contact->mtv[i]); //consider also previous booking informations
-					// TODO consider that transmit rate is changed so previous booking informations
-					// maybe aren't accurate.
+					double prevUsedVolume = prevMaxVolume - contact->mtv[i];
+					contact->mtv[i] = volume - prevUsedVolume;
 				}
 			}
 			*/
@@ -541,6 +547,142 @@ int revise_xmit_rate(unsigned long long fromNode, unsigned long long toNode, tim
 	return result;
 }
 #endif
+
+/******************************************************************************
+ *
+ * \par Function Name:
+ * 		get_contact_with_time_tolerance
+ *
+ * \brief Search a contact into contact graph. The contact has to match with
+ *        the id {fromNode, toNode, fromTime}.
+ *
+ * \details contact->fromTime can be included in
+ *          fromTime - tolerance <= contact->fromTime <= fromTime + tolerance
+ *
+ * \par Date Written:
+ * 		23/04/20
+ *
+ * \return Contact*
+ *
+ * \retval  Contact*   The contact found
+ * \retval  NULL       Contact not found
+ *
+ * \param[in]      fromNode     The sender node of the contact
+ * \param[in]      toNode       The receiver node of the contact
+ * \param[in]      fromTime     The start time of the contact
+ * \param[in]      tolerance    Time tolerance
+ *
+ * \par Revision History:
+ *
+ *  DD/MM/YY | AUTHOR          |   DESCRIPTION
+ *  -------- | --------------- |  -----------------------------------------------
+ *  23/04/20 | L. Persampieri  |   Initial Implementation and documentation.
+ *****************************************************************************/
+Contact * get_contact_with_time_tolerance(unsigned long long fromNode, unsigned long long toNode, time_t fromTime, unsigned int tolerance)
+{
+	Contact *result = NULL;
+	Contact *current;
+	RbtNode *node;
+	int stop = 0;
+	time_t difference;
+
+	for(current = get_first_contact_from_node_to_node(fromNode, toNode, &node);
+			current != NULL && !stop; current = get_next_contact(&node))
+	{
+		if(current->fromNode == fromNode && current->toNode == toNode)
+		{
+			// difference in absolute value
+			difference = absolute(current->fromTime - fromTime);
+
+			if(difference <= tolerance)
+			{
+				result = current;
+				stop = 1;
+			}
+			else if(current->fromTime > fromTime + tolerance)
+			{
+				// not found
+				stop = 1;
+			}
+		}
+		else
+		{
+			// not found
+			stop = 1;
+		}
+	}
+
+	return result;
+}
+
+/******************************************************************************
+ *
+ * \par Function Name:
+ *      refill_mtv
+ *
+ * \brief Refill contact's MTV of some size passed as argument.
+ *
+ * \details contact->fromTime can be included in
+ *          fromTime - tolerance <= contact->fromTime <= fromTime + tolerance
+ *
+ * \par Date Written:
+ * 		11/12/20
+ *
+ * \return int
+ *
+ * \retval  0   Contact MTVs updated
+ * \retval -1   Arguments error
+ * \retval -2   Contact not found
+ *
+ * \param[in]      fromNode     The sender node of the contact
+ * \param[in]      toNode       The receiver node of the contact
+ * \param[in]      fromTime     The start time of the contact
+ * \param[in]      tolerance    Time tolerance
+ * \param[in]      refillSize   The size to add into MTV
+ * \param[in]      priority     The upper-bound priority. The refillSize will be added
+ *                              into all MTV that refers to (all) less or equal priority.
+ *
+ * \par Revision History:
+ *
+ *  DD/MM/YY | AUTHOR          |   DESCRIPTION
+ *  -------- | --------------- |  -----------------------------------------------
+ *  11/12/20 | L. Persampieri  |   Initial Implementation and documentation.
+ *****************************************************************************/
+int refill_mtv(unsigned long long fromNode, unsigned long long toNode, time_t fromTime, unsigned int tolerance, unsigned int refillSize, int priority)
+{
+	Contact *contact;
+	int result = 0, i;
+
+	if (priority < 0 || priority > 2)
+	{
+		// arguments error
+		result = -1;
+	}
+	else if (refillSize == 0)
+	{
+		result = 0;
+	}
+	else
+	{
+		contact = get_contact_with_time_tolerance(fromNode, toNode, fromTime, tolerance);
+
+		if (contact == NULL)
+		{
+			// contact not found
+			result = -2;
+		}
+		else
+		{
+			result = 0;
+			for (i = priority; i >= 0; i--)
+			{
+				contact->mtv[i] += refillSize;
+			}
+		}
+	}
+
+	return result;
+}
 
 /******************************************************************************
  *

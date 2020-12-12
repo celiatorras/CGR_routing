@@ -32,13 +32,25 @@
 
 #include "cgrr.h"
 #include "cgr.h"
-#include <stdlib.h>
+
+typedef struct
+{
+	unsigned int fragmOffset;
+	unsigned int fragmLength;
+	uvast evc;
+	int readLock; /*  0 if you should not read the values, 1 otherwise */
+	int cloneLevel; /* 1 if this CGRR Ext. Block has been cloned from
+	                     another CGRR Ext. Block (i.e. due bundle's fragmentation).
+	                   2 if the bundle has been cloned
+	                   0 otherwise
+	                   */
+} CGRRObject;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-extern int getCGRRoute(CgrRoute * in_route, CGRRoute * out_route);
+extern int getCGRRoute(CgrRoute *in_route, CGRRoute * out_route);
 
 #ifdef __cplusplus
 }
