@@ -1284,3 +1284,107 @@ int getCGRRoute(CgrRoute * in_route, CGRRoute * out_route) {
 
 }
 
+/*
+ * \retval  2  We cannot read the data.
+ * \retval  1  The bundle is a new fragment, previous information in CGRRObject about
+ *             used MTV are not more helpful. I suggests to recompute the EVC starting from
+ *             fragment's payload. Size now contains payload (in bytes).
+ * \retval  0  Ok, the bundle has the same information stored into CGRRObject.
+ *             size now contains the EVC previously stored.
+ * \retval  -1 Some error occurred.
+ */
+int cgrr_getUsedEvc(Bundle *bundle, ExtensionBlock *cgrrExtBlk, uvast *size)
+{
+	Sdr sdr = getIonsdr();
+	CGRRObject cgrrObj;
+	int result;
+
+	CHKERR(bundle);
+	CHKERR(cgrrExtBlk);
+	CHKERR(size);
+	CHKERR(cgrrExtBlk->object); // if 0 nothing to do here
+
+	sdr_read(sdr, (char *) &cgrrObj, cgrrExtBlk->object, cgrrExtBlk->size);
+
+	if(!cgrrObj.readLock || cgrrObj.cloneLevel == 2)
+	{
+		result = 2;
+		*size = 0;
+	}
+	else if(cgrrObj.cloneLevel == 1 && (!(bundle->bundleProcFlags & BDL_IS_FRAGMENT)))
+	{
+		/*
+		 *  Bundle has been cloned, now we risk that the clone forwarding
+		 *  is interpreted as original bundle reforwarding with MTV reintegration.
+		 *  So, from now, we don't consider this clone anymore.
+		 */
+		cgrrObj.cloneLevel = 2;
+		cgrrObj.evc = 0;
+		result = 2;
+		*size = 0;
+		cgrrObj.readLock = 0;	/*	disable next read	*/
+		sdr_write(sdr,cgrrExtBlk->object, (char *) &cgrrObj, sizeof(cgrrObj)); // store the lock
+	}
+	else
+	{
+		if ((bundle->bundleProcFlags & BDL_IS_FRAGMENT)
+				&& (bundle->id.fragmentOffset != cgrrObj.fragmOffset
+				|| bundle->payload.length != cgrrObj.fragmLength))
+		{
+			result = 1;
+			*size = bundle->payload.length; // fragment payload
+			cgrr_debugPrint("[cgrr_utils.c/cgrr_getUsedEvc] new fragment.");
+		}
+		else
+		{
+			result = 0;
+			*size = cgrrObj.evc; // previously used evc
+			cgrr_debugPrint("[cgrr_utils.c/cgrr_getUsedEvc] match OK.");
+		}
+
+		cgrrObj.readLock = 0;	/*	disable next read	*/
+		sdr_write(sdr,cgrrExtBlk->object, (char *) &cgrrObj, sizeof(cgrrObj)); // store the lock
+	}
+
+	return result;
+
+}
+
+/**
+ * \retval  0  Success case
+ * \retval -1  Some error occurred
+ */
+int cgrr_setUsedEvc(Bundle *bundle, ExtensionBlock *cgrrExtBlk, uvast evc)
+{
+	Sdr sdr = getIonsdr();
+	CGRRObject cgrrObj;
+
+	CHKERR(bundle);
+	CHKERR(cgrrExtBlk);
+	CHKERR(cgrrExtBlk->object); // if 0 nothing to do here
+
+	// read to get the cloneLevel field
+	sdr_read(sdr, (char *) &cgrrObj, cgrrExtBlk->object, sizeof(cgrrObj));
+
+	if(cgrrObj.cloneLevel == 2)
+	{
+		return -1;
+	}
+
+	cgrrObj.fragmOffset = bundle->id.fragmentOffset;
+	if(bundle->bundleProcFlags & BDL_IS_FRAGMENT)
+	{
+		// if bundle is a fragment
+		cgrrObj.fragmLength = bundle->payload.length;
+	}
+	else
+	{
+		cgrrObj.fragmLength = 0;
+	}
+	cgrrObj.evc = evc;
+	cgrrObj.readLock = 1;	/*	enable next read	*/
+
+	sdr_write(sdr,cgrrExtBlk->object, (char *) &cgrrObj, sizeof(cgrrObj)); // store values
+
+	return 0;
+}

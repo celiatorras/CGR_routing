@@ -28,6 +28,7 @@
  */
 
 #include "cgrr.h"
+#include "cgrr_help.h"
 
 /******************************************************************************
  *
@@ -134,20 +135,35 @@
   *****************************************************************************/
 int	cgrr_offer(ExtensionBlock *blk, Bundle *bundle)
 {
-/*	Sdr				bpSdr = getIonsdr();*/
+	Sdr	sdr = getIonsdr();
 	CGRRouteBlock		cgrrBlk;
 	int			result = 0;
+	CGRRObject cgrrObj;
 	/* Step 1 - Sanity Checks. */
 	/* Step 1.1 - Make sure we have parameters...*/
 	CHKERR(blk);
 	CHKERR(bundle);
 
+	// initialize cgrrObj
+	memset(&cgrrObj, 0 ,sizeof(cgrrObj));
+
 	if(findExtensionBlock(bundle, EXTENSION_TYPE_CGRR, 0, 0, 0))
 	{
 		/*	Don't create a CGRRouteBlock because it already exist.	*/
 		cgrr_debugPrint("[x: cgrr.c/cgrr_offer] CGRR already exists.");
-		blk->size = 0;
-		blk->object = 0;
+		blk->size = sizeof(CGRRObject);
+		if(blk->object == 0)
+		{
+			blk->object = sdr_malloc(sdr, sizeof(CGRRObject));
+
+			if(blk->object == 0)
+			{
+				return -1;
+			}
+
+			// initialize cgrrObj in SDR
+			sdr_write(sdr, blk->object, (char *) &cgrrObj, blk->size);
+		}
 		result = 0;
 		cgrr_debugPrint("[cgrr.c/cgrr_offer] result -> %d", result);
 		return result;
@@ -156,12 +172,21 @@ int	cgrr_offer(ExtensionBlock *blk, Bundle *bundle)
 
 	/* Step 1.2 - Initialize ExtensionBlock param to default values. */
 
-	blk->blkProcFlags = BLK_MUST_BE_COPIED | BLK_FORWARDED_OPAQUE | BLK_REPORT_IF_NG;
+	blk->blkProcFlags = BLK_MUST_BE_COPIED | BLK_FORWARDED_OPAQUE;
 	blk->bytes = 0;
 	blk->length = 0;
 	blk->dataLength = 0;
-	blk->size = 0;
-	blk->object = 0;
+
+	blk->size = sizeof(CGRRObject);
+	blk->object = sdr_malloc(sdr, sizeof(CGRRObject));
+
+	if(blk->object == 0)
+	{
+		return -1;
+	}
+
+	// initialize cgrrObj in SDR
+	sdr_write(sdr, blk->object, (char *) &cgrrObj, blk->size);
 
 	/**********Modified by F. Marchetti**************/
 	/* Step 2 - Initialize cgrr structures. */
@@ -199,6 +224,8 @@ void cgrr_release(ExtensionBlock *blk)
 	if (blk->object)
 	{
 		sdr_free(sdr, blk->object);
+		blk->object = 0;
+		blk->size = 0;
 	}
 
 	return;
@@ -206,6 +233,36 @@ void cgrr_release(ExtensionBlock *blk)
 
 int	cgrr_copy(ExtensionBlock *newBlk, ExtensionBlock *oldBlk)
 {
+	Sdr	sdr = getIonsdr();
+	CGRRObject cgrrObj;
+
+	newBlk->size = oldBlk->size;
+	if (oldBlk->object == 0)
+	{
+		return 0;
+	}
+
+	if(newBlk->size == 0)
+	{
+		return 0;
+	}
+
+	newBlk->object = sdr_malloc(sdr, newBlk->size);
+	if (newBlk->object == 0)
+	{
+		putErrmsg("Not enough heap space for CGRR block.", NULL);
+		return -1;
+	}
+
+	sdr_read(sdr, (char *) &cgrrObj, oldBlk->object, oldBlk->size);
+
+	if(!cgrrObj.cloneLevel)
+	{
+		cgrrObj.cloneLevel = 1;
+	}
+
+	sdr_write(sdr, newBlk->object, (char *) &cgrrObj, newBlk->size);
+
 	return 0;
 }
 
@@ -221,7 +278,7 @@ int	cgrr_acquire(AcqExtBlock *blk, AcqWorkArea *wk)
 
 	result = cgrr_deserializeCGRR(blk, wk);
 	//cgrr_debugPrint("i cgrr_acquire: Deserialize result %d", result);
-	cgrr_debugPrint("i cgrr_acquire: blk->size %u", blk->size);
+	//cgrr_debugPrint("i cgrr_acquire: blk->size %u", blk->size);
 	//cgrr_debugPrint("- cgrr_acquire -> %d", result);
 
 	return result;
@@ -229,7 +286,27 @@ int	cgrr_acquire(AcqExtBlock *blk, AcqWorkArea *wk)
 
 int	cgrr_record(ExtensionBlock *sdrBlk, AcqExtBlock *ramBlk)
 {
-	//SDR Object unused
+	Sdr sdr;
+	CGRRObject cgrrObj;
+
+	if(sdrBlk->object == 0)
+	{
+		sdr = getIonsdr();
+		sdrBlk->object = sdr_malloc(sdr, sizeof(CGRRObject));
+
+		if(sdrBlk->object == 0)
+		{
+			return -1;
+		}
+
+		sdrBlk->size = sizeof(CGRRObject);
+
+		memset(&cgrrObj, 0, sizeof(cgrrObj));
+
+		// initialize cgrrObj in SDR
+		sdr_write(sdr, sdrBlk->object, (char *) &cgrrObj, sdrBlk->size);
+	}
+
 	return 0;
 }
 

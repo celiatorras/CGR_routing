@@ -88,4 +88,7 @@ extern void releaseCgrrBlkMemory(CGRRouteBlock *cgrrBlk); //Added by G.M. De Col
 
 extern unsigned int getBufferSizeForEncodedRoutes(unsigned int routesCount, unsigned int hopCount); // Added by L. Persampieri
 
+extern int cgrr_getUsedEvc(Bundle *bundle, ExtensionBlock *cgrrExtBlk, uvast *size);
+extern int cgrr_setUsedEvc(Bundle *bundle, ExtensionBlock *cgrrExtBlk, uvast evc);
+
 #endif

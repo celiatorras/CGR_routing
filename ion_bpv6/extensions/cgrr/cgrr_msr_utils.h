@@ -31,7 +31,6 @@
 #define BPV7_LIBRARY_EXT_CGRR_CGRR_MSR_UTILS_H_
 
 #include "cgrr.h"
-#include "cgr.h"
 #include <stdlib.h>
 
 
@@ -42,8 +41,6 @@ extern "C"
 
 extern int storeMsrRoute(CGRRoute *cgrr_route, Bundle* bundle);
 extern int updateLastCgrrRoute(Bundle *bundle);
-extern int getCGRRoute(CgrRoute *in_route, CGRRoute * out_route);
-
 
 #ifdef __cplusplus
 }

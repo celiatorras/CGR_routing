@@ -155,7 +155,7 @@ int	rgr_offer(ExtensionBlock *blk, Bundle *bundle)
 
 	/* Step 1.2 - Initialize ExtensionBlock param to default values. */
 
-	blk->blkProcFlags = BLK_MUST_BE_COPIED | BLK_REPORT_IF_NG;
+	blk->blkProcFlags = BLK_MUST_BE_COPIED;
 	blk->bytes = 0;
 	blk->length = 0;
 	blk->object = 0;
@@ -181,14 +181,16 @@ int	rgr_offer(ExtensionBlock *blk, Bundle *bundle)
 
 void rgr_release(ExtensionBlock *blk)
 {
-	Sdr		sdr = getIonsdr();
+	Sdr	sdr;
 
 	//rgr_debugPrint("rgr_release: Releasing Register Route sdr memory...(%lu)(%u)", blk->object, blk->size);
 
 	CHKVOID(blk);
 	if (blk->object)
 	{
+		sdr = getIonsdr();
 		sdr_free(sdr, blk->object);
+		blk->object = 0;
 	}
 	return;
 }
@@ -399,33 +401,7 @@ int	rgr_check(AcqExtBlock *blk, AcqWorkArea *wk)
 
 int	rgr_record(ExtensionBlock *sdrBlk, AcqExtBlock *ramBlk)
 {
-	GeoRoute		rgrBlk;
-	char			dataBuffer[ramBlk->dataLength];
-//	int				result;
-	unsigned char 	*cursor;
-	int				unparsedBytes = ramBlk->length;
-
-	cursor = ((unsigned char *)(ramBlk->bytes))
-					+ (ramBlk->length - ramBlk->dataLength);
-
-	//rgr_debugPrint("i rgr_record copying data in sdrBlk");
-	memcpy(dataBuffer, (char *) cursor, ramBlk->dataLength);
-
-	extractSmallSdnv(&(rgrBlk.length), &cursor, &unparsedBytes);
-	rgrBlk.nodes = (char*) MTAKE(rgrBlk.length + 1);
-
-	if (rgrBlk.nodes == NULL)
-	{
-		//rgr_debugPrint("rgr_acquire: cannot instantiate memory for rgrBlk.nodes.");
-		return -1;
-	}
-	memcpy(rgrBlk.nodes, cursor, rgrBlk.length);
-
-	//rgr_debugPrint("i rgr_record rgr length: %d\n nodes: %s", rgrBlk.length, rgrBlk.nodes);
-
-	MRELEASE(rgrBlk.nodes);
-
-	return serializeExtBlk(sdrBlk, NULL, dataBuffer);
+	return 0;
 }
 
 void rgr_clear(AcqExtBlock *blk)

@@ -90,7 +90,7 @@ extern RoutingAlgorithm get_last_call_routing_algorithm();
 #define end_call_log() writeLog("###############################")
 
 #else
-#define start_call_log(time) do {  } while(0)
+#define start_call_log(time, count_bundles) do {  } while(0)
 #define end_call_log() do {  } while(0)
 #endif
 

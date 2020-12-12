@@ -86,4 +86,7 @@ extern void copyCGRRoute(CGRRoute *dest, CGRRoute *src);
 unsigned int writeCGRRouteToSdr(Sdr sdr, Object destAddress, CGRRoute *src);*/
 extern void releaseCgrrBlkMemory(CGRRouteBlock *cgrrBlk); //Added by G.M. De Cola
 
+extern int cgrr_getUsedEvc(Bundle *bundle, ExtensionBlock *cgrrExtBlk, uvast *size);
+extern int cgrr_setUsedEvc(Bundle *bundle, ExtensionBlock *cgrrExtBlk, uvast evc);
+
 #endif

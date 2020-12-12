@@ -69,7 +69,14 @@
 #include "rgr.h"
 #endif
 
-
+/**
+ * \brief Get the absolute value of "a"
+ *
+ * \param[in]   a   The real number for which we want to know the absolute value
+ *
+ * \hideinitializer
+ */
+#define absolute(a) (((a) < 0) ? (-(a)) : (a))
 
 #ifndef GET_MTV_FROM_SDR
 /**
@@ -848,7 +855,215 @@ static int get_rgr_ext_block(Bundle *bundle, GeoRoute *resultBlk)
 }
 #endif
 
+#if (CGRR && CGRREB)
+
+// path to macro:
+// CGRR: Unibo-CGR/core/config.h
+// MSR: Unibo-CGR/core/config.h
+// WISE_NODE: Unibo-CGR/core/config.h
+// CGRREB (from ION's root directory): bpv*/library/ext/cgrr/cgrr.h
+
+#if (WISE_NODE)
+
+static int refill_mtv_into_ion(uvast fromNode, uvast toNode, time_t fromTime, unsigned int tolerance, uvast refillSize, int priority, time_t reference_time)
+{
+	Sdr sdr = getIonsdr();
+	IonVdb *ionvdb = getIonVdb();
+	PsmPartition ionwm = getIonwm();
+	IonCXref *contact, *contactFound = NULL;
+	IonCXref arg;
+	IonContact contactBuf;
+	Object contactObj;
+	PsmAddress elt = 0, contactAddr;
+	int result = 0, i, stop;
+	unsigned int difference;
+	time_t startTime;
+
+	if (priority < 0 || priority > 2)
+	{
+		// arguments error
+		result = -1;
+	}
+	else if (refillSize == 0)
+	{
+		result = 0;
+	}
+	else
+	{
+		memset(&arg, 0, sizeof(arg));
+		arg.fromNode = fromNode;
+		arg.toNode = toNode;
+		stop = 0;
+
+		// search the contact
+		for(oK(sm_rbt_search(ionwm, ionvdb->contactIndex, rfx_order_contacts,
+						&arg, &elt)); elt && !stop; elt = sm_rbt_next(ionwm, elt))
+		{
+			contactAddr = sm_rbt_data(ionwm, elt);
+			contact = (IonCXref *) psp(ionwm, contactAddr);
+
+			if(contact != NULL)
+			{
+				startTime = contact->fromTime - reference_time;
+				// difference in absolute value
+				difference = absolute(startTime - fromTime);
+
+				if(difference <= tolerance)
+				{
+					contactFound = contact;
+					stop = 1;
+				}
+				else if(startTime > fromTime + tolerance)
+				{
+					stop = 1;
+				}
+			}
+			else
+			{
+				stop = 1;
+			}
+
+		}
+
+		if (contactFound == NULL)
+		{
+			// contact not found
+			result = -2;
+		}
+		else
+		{
+			result = 0;
+			contactObj = sdr_list_data(sdr, contactFound->contactElt);
+
+			sdr_stage(sdr, (char *) &contactBuf, contactObj, sizeof(IonContact));
+
+			for (i = priority; i >= 0; i--)
+			{
+				contactBuf.mtv[i] += refillSize;
+			}
+
+			sdr_write(sdr, contactObj, (char *) &contactBuf, sizeof(IonContact));
+		}
+	}
+
+	return result;
+
+}
+
+/******************************************************************************
+ *
+ * \par Function Name:
+ *      update_mtv_before_reforwarding
+ *
+ * \brief  This function has effect only if this bundle has to be reforwarded for some reason.
+ *
+ * \details We refill the contacts' MTVs of the previous route computed for this bundle.
+ *          CGRR Ext. Block is required.
+ *
+ *
+ * \par Date Written:
+ *      11/12/20
+ *
+ * \return int
+ *
+ * \retval  0  Success case: MTV updated
+ * \retval -1  Some error occurred
+ *
+ * \param[in]   *bundle        The bundle to forward
+ * \param[in]   *cgrrExtBlk    The ExtensionBlock type of CGRR
+ * \param[in]   *resultBlk     The CGRRouteBlock extracted from the CGRR Extension Block.
+ * \param[in]   reference_time The reference time used to convert POSIX time in differential time from it.
+ *
+ * \warning bundle    doesn't have to be NULL
+ * \warning cgrrExtBlk doesn't have to be NULL
+ * \warning cgrrBlk   doesn't have to be NULL
+ *
+ * \par Revision History:
+ *
+ *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
+ *  -------- | --------------- | -----------------------------------------------
+ *  11/12/20 | L. Persampieri  |  Initial Implementation and documentation.
+ *****************************************************************************/
+static int update_mtv_before_reforwarding(Bundle *bundle, ExtensionBlock *cgrrExtBlk, CGRRouteBlock *cgrrBlk, time_t reference_time)
+{
+	int result = -1;
+	uvast size;
+	int temp;
+	CGRRoute *lastRoute = NULL;
+	CGRRHop *currentHop;
+	int i;
+	unsigned int timeTolerance;
+	int priority;
+
+	temp = -1;
+
+	if(!(bundle->ancillaryData.flags & BP_MINIMUM_LATENCY))
+	{
+		// bundle isn't critical
+		temp = cgrr_getUsedEvc(bundle, cgrrExtBlk, &size);
+	}
+	if (temp >= 0 && temp != 2)
+	{
+			if (temp == 1)
+			{
+				size = bundle->payload.length;
+			}
+
+			if (size == 0)
+			{
+				return 0;
+			}
+
+			// now get the last route from CGRRouteBlock
+
+			if(cgrrBlk->recRoutesLength == 0)
+			{
+				lastRoute = &(cgrrBlk->originalRoute);
+			}
+			else
+			{
+				lastRoute = &(cgrrBlk->recomputedRoutes[cgrrBlk->recRoutesLength - 1]);
+			}
+
+			result = -1;
+
 #if (MSR == 1)
+			timeTolerance = MSR_TIME_TOLERANCE;
+#else
+			timeTolerance = 0;
+#endif
+
+			priority = bundle->priority;
+
+			if(lastRoute != NULL && lastRoute->hopCount > 0)
+			{
+				result = 0;
+
+				for(i = 0; i < lastRoute->hopCount; i++)
+				{
+					currentHop = &(lastRoute->hopList[i]);
+
+					// refill MTV into Unibo-CGR's contact graph
+					refill_mtv((unsigned long long) currentHop->fromNode,
+							(unsigned long long) currentHop->toNode,
+							currentHop->fromTime, timeTolerance, (unsigned int) size,
+							priority);
+
+					// refill MTV into ION's contact graph
+					refill_mtv_into_ion(currentHop->fromNode, currentHop->toNode,
+							currentHop->fromTime, timeTolerance, size,
+							priority, reference_time);
+				}
+			}
+	}
+
+	return result;
+}
+
+#endif
+
+#if (WISE_NODE || MSR)
+
 /******************************************************************************
  *
  * \par Function Name:
@@ -866,8 +1081,9 @@ static int get_rgr_ext_block(Bundle *bundle, GeoRoute *resultBlk)
  * \retval -1  CGRRouteBlock not found
  * \retval -2  System error
  *
- * \param[in]   *bundle        The bundle that contains the RGR Extension Block
+ * \param[in]   *bundle        The bundle that contains the CGRR Extension Block
  * \param[in]   reference_time The reference time used to convert POSIX time in differential time from it.
+ * \param[out]  *extBlk        The ExtensionBlock type of CGRR
  * \param[out] **resultBlk     The CGRRouteBlock extracted from the CGRR Extension Block, only in success case.
  *                             The resultBLk will be allocated by this function.
  *
@@ -880,7 +1096,7 @@ static int get_rgr_ext_block(Bundle *bundle, GeoRoute *resultBlk)
  *  -------- | --------------- | -----------------------------------------------
  *  23/04/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int get_cgrr_ext_block(Bundle *bundle, time_t reference_time, CGRRouteBlock **resultBlk)
+static int get_cgrr_ext_block(Bundle *bundle, time_t reference_time, ExtensionBlock *extBlk, CGRRouteBlock **resultBlk)
 {
 	Sdr sdr = getIonsdr();
 	int result = 0, i, j;
@@ -889,17 +1105,8 @@ static int get_cgrr_ext_block(Bundle *bundle, time_t reference_time, CGRRouteBlo
 	CGRRouteBlock* cgrrBlk;
 	CGRRoute *route;
 
-	debugPrint("Unibo-CGR interface get CGRR.");
-
 	OBJ_POINTER(ExtensionBlock, blk);
 
-	/*
-	if(localNode == bundle->id.source.ssp.ipn.nodeNbr)
-	{
-		//TODO retransmission case bug ???
-		result = -1; //source node
-	}
-	*/
 	/* Step 1 - Check for the presence of CGRR extension*/
 
 	if (!(extBlockElt = findExtensionBlock(bundle, EXTENSION_TYPE_CGRR, 0, 0, 0)))
@@ -932,8 +1139,9 @@ static int get_cgrr_ext_block(Bundle *bundle, time_t reference_time, CGRRouteBlo
 			{
 				result = 0;
 				*resultBlk = cgrrBlk;
+				memcpy(extBlk, blk, sizeof(ExtensionBlock));
 
-				printCGRRouteBlock(cgrrBlk);
+			//	printCGRRouteBlock(cgrrBlk);
 
 				route = &(cgrrBlk->originalRoute);
 
@@ -961,19 +1169,6 @@ static int get_cgrr_ext_block(Bundle *bundle, time_t reference_time, CGRRouteBlo
 
 #endif
 
-#if(CGRR && CGRREB)
-// path to macro:
-// CGRR: Unibo-CGR/core/config.h
-// MSR: Unibo-CGR/core/config.h
-// WISE_NODE: Unibo-CGR/core/config.h
-// CGRREB (from ION's root directory): bpv*/library/ext/cgrr/cgrr.h
-
-/* return values
- *  0 success case
- * -1 some error
- * -2 System error
- * -3 Nothing to do (MSR failed and unwise node)
- */
 /******************************************************************************
  *
  * \par Function Name:
@@ -1002,14 +1197,23 @@ static int get_cgrr_ext_block(Bundle *bundle, time_t reference_time, CGRRouteBlo
  *  -------- | --------------- | -----------------------------------------------
  *  25/09/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int CGRR_management(PsmPartition ionwm, Lyst bestRoutes, Bundle *bundle) {
+static int CGRR_management(PsmPartition ionwm, Lyst bestRoutes, Bundle *bundle)
+{
 #if(WISE_NODE)
 	LystElt lyst_elt;
 	CGRRoute cgrr_route;
 	CgrRoute *route;
+	Sdr sdr;
+	CurrentCallSAP *currSap;
+	Object extBlockElt;
+	Address extBlkAddr;
 #endif
 	int result = -3, temp;
 
+	if (lyst_length(bestRoutes) == 0)
+	{
+		return -3;
+	}
 
 #if(MSR)
 	result = -1;
@@ -1025,15 +1229,18 @@ static int CGRR_management(PsmPartition ionwm, Lyst bestRoutes, Bundle *bundle) 
 
 		temp = updateLastCgrrRoute(bundle);
 
-		if(temp == -2) {
+		if(temp == -2)
+		{
 			// System error
 			result = -2;
 		}
-		else if(temp == -1 || temp == -3) {
+		else if(temp == -1 || temp == -3)
+		{
 			// some error
 			result = -1;
 		}
-		else {
+		else
+		{
 			result = 0;
 		}
 
@@ -1127,6 +1334,24 @@ static int CGRR_management(PsmPartition ionwm, Lyst bestRoutes, Bundle *bundle) 
 
 #endif
 
+#if (WISE_NODE)
+	if (result == 0)
+	{
+		sdr = getIonsdr();
+		currSap = get_current_call_sap(NULL);
+
+		OBJ_POINTER(ExtensionBlock, blk);
+
+		if ((extBlockElt = findExtensionBlock(bundle, EXTENSION_TYPE_CGRR, 0, 0, 0)))
+		{
+			extBlkAddr = sdr_list_data(sdr, extBlockElt);
+
+			GET_OBJ_POINTER(sdr, ExtensionBlock, blk, extBlkAddr);
+
+			cgrr_setUsedEvc(bundle, blk, currSap->uniboCgrBundle->evc);
+		}
+	}
+#endif
 
 	return result;
 
@@ -1172,8 +1397,12 @@ static int convert_bundle_from_ion_to_cgr(unsigned long long toNode, time_t curr
 {
 	int result = -1;
 	time_t offset;
-#if (MSR == 1)
+#if (LOG)
+	unsigned int fragmLength = 0;
+#endif
+#if (CGRR && CGRREB && (WISE_NODE || MSR))
 	CGRRouteBlock *cgrrBlk;
+	ExtensionBlock cgrrExtBlk;
 #endif
 #if (CGR_AVOID_LOOP > 0)
 	GeoRoute geoRoute;
@@ -1184,13 +1413,18 @@ static int convert_bundle_from_ion_to_cgr(unsigned long long toNode, time_t curr
 
 		CgrBundle->terminus_node = toNode;
 
-#if (MSR == 1)
+#if (CGRR && CGRREB && (WISE_NODE || MSR))
 		CgrBundle->msrRoute = NULL;
-		result = get_cgrr_ext_block(IonBundle, reference_time, &cgrrBlk);
+		result = get_cgrr_ext_block(IonBundle, reference_time, &cgrrExtBlk, &cgrrBlk);
 
 		if(result == 0)
 		{
+#if (WISE_NODE)
+			update_mtv_before_reforwarding(IonBundle, &cgrrExtBlk, cgrrBlk, reference_time);
+#endif
+#if (MSR)
 			result = set_msr_route(current_time, cgrrBlk, CgrBundle);
+#endif
 			releaseCgrrBlkMemory(cgrrBlk);
 		}
 #endif
@@ -1243,14 +1477,29 @@ static int convert_bundle_from_ion_to_cgr(unsigned long long toNode, time_t curr
 
 			CgrBundle->dlvConfidence = IonBundle->dlvConfidence;
 
+#if (LOG)
+			if(IonBundle->bundleProcFlags & BDL_IS_FRAGMENT)
+			{
+				fragmLength = IonBundle->payload.length;
+			}
+
 			// We don't need ID during CGR so we just print it into log file.
 			print_log_bundle_id((unsigned long long ) IonBundle->id.source.c.nodeNbr,
 					IonBundle->id.creationTime.seconds, IonBundle->id.creationTime.count,
-					IonBundle->totalAduLength, IonBundle->id.fragmentOffset);
-			writeLog("Payload length: %u.", IonBundle->payload.length);
+					fragmLength, IonBundle->id.fragmentOffset);
 
+			if(IonBundle->bundleProcFlags & BDL_IS_FRAGMENT)
+			{
+				// this bundle is a fragment. we print the payload of the original bundle.
+				writeLog("Payload length: %u.", IonBundle->totalAduLength);
+			}
+			else
+			{
+				writeLog("Payload length: %u.", IonBundle->payload.length);
+			}
+
+#endif
 			result = 0;
-
 		}
 	}
 
@@ -1661,6 +1910,7 @@ static int convert_routes_from_cgr_to_ion(time_t reference_time, PsmPartition io
 								&(IonRoute->protected));
 						convert_scalar_from_cgr_to_ion(&(current->overbooked),
 								&(IonRoute->overbooked));
+
 						tmp = convert_hops_list_from_cgr_to_ion(reference_time, ionwm, ionvdb, current->hops, hops);
 						if (tmp >= 0)
 						{
@@ -2426,7 +2676,7 @@ int	cgr_identify_best_routes(IonNode *terminusNode, Bundle *bundle, Lyst exclude
 								result = -8;
 							}
 #if(CGRR && CGRREB)
-							if(CGRR_management(ionwm, IonRoutes, bundle) == -2)
+							if(result == 0 && CGRR_management(ionwm, IonRoutes, bundle) == -2)
 							{
 								result = -2;
 							}
