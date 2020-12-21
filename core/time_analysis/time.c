@@ -330,7 +330,7 @@ void initialize_time_analysis()
 	TimeFile *timeFile = get_time_file();
 	unsigned long long node_eid = get_local_node();
 	char file_name[50];
-	char *header = "current_time,local_node,call_num,src,ts,sqn_num,fragL,fragO,total_interface,total_core,ph_1_time,ph_1_calls,ph_2_time,ph_2_calls,ph_3_time,ph_3_calls\n";
+	char *header = "current_time,local_node,call_num,src,sqn_num,ts,fragL,fragO,total_interface,total_core,ph_1_time,ph_1_calls,ph_2_time,ph_2_calls,ph_3_time,ph_3_calls\n";
 
 	if (timeFile->configured == 0 || timeFile->fd < 0)
 	{
