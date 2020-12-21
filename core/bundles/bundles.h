@@ -42,19 +42,21 @@ typedef enum
 	Bulk = 0, Normal, Expedited
 } Priority;
 
-/* UNUSED
- typedef struct
- {
- unsigned long long source_node;
- unsigned int creation_timestamp;
- unsigned int sequence_number;
- unsigned int fragment_length;
- unsigned int fragment_offset;
- }CgrBundleID;
- */
+typedef struct
+{
+	unsigned long long source_node;
+	unsigned int creation_timestamp;
+	unsigned int sequence_number;
+	unsigned int fragment_length;
+	unsigned int fragment_offset;
+} CgrBundleID;
 
 typedef struct
 {
+	/**
+	 * \brief Bundle's ID
+	 */
+	CgrBundleID id;
 	/**
 	 * \brief Ipn node number of the Node that sends to me (the own node) the bundle.
 	 *

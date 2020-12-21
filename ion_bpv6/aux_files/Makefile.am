@@ -1245,7 +1245,8 @@ libcgr_la_SOURCES = \
 	bpv6/cgr/Unibo-CGR/core/cgr/cgr.c \
 	bpv6/cgr/Unibo-CGR/core/msr/msr.c \
 	bpv6/cgr/Unibo-CGR/core/msr/msr_utils.c \
-	bpv6/cgr/Unibo-CGR/core/bundles/bundles.c
+	bpv6/cgr/Unibo-CGR/core/bundles/bundles.c \
+	bpv6/cgr/Unibo-CGR/core/time_analysis/time.c
 
 ####################################
 
@@ -2040,7 +2041,8 @@ libcgr_la_SOURCES = \
 	bpv7/cgr/Unibo-CGR/core/cgr/cgr.c \
 	bpv7/cgr/Unibo-CGR/core/msr/msr.c \
 	bpv7/cgr/Unibo-CGR/core/msr/msr_utils.c \
-	bpv7/cgr/Unibo-CGR/core/bundles/bundles.c
+	bpv7/cgr/Unibo-CGR/core/bundles/bundles.c \
+	bpv7/cgr/Unibo-CGR/core/time_analysis/time.c
 	
 ####################################
 

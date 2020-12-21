@@ -45,6 +45,7 @@
 #include "../library/list/list.h"
 #include "../msr/msr.h"
 #include "../routes/routes.h"
+#include "../time_analysis/time.h"
 
 /**
  * \brief Used to keep in one place the data used by Unibo-CGR during a call.
@@ -557,6 +558,8 @@ int initialize_cgr(time_t time, unsigned long long ownNode)
 			result = -3;
 		}
 #endif
+
+		initialize_time_analysis();
 	}
 	return result;
 }
@@ -647,6 +650,8 @@ void destroy_cgr(time_t time)
 	currentCallSap->current_time = MAX_POSIX_TIME;
 
 	get_unibo_cgr_sap(&sap); // save
+
+	destroy_time_analysis();
 
 }
 
@@ -992,7 +997,12 @@ static int executeCGR(CgrBundle *bundle, Node *terminusNode, List excludedNeighb
 
 	if (result >= 0 && candidateRoutes != NULL && candidateRoutes->length > 0)
 	{
+		record_phases_start_time(phaseThree);
+
 		result = chooseBestRoutes(bundle, candidateRoutes); //phase three
+
+		record_phases_stop_time(phaseThree);
+
 		*bestRoutes = candidateRoutes;
 	}
 
@@ -1051,6 +1061,8 @@ int getBestRoutes(time_t time, CgrBundle *bundle, List excludedNeighbors, List *
 	UniboCgrCurrentCallSAP *currentCallSap = get_current_call_sap(NULL);
 	UniboCgrSAP sap = get_unibo_cgr_sap(NULL);
 	ContactPlanSAP cpSap;
+
+	record_total_core_start_time();
 
 	currentCallSap->algorithm = unknown_algorithm;
 
@@ -1186,6 +1198,8 @@ int getBestRoutes(time_t time, CgrBundle *bundle, List excludedNeighbors, List *
 
 	sap.count_bundles++;
 	get_unibo_cgr_sap(&sap); // save
+
+	record_total_core_stop_time();
 
 	return result;
 }

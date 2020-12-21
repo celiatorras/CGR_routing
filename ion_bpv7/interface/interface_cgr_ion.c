@@ -59,6 +59,7 @@
 #include "../../core/library/commonDefines.h"
 #include "../../core/library/list/list.h"
 #include "../../core/msr/msr.h"
+#include "../../core/time_analysis/time.h"
 
 #if(CGRR)
 #include "cgrr.h"
@@ -1397,9 +1398,6 @@ static int convert_bundle_from_ion_to_cgr(unsigned long long toNode, time_t curr
 {
 	int result = -1;
 	time_t offset;
-#if (LOG)
-	unsigned int fragmLength = 0;
-#endif
 #if (CGRR && CGRREB && (WISE_NODE || MSR))
 	CGRRouteBlock *cgrrBlk;
 	ExtensionBlock cgrrExtBlk;
@@ -1476,16 +1474,23 @@ static int convert_bundle_from_ion_to_cgr(unsigned long long toNode, time_t curr
 
 			CgrBundle->dlvConfidence = IonBundle->dlvConfidence;
 
-#if (LOG)
 			if(IonBundle->bundleProcFlags & BDL_IS_FRAGMENT)
 			{
-				fragmLength = IonBundle->payload.length;
+				CgrBundle->id.fragment_length = IonBundle->payload.length;
+			}
+			else
+			{
+				CgrBundle->id.fragment_length = 0;
 			}
 
-			// We don't need ID during CGR so we just print it into log file.
-			print_log_bundle_id((unsigned long long ) IonBundle->id.source.ssp.ipn.nodeNbr,
-					IonBundle->id.creationTime.seconds, IonBundle->id.creationTime.count,
-					fragmLength, IonBundle->id.fragmentOffset);
+			CgrBundle->id.source_node = IonBundle->id.source.ssp.ipn.nodeNbr;
+			CgrBundle->id.creation_timestamp = IonBundle->id.creationTime.seconds;
+			CgrBundle->id.sequence_number = IonBundle->id.creationTime.count;
+			CgrBundle->id.fragment_offset = IonBundle->id.fragmentOffset;
+
+			print_log_bundle_id(CgrBundle->id.source_node,
+					CgrBundle->id.creation_timestamp, CgrBundle->id.sequence_number,
+					CgrBundle->id.fragment_length, CgrBundle->id.fragment_offset);
 
 			if(IonBundle->bundleProcFlags & BDL_IS_FRAGMENT)
 			{
@@ -1497,7 +1502,6 @@ static int convert_bundle_from_ion_to_cgr(unsigned long long toNode, time_t curr
 				writeLog("Payload length: %u.", IonBundle->payload.length);
 			}
 
-#endif
 			result = 0;
 		}
 	}
@@ -2631,9 +2635,14 @@ int	cgr_identify_best_routes(IonNode *terminusNode, Bundle *bundle, Lyst exclude
 	List		cgrRoutes = NULL;
 	CurrentCallSAP *currentCallSap;
 	InterfaceUniboCgrSAP *int_ucgr_sap = sap;
-#if(LOG == 1)
+#if (LOG || TIME_ANALYSIS_ENABLED)
 	UniboCgrSAP uniboCgrSAP = get_unibo_cgr_sap(NULL);
 #endif
+#if TIME_ANALYSIS_ENABLED
+	CgrBundleID id;
+#endif
+
+	record_total_interface_start_time();
 
 	debug_printf("Entry point interface.");
 
@@ -2688,6 +2697,9 @@ int	cgr_identify_best_routes(IonNode *terminusNode, Bundle *bundle, Lyst exclude
 					result = -7;
 				}
 
+#if TIME_ANALYSIS_ENABLED
+				memcpy(&id, &(currentCallSap->uniboCgrBundle->id), sizeof(CgrBundleID));
+#endif
 				reset_bundle(currentCallSap->uniboCgrBundle);
 				currentCallSap->ionBundle = NULL;
 			}
@@ -2743,6 +2755,9 @@ int	cgr_identify_best_routes(IonNode *terminusNode, Bundle *bundle, Lyst exclude
 	}
 
 	debug_printf("result to ION -> %d\n", result);
+
+	record_total_interface_stop_time();
+	print_time_results(time - int_ucgr_sap->reference_time, uniboCgrSAP.count_bundles, &id);
 
 	return result;
 }

@@ -56,6 +56,7 @@
 
 #include "../../core/cgr/cgr_phases.h"
 #include "../../core/msr/msr_utils.h"
+#include "../../core/time_analysis/time.h"
 
 
 #define NOMINAL_PRIMARY_BLKSIZE	29 // from ION 4.0.0: bpv7/library/libbpP.c
@@ -306,6 +307,22 @@ static int convert_bundle_from_dtn2_to_cgr(time_t current_time, dtn::Bundle *Dtn
 				#ifdef ECOS_ENABLED
 				CgrBundle->ordinal = (unsigned int) Dtn2Bundle->ecos_ordinal();
 				#endif
+
+				 // TODO CgrBundle->id.source_node = Dtn2Bundle->source();
+				CgrBundle->id.source_node = 0; // TODO TEMP
+				CgrBundle->id.creation_timestamp = Dtn2Bundle->creation_ts().seconds_;
+				CgrBundle->id.sequence_number = Dtn2Bundle->creation_ts().seqno_;
+				if( Dtn2Bundle->is_fragment())
+				{
+					CgrBundle->id.fragment_length = Dtn2Bundle->frag_length();
+					CgrBundle->id.fragment_offset = Dtn2Bundle->frag_offset();
+				}
+				else
+				{
+					CgrBundle->id.fragment_length = 0;
+					CgrBundle->id.fragment_offset = 0;
+				}
+
 				CgrBundle->size = NOMINAL_PRIMARY_BLKSIZE + Dtn2Bundle->durable_size();
 
 				CgrBundle->evc = computeBundleEVC(CgrBundle->size); // SABR 2.4.3
@@ -897,6 +914,8 @@ int callUniboCGR(time_t time, dtn::Bundle *bundle, std::string *res)
 	int result = -5;
 	List cgrRoutes = NULL;
 	UniboCgrSAP sap = get_unibo_cgr_sap(NULL);
+
+	record_total_interface_start_time();
 	debug_printf("Entry point interface.");
 
 	if (initialized && bundle != NULL)
@@ -911,6 +930,11 @@ int callUniboCGR(time_t time, dtn::Bundle *bundle, std::string *res)
 			{
 				//Start log only after checking that bundle is ok
 				start_call_log(time - reference_time,sap.count_bundles);
+				print_log_bundle_id(cgrBundle->id.source_node,
+						cgrBundle->id.creation_timestamp,
+						cgrBundle->id.sequence_number,
+						cgrBundle->id.fragment_length,
+						cgrBundle->id.fragment_offset);
 				writeLog("Payload length: %zu.", bundle->payload().length());
 				debug_printf("Go to CGR.");
 				// Call Unibo-CGR
@@ -952,6 +976,9 @@ int callUniboCGR(time_t time, dtn::Bundle *bundle, std::string *res)
 	end_call_log();
 	log_fflush();
 #endif
+
+	record_total_interface_stop_time();
+	print_time_results(time - reference_time, sap.count_bundles, &(cgrBundle->id));
 	return result;
 }
 
@@ -1002,7 +1029,7 @@ int computeApplicableBacklog(unsigned long long neighbor, int priority, unsigned
 		loadCgrScalar(CgrApplicableBacklog, byteApp);
 		if(result >= 0)
 		{
-			writeLog("found %d bundle in queue on neighbor %llu.", result, neighbor);
+			debugLog("found %d bundle in queue on neighbor %llu.", result, neighbor);
 			result=0;
 		}
 
@@ -1086,7 +1113,7 @@ int initialize_contact_graph_routing(unsigned long long ownNode, time_t time, dt
 	}
 	if (initialized != 1)
 	{
-		excludedNeighbors = list_create(NULL, NULL, NULL, NULL);
+		excludedNeighbors = list_create(NULL, NULL, NULL, free);
 		cgrBundle = bundle_create();
 
 		if (excludedNeighbors != NULL && cgrBundle != NULL)

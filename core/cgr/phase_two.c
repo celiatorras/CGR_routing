@@ -44,6 +44,7 @@
 #include "../library/list/list.h"
 #include "../library_from_ion/scalar/scalar.h"
 #include "../routes/routes.h"
+#include "../time_analysis/time.h"
 
 /**
  * \brief Used to keep in one place all the data used by phase two.
@@ -1639,13 +1640,14 @@ int getCandidateRoutes(Node *terminusNode, CgrBundle *bundle, List excludedNeigh
 		List *subsetComputedRoutes, long unsigned int *missingNeighbors, List *candidateRoutes)
 {
 	int result = -1, check, error = 0;
-
 	ListElt *elt;
 	Route *route;
 	long unsigned int max_neighbors_number;
 	time_t current_time = get_current_time();
 	unsigned long long localNode = get_local_node();
 	PhaseTwoSAP *sap = get_phase_two_sap(NULL);
+
+	record_phases_start_time(phaseTwo);
 
 	debug_printf("Entry point phase two.");
 	free_list_elts(sap->subset); //clear the previous subset
@@ -1772,6 +1774,8 @@ int getCandidateRoutes(Node *terminusNode, CgrBundle *bundle, List excludedNeigh
 		debug_printf("%lu neighbors found, %lu missing neighbors, %lu suppressed neighbors.", sap->neighborsFound, *missingNeighbors, sap->suppressedNeighbors->length);
 
 	}
+
+	record_phases_stop_time(phaseTwo);
 
 	return result;
 }

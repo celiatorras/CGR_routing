@@ -39,6 +39,7 @@
 #include "../contact_plan/ranges/ranges.h"
 #include "../library/list/list.h"
 #include "../routes/routes.h"
+#include "../time_analysis/time.h"
 
 /**
  * \brief Used to keep in one place all the data used by phase one.
@@ -2658,6 +2659,8 @@ int computeRoutes(Node *terminusNode, List subsetComputedRoutes, long unsigned i
 	RtgObject *rtgObj = NULL;
 	PhaseOneSAP *sap;
 
+	record_phases_start_time(phaseOne);
+
 	debug_printf("Entry point phase one.");
 
 	if (missingNeighbors > 0 && terminusNode != NULL)
@@ -2714,6 +2717,8 @@ int computeRoutes(Node *terminusNode, List subsetComputedRoutes, long unsigned i
 	{
 		debug_printf("Result -> %d", result);
 	}
+
+	record_phases_stop_time(phaseOne);
 
 	return result;
 }

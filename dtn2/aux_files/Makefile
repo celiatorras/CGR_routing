@@ -223,6 +223,7 @@ UNIBOCGR_SRCS :=				\
 	routing/Unibo-CGR/core/library_from_ion/scalar/scalar.c \
 	routing/Unibo-CGR/core/library_from_ion/rbt/rbt.c	\
 	routing/Unibo-CGR/core/routes/routes.c	\
+	routing/Unibo-CGR/core/time_analysis/time.c	\
 
 ROUTING_SRCS :=					\
 	routing/router.cc			\

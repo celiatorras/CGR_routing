@@ -36,8 +36,17 @@
 
 #include "../config.h"
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 // just to use with function pointer
 extern void MDEPOSIT_wrapper(void *addr);
+
+#ifdef __cplusplus
+}
+#endif
 
 #define	MAX_POSIX_TIME	2147483647
 
