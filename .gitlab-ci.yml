@@ -4,11 +4,12 @@ pages:
   stage: deploy
   script:
     - apt-get update -y && apt-get install -y doxygen
+    - doxygen -u ./docs/.doxygen/Doxyfile.txt
     - doxygen ./docs/.doxygen/Doxyfile.txt
     - mkdir -p ./public
     - mkdir -p ./public/html
     - cp -rf ./docs/html/* ./public/html/
-    - cp -f ./docs/Documentation.html ./public/
+    - cp -f ./docs/Documentation.html ./public/index.html
   artifacts:
     paths:
       - public
