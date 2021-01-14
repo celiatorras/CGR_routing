@@ -101,6 +101,7 @@
 #ifndef LOG
 /**
  * \brief Boolean: Set to 1 if you want to print various log files, otherwise set to 0.
+ *        These files will be created in the ./cgr_log directory.
  *
  * \hideinitializer
  */
@@ -145,15 +146,51 @@
 /************************************************************************************/
 /************************************************************************************/
 
+/*
+ * Enabling one (or more) of the following macros you will find
+ * the ./total_<local_node>.csv
+ * file where are reported all the times specified by the following macros.
+ *
+ * If you want to test how long does Unibo-CGR take
+ * be sure that in your machine the Linux kernel is running;
+ * otherwise do not enable the following macros.
+ *
+ * \par Notes:
+ *      - Note that log and debug prints add considerable time.
+ *        Disable them if you want to calculate more precise times.
+ *      - To obtain precise results, activate only one of the
+ *        following macros at a time, otherwise keep in mind
+ *        the overhead added by calculating the innermost times
+ *        to the outermost ones.
+ */
+
 #ifndef COMPUTE_TOTAL_CORE_TIME
+/**
+ * \brief Boolean: Set to 1 if you want to know how much time requires
+ *        Unibo-CGR's core routing algorithm. O otherwise.
+ *
+ * \hideinitializer
+ */
 #define COMPUTE_TOTAL_CORE_TIME 0
 #endif
 
 #ifndef COMPUTE_PHASES_TIME
+/**
+ * \brief Boolean: Set to 1 if you want to know how much time requires
+ *        each Unibo-CGR's phase. O otherwise.
+ *
+ * \hideinitializer
+ */
 #define COMPUTE_PHASES_TIME 0
 #endif
 
 #ifndef COMPUTE_TOTAL_INTERFACE_TIME
+/**
+ * \brief Exactly like COMPUTE_TOTAL_CORE_TIME, but with this macro you will consider
+ *        also the interface's overhead.
+ *
+ * \hideinitializer
+ */
 #define COMPUTE_TOTAL_INTERFACE_TIME 0
 #endif
 

@@ -866,6 +866,37 @@ static int get_rgr_ext_block(Bundle *bundle, GeoRoute *resultBlk)
 
 #if (WISE_NODE)
 
+/******************************************************************************
+ *
+ * \par Function Name:
+ *      refill_mtv_into_ion
+ *
+ * \brief Refill contact's MTV of some size passed as argument.
+ *
+ * \par Date Written:
+ * 		11/12/20
+ *
+ * \return int
+ *
+ * \retval  0   Contact MTVs updated
+ * \retval -1   Arguments error
+ * \retval -2   Contact not found
+ *
+ * \param[in]      fromNode       The sender node of the contact
+ * \param[in]      toNode         The receiver node of the contact
+ * \param[in]      fromTime       The start time of the contact
+ * \param[in]      tolerance      Time tolerance
+ * \param[in]      refillSize     The size to add into MTV
+ * \param[in]      priority       The upper-bound priority. The refillSize will be added
+ *                                into all MTV that refers to (all) less or equal priority.
+ * \param[in]      reference_time ION's start time
+ *
+ * \par Revision History:
+ *
+ *  DD/MM/YY | AUTHOR          |   DESCRIPTION
+ *  -------- | --------------- |  -----------------------------------------------
+ *  11/12/20 | L. Persampieri  |   Initial Implementation and documentation.
+ *****************************************************************************/
 static int refill_mtv_into_ion(uvast fromNode, uvast toNode, time_t fromTime, unsigned int tolerance, uvast refillSize, int priority, time_t reference_time)
 {
 	Sdr sdr = getIonsdr();

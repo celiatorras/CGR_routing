@@ -866,6 +866,40 @@ static int get_rgr_ext_block(Bundle *bundle, GeoRoute *resultBlk)
 
 #if (WISE_NODE)
 
+/******************************************************************************
+ *
+ * \par Function Name:
+ *      update_mtv_before_reforwarding
+ *
+ * \brief  This function has effect only if this bundle has to be reforwarded for some reason.
+ *
+ * \details We refill the contacts' MTVs of the previous route computed for this bundle.
+ *          CGRR Ext. Block is required.
+ *
+ *
+ * \par Date Written:
+ *      11/12/20
+ *
+ * \return int
+ *
+ * \retval  0  Success case: MTV updated
+ * \retval -1  Some error occurred
+ *
+ * \param[in]   *bundle        The bundle to forward
+ * \param[in]   *cgrrExtBlk    The ExtensionBlock type of CGRR
+ * \param[in]   *resultBlk     The CGRRouteBlock extracted from the CGRR Extension Block.
+ * \param[in]   reference_time The reference time used to convert POSIX time in differential time from it.
+ *
+ * \warning bundle    doesn't have to be NULL
+ * \warning cgrrExtBlk doesn't have to be NULL
+ * \warning cgrrBlk   doesn't have to be NULL
+ *
+ * \par Revision History:
+ *
+ *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
+ *  -------- | --------------- | -----------------------------------------------
+ *  11/12/20 | L. Persampieri  |  Initial Implementation and documentation.
+ *****************************************************************************/
 static int refill_mtv_into_ion(uvast fromNode, uvast toNode, time_t fromTime, unsigned int tolerance, uvast refillSize, int priority, time_t reference_time)
 {
 	Sdr sdr = getIonsdr();
