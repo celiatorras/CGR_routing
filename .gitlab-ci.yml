@@ -6,7 +6,9 @@ pages:
     - apt-get update -y && apt-get install -y doxygen
     - doxygen ./docs/.doxygen/Doxyfile.txt
     - mkdir -p ./public
-    - cp -r ./docs/html/* ./public/
+    - mkdir -p ./public/html
+    - cp -rf ./docs/html/* ./public/html/
+    - cp -f ./docs/Documentation.html ./public/
   artifacts:
     paths:
       - public
