@@ -105,7 +105,7 @@
  *
  * \hideinitializer
  */
-#define LOG 1
+#define LOG 0
 #endif
 
 #ifndef DEBUG_CGR
@@ -114,7 +114,7 @@
  *
  * \hideinitializer
  */
-#define DEBUG_CGR 1
+#define DEBUG_CGR 0
 #endif
 
 #ifndef CGR_DEBUG_FLUSH
@@ -343,7 +343,7 @@
  *
  * \hideinitializer
  */
-#define CGRR 1
+#define CGRR 0
 #endif
 
 #ifndef WISE_NODE
@@ -370,7 +370,7 @@
  *
  * \hideinitializer
  */
-#define RGR 1
+#define RGR 0
 #endif
 
 
@@ -408,7 +408,7 @@
  *
  * \hideinitializer
  */
-#define MAX_DIJKSTRA_ROUTES 0
+#define MAX_DIJKSTRA_ROUTES 1
 #endif
 
 #ifndef CGR_AVOID_LOOP
@@ -426,7 +426,7 @@
  *
  * \hideinitializer
  */
-#define CGR_AVOID_LOOP 3
+#define CGR_AVOID_LOOP 0
 #endif
 
 #ifndef QUEUE_DELAY
@@ -441,7 +441,7 @@
  *
  * \hideinitializer
  */
-#define QUEUE_DELAY 1
+#define QUEUE_DELAY 0
 #endif
 
 #ifndef ADD_COMPUTED_ROUTE_TO_INTERMEDIATE_NODES
@@ -560,7 +560,7 @@
  *           - ION 3.7.0:   36 (default value in ION but it can be modified)
  *
  */
-#define MIN_CONVERGENCE_LAYER_OVERHEAD 100
+#define MIN_CONVERGENCE_LAYER_OVERHEAD 36
 #endif
 
 /************************************************************************************/
