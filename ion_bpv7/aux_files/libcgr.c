@@ -19,8 +19,10 @@
 									*/
 #include "cgr.h"
 
+#if UNIBO_CGR
 // Added by L. Persampieri
 #include "../cgr/Unibo-CGR/ion_bpv7/interface/interface_cgr_ion.h"
+#endif
 
 #define CGRVDB_NAME	"cgrvdb"
 
