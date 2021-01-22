@@ -19,8 +19,10 @@
 									*/
 #include "cgr.h"
 
+#if UNIBO_CGR
 // Added by L. Persampieri
 #include "../cgr/Unibo-CGR/ion_bpv6/interface/interface_cgr_ion.h"
+#endif
 
 #define	MAX_TIME	((unsigned int) ((1U << 31) - 1))
 
