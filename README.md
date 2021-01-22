@@ -93,12 +93,12 @@ The exact behavior of Unibo-CGR depends on the settings of configuration switche
 
 _Use in ION_
 
-The use of Unibo-CGR in ION does not differ from the use of previous implementation of CGR/SABR, a part experimental features that can be optionally enabled/disabled by overriding defaults (see above).
+The use of Unibo-CGR in ION does not differ from the use of previous implementation of CGR/SABR, a part experimental features that can be optionally enabled/disabled by overriding defaults (see above).  
 Launch the configure script with the following sintax (from ION's root directory):  
-Only Unibo-CGR: ./configure --enable-unibo-cgr
-Unibo-CGR + RGR Ext. Block: ./configure --enable-unibo-cgr CPPFLAGS='-DRGREB=1'
-Unibo-CGR + CGRR Ext. Block: ./configure --enable-unibo-cgr CPPFLAGS='-DCGRREB=1'
-Unibo-CGR + RGR and CGRR Ext. Block: ./configure --enable-unibo-cgr CPPFLAGS='-DRGREB=1 -DCGRREB=1'
+Only Unibo-CGR: ./configure --enable-unibo-cgr  
+Unibo-CGR + RGR Ext. Block: ./configure --enable-unibo-cgr CPPFLAGS='-DRGREB=1'  
+Unibo-CGR + CGRR Ext. Block: ./configure --enable-unibo-cgr CPPFLAGS='-DCGRREB=1'  
+Unibo-CGR + RGR and CGRR Ext. Block: ./configure --enable-unibo-cgr CPPFLAGS='-DRGREB=1 -DCGRREB=1'  
 Unibo-CGR disabled: ./configure
 
 _Use in DTN2_
