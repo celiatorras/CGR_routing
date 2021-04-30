@@ -1508,10 +1508,16 @@ static int convert_bundle_from_ion_to_cgr(unsigned long long toNode, time_t curr
 
 			CgrBundle->evc = computeBundleEVC(CgrBundle->size); // SABR 2.4.3
 
-			offset = IonBundle->id.creationTime.seconds + EPOCH_2000_SEC - reference_time;
+			/* Need to convert from msec (since EPOCH 2000) to seconds since 1970 */
+			time_t creationTimeInSeconds = (time_t) ( IonBundle->id.creationTime.msec / 1000 ) + EPOCH_2000_SEC;
 
-			CgrBundle->expiration_time = IonBundle->expirationTime
-					- IonBundle->id.creationTime.seconds + offset;
+			/* Offset between bundle's creation time and (this) node's start time. */
+			offset =  creationTimeInSeconds - reference_time;
+
+            /* Internally to Unibo-CGR the bundle's expiration time is relative to the node's start time.
+             * Here we make this conversion.                                                              */
+			CgrBundle->expiration_time = IonBundle->expirationTime - creationTimeInSeconds + offset;
+
 			CgrBundle->sender_node = IonBundle->clDossier.senderNodeNbr;
 			CgrBundle->priority_level = IonBundle->priority;
 
@@ -1527,7 +1533,7 @@ static int convert_bundle_from_ion_to_cgr(unsigned long long toNode, time_t curr
 			}
 
 			CgrBundle->id.source_node = IonBundle->id.source.ssp.ipn.nodeNbr;
-			CgrBundle->id.creation_timestamp = IonBundle->id.creationTime.seconds;
+			CgrBundle->id.creation_timestamp = IonBundle->id.creationTime.msec;
 			CgrBundle->id.sequence_number = IonBundle->id.creationTime.count;
 			CgrBundle->id.fragment_offset = IonBundle->id.fragmentOffset;
 
