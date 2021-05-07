@@ -64,6 +64,10 @@ typedef struct
 	 */
 	unsigned long long sender_node;
 	/**
+	 * \brief Region in which the destination resides.
+	 */
+	unsigned long regionNbr;
+	/**
 	 * \brief Ipn node number of the destination node for the bundle.
 	 */
 	unsigned long long terminus_node;

@@ -939,8 +939,6 @@ static int executeCGR(CgrBundle *bundle, Node *terminusNode, List excludedNeighb
 	List subsetComputedRoutes = NULL;
 	RtgObject *rtgObj = terminusNode->routingObject;
 
-	reset_cgr();
-
 	if (!(ALREADY_COMPUTED(rtgObj))) //If it's the first time that I compute routes for this destination
 	{
 		if(NEIGHBORS_DISCOVERED(rtgObj))
@@ -959,7 +957,7 @@ static int executeCGR(CgrBundle *bundle, Node *terminusNode, List excludedNeighb
 #endif
 		if(missingNeighbors > 0)
 		{
-			result = computeRoutes(terminusNode, NULL, missingNeighbors); //phase one
+			result = computeRoutes(bundle->regionNbr, terminusNode, NULL, missingNeighbors); //phase one
 			stop = (result <= 0) ? 1 : 0;
 		}
 		else
@@ -985,7 +983,7 @@ static int executeCGR(CgrBundle *bundle, Node *terminusNode, List excludedNeighb
 		}
 		if (!stop)
 		{
-			result = computeRoutes(terminusNode, subsetComputedRoutes, missingNeighbors); //phase one
+			result = computeRoutes(bundle->regionNbr, terminusNode, subsetComputedRoutes, missingNeighbors); //phase one
 
 			stop = (result <= 0) ? 1 : 0;
 		}
@@ -1092,6 +1090,8 @@ int getBestRoutes(time_t time, CgrBundle *bundle, List excludedNeighbors, List *
 		{
 
 			result = 0;
+
+            reset_cgr();
 
 			cpSap = get_contact_plan_sap(NULL);
 

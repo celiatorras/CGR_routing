@@ -78,6 +78,14 @@ typedef struct {
 	 * \brief The dijkstra's note for the contacts graph's root.
 	 */
 	ContactNote graphRootWork;
+	/**
+	 * \brief The destination of the current bundle
+	 */
+	unsigned long long destination;
+    /**
+     * \brief The region in which resides the bundle's destination
+     */
+	unsigned long regionNbr;
 } PhaseOneSAP;
 
 /**
@@ -114,8 +122,8 @@ typedef enum
 
 typedef enum
 {
-	NotSuppressed = 0, // The contact is in the graph
-	Suppressed = 1, // The contact is excluded from the graph
+	DijkstraNotSuppressed = 0, // The contact is in the graph
+	DijkstraSuppressed = 1, // The contact is excluded from the graph
 	SuppressedFromNodeForYenLoop = 2, // The contact is excluded from the graph due a loop
 	                                  // caused by the fromNode field
 	SuppressedToNodeForYenLoop = 3    // The contact is excluded from the graph due a loop
@@ -341,7 +349,7 @@ int initialize_phase_one(unsigned long long ownNode)
 		memset(&(sap->graphRoot), 0, sizeof(Contact));
 		sap->graphRoot.fromNode = ownNode;
 		sap->graphRoot.toNode = ownNode;
-		sap->graphRoot.type = Registration;
+		sap->graphRoot.type = TypeScheduled;
 		sap->graphRoot.toTime = MAX_POSIX_TIME;
 		memset(&(sap->graphRootWork), 0, sizeof(ContactNote));
 		sap->graphRoot.routingObject = &(sap->graphRootWork);
@@ -379,6 +387,8 @@ void destroy_phase_one()
 	sap->alreadyExcluded = 0;
 	sap->knownRoutesUpdated = 0;
 	sap->graphCleaned = 0;
+	sap->destination = 0;
+	sap->regionNbr = 0;
 
 	return;
 }
@@ -416,6 +426,8 @@ void reset_phase_one()
 	sap->alreadyExcluded = 0;
 	sap->knownRoutesUpdated = 0;
 	sap->graphCleaned = 0;
+	sap->destination = 0;
+	sap->regionNbr = 0;
 
 	return;
 }
@@ -467,7 +479,7 @@ static void clear_work_areas(ClearRule rule)
 			work->rangeFlag = 0;
 			work->owlt = 0;
 		}
-		else if(rule == ClearPartially || work->suppressed == Suppressed)
+		else if(rule == ClearPartially || work->suppressed == DijkstraSuppressed)
 		{
 			work->suppressed = 0;
 		}
@@ -880,10 +892,10 @@ static void compute_new_distances(PhaseOneSAP *sap, time_t current_time, Contact
 
 	currentWork = current->routingObject;
 
-	for (contact = get_first_contact_from_node(current->toNode, &rbtNode); contact != NULL;
+	for (contact = get_first_contact_from_node(sap->regionNbr, current->toNode, &rbtNode); contact != NULL;
 			contact = get_next_contact(&rbtNode))
 	{
-		if (contact->fromNode != current->toNode)
+		if (contact->fromNode != current->toNode || contact->regionNbr != sap->regionNbr)
 		{
 			rbtNode = NULL; //I leave the loop
 		}
@@ -916,16 +928,18 @@ static void compute_new_distances(PhaseOneSAP *sap, time_t current_time, Contact
 					if (neighbor_is_excluded(contact->toNode))
 					{
 						//helpful for "one route per neighbor"
-						work->suppressed = Suppressed;
+						work->suppressed = DijkstraSuppressed;
 						go_to_next = 1;
 					}
 #if (NEGLECT_CONFIDENCE == 0 && REVISABLE_CONFIDENCE == 0)
+					/* TODO Removed check due to the insertion of opportunistic contacts
 					else if (contact->confidence < 1.0F)
 					{
 						// first hop must be certain
 						work->suppressed = Suppressed;
 						go_to_next = 1;
 					}
+					 */
 #endif
 				}
 				else if (contact->fromTime < currentWork->arrivalTime) //SABR 3.2.4.1.1
@@ -949,7 +963,7 @@ static void compute_new_distances(PhaseOneSAP *sap, time_t current_time, Contact
 									&& get_applicable_range(contact->fromNode, contact->toNode, contact->fromTime, &owlt) < 0))
 					{
 						work->rangeFlag = RangeNotFound; //range not found at start time, this contact cannot be used to compute a route
-						work->suppressed = Suppressed;
+						work->suppressed = DijkstraSuppressed;
 					}
 					//if rangeFlag == RangeFound, we use the work->owlt
 					else
@@ -1382,8 +1396,9 @@ static void suppress_root_path_ipn_node(unsigned long long fromNode)
 	int stop = 0;
 	Contact *contact;
 	RbtNode *rbtNode;
+	PhaseOneSAP *sap = get_phase_one_sap(NULL);
 
-	for (contact = get_first_contact_from_node(fromNode, &rbtNode);
+	for (contact = get_first_contact_from_node(sap->regionNbr, fromNode, &rbtNode);
 			contact != NULL && !stop; contact = get_next_contact(&rbtNode))
 	{
 		if (contact->fromNode != fromNode)
@@ -1592,9 +1607,9 @@ static void avoid_duplicate_routes(Node *terminusNode, ListElt *rootOfSpur)
 		{
 			temp = list_get_first_elt(route->hops);
 			suppressMe = (Contact*) temp->data;
-			if(suppressMe->routingObject->suppressed == NotSuppressed) //just for safety
+			if(suppressMe->routingObject->suppressed == DijkstraNotSuppressed) //just for safety
 			{
-				suppressMe->routingObject->suppressed = Suppressed;
+				suppressMe->routingObject->suppressed = DijkstraSuppressed;
 			}
 		}
 		else
@@ -1611,9 +1626,9 @@ static void avoid_duplicate_routes(Node *terminusNode, ListElt *rootOfSpur)
 						if (temp->next != NULL)
 						{
 							suppressMe = (Contact*) temp->next->data; //suppress next contact
-							if(suppressMe->routingObject->suppressed == NotSuppressed) //just for safety
+							if(suppressMe->routingObject->suppressed == DijkstraNotSuppressed) //just for safety
 							{
-								suppressMe->routingObject->suppressed = Suppressed;
+								suppressMe->routingObject->suppressed = DijkstraSuppressed;
 							}
 						}
 						stop = 1;
@@ -2652,12 +2667,12 @@ static int computeOneRoutePerNeighbor(Node *terminusNode, long unsigned int miss
  *  -------- | --------------- |  -----------------------------------------------
  *  30/01/20 | L. Persampieri  |   Initial Implementation and documentation.
  *****************************************************************************/
-int computeRoutes(Node *terminusNode, List subsetComputedRoutes, long unsigned int missingNeighbors)
+int computeRoutes(unsigned long regionNbr, Node *terminusNode, List subsetComputedRoutes, long unsigned int missingNeighbors)
 {
 
 	int result = -1;
 	RtgObject *rtgObj = NULL;
-	PhaseOneSAP *sap;
+	PhaseOneSAP *sap = get_phase_one_sap(NULL);
 
 	record_phases_start_time(phaseOne);
 
@@ -2666,6 +2681,9 @@ int computeRoutes(Node *terminusNode, List subsetComputedRoutes, long unsigned i
 	if (missingNeighbors > 0 && terminusNode != NULL)
 	{
 		// Assumption: terminusNode is correctly initialized
+
+		sap->regionNbr = regionNbr;
+		sap->destination = terminusNode->nodeNbr;
 
 		rtgObj = terminusNode->routingObject;
 		if (!(ROUTES_NOT_FOUND(rtgObj)))
