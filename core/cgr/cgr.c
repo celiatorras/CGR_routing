@@ -1071,6 +1071,7 @@ int getBestRoutes(time_t time, CgrBundle *bundle, List excludedNeighbors, List *
 		*bestRoutes = NULL;
 		debug_printf("Call n.: %u", sap.count_bundles);
 		writeLog("Destination node: %llu.", bundle->terminus_node);
+        writeLog("Region number: %lu.", bundle->regionNbr);
 		if (check_bundle(bundle) != 0)
 		{
 			writeLog("Bundle bad formed.");
