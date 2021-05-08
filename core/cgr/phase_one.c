@@ -2171,7 +2171,6 @@ static int computeOtherRoutes(Node *terminusNode, List subsetComputedRoutes, lon
 	int result = 0, computed = 0, stop = 0;
 	int yenPerformedCorrectly = 0, discoveredAllNeighbors = 0, updateNeighbors = 0;
 	long unsigned temp;
-	int temp_result;
 	RtgObject *rtgObj = terminusNode->routingObject;
 	ListElt *elt, *next;
 	Route *currentRoute;
@@ -2251,21 +2250,7 @@ static int computeOtherRoutes(Node *terminusNode, List subsetComputedRoutes, lon
 
 			if(updateNeighbors)
 			{
-				// ------ DISCOVERED ALL NEIGHBORS TO REACH DESTINATION ------
-				// Yen's algorithm doesn't find any route
-				// So there aren't new neighbors
-#if (MAX_DIJKSTRA_ROUTES == 1)
 				exclude_all_neighbors_from_computed_routes(rtgObj->selectedRoutes);
-#endif
-				temp_result = insert_neighbors_to_reach_destination(sap->excludedNeighbors, terminusNode);
-				if(temp_result < 0)
-				{
-					verbose_debug_printf("Can't add neighbors (error: %d)...", temp_result);
-				}
-				if(temp_result == -2)
-				{
-					result = -2;
-				}
 			}
 		}
 
@@ -2472,7 +2457,7 @@ static int add_computed_route_to_intermediate_nodes(Route *route)
 static int computeOneRoutePerNeighbor(Node *terminusNode, long unsigned int missingNeighbors)
 {
 	int result, stop = 0;
-	int ok, temp;
+	int ok;
 	Route *route;
 	RtgObject *rtgObj;
 	ClearRule rule;
@@ -2576,18 +2561,6 @@ static int computeOneRoutePerNeighbor(Node *terminusNode, long unsigned int miss
 				{
 					delete_cgr_route(route);
 					stop = 1;
-
-					// ------ DISCOVERED ALL NEIGHBORS TO REACH DESTINATION ------
-
-					temp = insert_neighbors_to_reach_destination(sap->excludedNeighbors, terminusNode);
-					if(temp < 0)
-					{
-						verbose_debug_printf("Can't add neighbors (error: %d)...", temp);
-					}
-					if(temp == -2)
-					{
-						result = -2;
-					}
 				}
 				else //MWITHDRAW error
 				{
@@ -2600,28 +2573,6 @@ static int computeOneRoutePerNeighbor(Node *terminusNode, long unsigned int miss
 			{
 				result = -2;
 				stop = 1;
-			}
-		}
-
-		SET_COMPUTED(rtgObj);
-
-		if(result != -2 && rtgObj->selectedRoutes->length == 0)
-		{
-			// O computed routes
-			SET_ROUTES_NOT_FOUND(rtgObj);
-		}
-		else if(result == get_local_node_neighbors_count())
-		{
-			// ------ DISCOVERED ALL NEIGHBORS TO REACH DESTINATION ------
-
-			temp = insert_neighbors_to_reach_destination(sap->excludedNeighbors, terminusNode);
-			if(temp < 0)
-			{
-				verbose_debug_printf("Can't add neighbors (error: %d)...", temp);
-			}
-			if(temp == -2)
-			{
-				result = -2;
 			}
 		}
 	}
@@ -2686,23 +2637,16 @@ int computeRoutes(unsigned long regionNbr, Node *terminusNode, List subsetComput
 		sap->destination = terminusNode->nodeNbr;
 
 		rtgObj = terminusNode->routingObject;
-		if (!(ROUTES_NOT_FOUND(rtgObj)))
-		{
-			if (rtgObj->selectedRoutes->length == 0 || !(ALREADY_COMPUTED(rtgObj)))
+
+			if (rtgObj->selectedRoutes->length == 0)
 			{
 				sap = get_phase_one_sap(NULL);
 				sap->knownRoutesUpdated = 1;
 
-				//if I haven't already called oneRoutePerNeighbor for the terminusNode
-				//or all the selectedRoutes are expired
-
-				if (ALREADY_COMPUTED(rtgObj))
-				{
-					//reset knownRoutes, all the selectedRoutes are expired
-					//I can't know who are the shortest path looking only
-					//in knownRoutes
-					clear_routes_list(rtgObj->knownRoutes); //reset the list
-				}
+				//reset knownRoutes, all the selectedRoutes are expired
+				//I can't know who are the shortest path looking only
+				//in knownRoutes
+				clear_routes_list(rtgObj->knownRoutes); //reset the list
 
 				result = computeOneRoutePerNeighbor(terminusNode, missingNeighbors);
 
@@ -2711,7 +2655,6 @@ int computeRoutes(unsigned long regionNbr, Node *terminusNode, List subsetComput
 			{
 				result = computeOtherRoutes(terminusNode, subsetComputedRoutes, missingNeighbors);
 			}
-		}
 
 		if (result != -2 && rtgObj->selectedRoutes->length == 0)
 		{

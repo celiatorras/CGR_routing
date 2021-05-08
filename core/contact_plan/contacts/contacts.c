@@ -1841,7 +1841,7 @@ int printContactsGraph(FILE *file, time_t currentTime)
 		result = 1;
 
 		fprintf(file,
-				"\n--------------------------------------------- CONTACTS GRAPH ---------------------------------------------\n");
+				"\n----------------------------------------------------- CONTACTS GRAPH -----------------------------------------------------\n");
 		fprintf(file, "Time: %ld\n%-15s %-15s %-15s %-15s %-15s %-15s %-15s %s\n", (long int) currentTime,
 				"Region", "FromNode", "ToNode", "FromTime", "ToTime", "XmitRate", "Confidence", "Citations");
 		result = printTreeInOrder(sap->contacts, file, printContact);
@@ -1849,12 +1849,12 @@ int printContactsGraph(FILE *file, time_t currentTime)
 		if (result == 1)
 		{
 			fprintf(file,
-					"\n----------------------------------------------------------------------------------------------------------\n");
+					"\n--------------------------------------------------------------------------------------------------------------------------\n");
 		}
 		else
 		{
 			fprintf(file,
-					"\n------------------------------------------- CONTACTS GRAPH ERROR --------------------------------------------\n");
+					"\n-------------------------------------------------- CONTACTS GRAPH ERROR --------------------------------------------------\n");
 		}
 	}
 	else

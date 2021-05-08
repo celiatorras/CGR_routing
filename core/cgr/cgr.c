@@ -939,35 +939,7 @@ static int executeCGR(CgrBundle *bundle, Node *terminusNode, List excludedNeighb
 	List subsetComputedRoutes = NULL;
 	RtgObject *rtgObj = terminusNode->routingObject;
 
-	if (!(ALREADY_COMPUTED(rtgObj))) //If it's the first time that I compute routes for this destination
-	{
-		if(NEIGHBORS_DISCOVERED(rtgObj))
-		{
-			missingNeighbors = rtgObj->citations->length;
-		}
-		else
-		{
-			missingNeighbors = get_local_node_neighbors_count();
-		}
-#if (MAX_DIJKSTRA_ROUTES > 0)
-		if(!IS_CRITICAL(bundle) && missingNeighbors > MAX_DIJKSTRA_ROUTES)
-		{
-			missingNeighbors = MAX_DIJKSTRA_ROUTES;
-		}
-#endif
-		if(missingNeighbors > 0)
-		{
-			result = computeRoutes(bundle->regionNbr, terminusNode, NULL, missingNeighbors); //phase one
-			stop = (result <= 0) ? 1 : 0;
-		}
-		else
-		{
-			stop = 1;
-		}
-	}
-
-	if((NEIGHBORS_DISCOVERED(rtgObj) && rtgObj->citations->length == 0)
-			|| get_local_node_neighbors_count() == 0)
+	if(get_local_node_neighbors_count() == 0)
 	{
 		// 0 neighbors to reach destination...
 		stop = 1;

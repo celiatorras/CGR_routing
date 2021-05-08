@@ -1657,16 +1657,9 @@ int getCandidateRoutes(Node *terminusNode, CgrBundle *bundle, List excludedNeigh
 			&& subsetComputedRoutes != NULL && missingNeighbors != NULL
 			&& candidateRoutes != NULL)
 	{
-		if(NEIGHBORS_DISCOVERED(terminusNode->routingObject))
-		{
-			// Get the max number of neighbors that could have a computed route to destination
-			*missingNeighbors = terminusNode->routingObject->citations->length;
-		}
-		else
-		{
-			// Get the neighbors count (all neighbors)
-			*missingNeighbors = get_local_node_neighbors_count();
-		}
+
+	    // Get the neighbors count (all neighbors)
+	    *missingNeighbors = get_local_node_neighbors_count();
 
 		max_neighbors_number = *missingNeighbors;
 

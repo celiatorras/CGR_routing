@@ -1277,9 +1277,18 @@ static int add_neighbor(unsigned long long node_number, time_t to_time)
 
 	if(node_number <= 0 || to_time < 0 || sap->local_node_neighbors == NULL)
 	{
-		result = -3;
+		return -3;
 	}
-	else if(get_neighbor(node_number) == NULL)
+
+	neighbor = get_neighbor(node_number);
+	if (neighbor != NULL) {
+	    if (neighbor->toTime < to_time) {
+	        neighbor->toTime = to_time;
+	    }
+
+	    result = 0;
+	}
+	else
 	{
 		//if neighbor not found
 		neighbor = create_neighbor(node_number, to_time);
@@ -1304,10 +1313,7 @@ static int add_neighbor(unsigned long long node_number, time_t to_time)
 			verbose_debug_printf("Can't create neighbor %llu (toTime: %ld)", node_number, (long int) to_time);
 		}
 	}
-	else
-	{
-		verbose_debug_printf("Neighbor %llu already exists.", node_number);
-	}
+
 	return result;
 }
 
