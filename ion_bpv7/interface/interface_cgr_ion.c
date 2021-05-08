@@ -63,8 +63,8 @@
 
 #if(CGRR)
 #include "cgrr.h"
-#include "../../../../library/ext/cgrr/cgrr_msr_utils.h"
-#include "../../../../library/ext/cgrr/cgrr_help.h"
+#include "cgrr_msr_utils.h"
+#include "cgrr_help.h"
 #endif
 #if (RGR)
 #include "rgr.h"
@@ -440,17 +440,18 @@ static void printDebugIonRoute(PsmPartition ionwm, CgrRoute *route)
  *  -------- | --------------- | -----------------------------------------------
  *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int convert_CtRegistration_from_ion_to_cgr(IonCXref *IonContact, Contact *CgrContact)
+int convert_CtRegistration_from_ion_to_cgr(IonCXref *IonContact, Contact *CgrContact)
 {
 	int result = -1;
 
 	if (IonContact != NULL && CgrContact != NULL)
 	{
+        CgrContact->regionNbr = IonContact->regionNbr;
 		CgrContact->fromNode = IonContact->fromNode;
 		CgrContact->toNode = IonContact->toNode;
 		CgrContact->fromTime = MAX_POSIX_TIME;
 		CgrContact->toTime = MAX_POSIX_TIME;
-		CgrContact->type = Registration;
+		CgrContact->type = TypeRegistration;
 		CgrContact->xmitRate = 0;
 		CgrContact->confidence = 1.0F;
 
@@ -493,11 +494,12 @@ static int convert_CtScheduled_from_ion_to_cgr(IonCXref *IonContact, Contact *Cg
 
 	if (IonContact != NULL && CgrContact != NULL)
 	{
+	    CgrContact->regionNbr = IonContact->regionNbr;
 		CgrContact->fromNode = IonContact->fromNode;
 		CgrContact->toNode = IonContact->toNode;
 		CgrContact->fromTime = IonContact->fromTime - reference_time;
 		CgrContact->toTime = IonContact->toTime - reference_time;
-		CgrContact->type = Scheduled;
+		CgrContact->type = TypeScheduled;
 		CgrContact->xmitRate = IonContact->xmitRate;
 		CgrContact->confidence = IonContact->confidence;
 		// TODO Consider to add MTVs
@@ -534,12 +536,13 @@ static int convert_CtScheduled_from_ion_to_cgr(IonCXref *IonContact, Contact *Cg
  *  -------- | --------------- | -----------------------------------------------
  *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int convert_CtRegistration_from_cgr_to_ion(Contact *CgrContact, IonCXref *IonContact)
+int convert_CtRegistration_from_cgr_to_ion(Contact *CgrContact, IonCXref *IonContact)
 {
 	int result = -1;
 
 	if (IonContact != NULL && CgrContact != NULL)
 	{
+        IonContact->regionNbr = CgrContact->regionNbr;
 		IonContact->fromNode = CgrContact->fromNode;
 		IonContact->toNode = CgrContact->toNode;
 		IonContact->fromTime = MAX_POSIX_TIME;
@@ -586,6 +589,7 @@ static int convert_CtScheduled_from_cgr_to_ion(Contact *CgrContact, IonCXref *Io
 
 	if (IonContact != NULL && CgrContact != NULL)
 	{
+        IonContact->regionNbr = CgrContact->regionNbr;
 		IonContact->fromNode = CgrContact->fromNode;
 		IonContact->toNode = CgrContact->toNode;
 		IonContact->fromTime = CgrContact->fromTime + reference_time;
@@ -622,7 +626,7 @@ static int convert_CtScheduled_from_cgr_to_ion(Contact *CgrContact, IonCXref *Io
  * \param[in]   reference_time The reference time used to convert POSIX time in differential time from it.
  *
  * \par	Notes:
- *             1.  Only Registration and Scheduled contacts are allowed.
+ *             1.  Only Scheduled contacts are allowed.
  *
  * \par Revision History:
  *
@@ -635,13 +639,7 @@ static int convert_contact_from_ion_to_cgr(IonCXref *IonContact, Contact *CgrCon
 	int result = -1;
 	if (IonContact != NULL && CgrContact != NULL)
 	{
-		// TODO consider other types of contacts,
-		// TODO but SABR talks about only scheduled contacts
-		if (IonContact->type == CtRegistration)
-		{
-			result = convert_CtRegistration_from_ion_to_cgr(IonContact, CgrContact);
-		}
-		else if (IonContact->type == CtScheduled)
+	    if (IonContact->type == CtScheduled)
 		{
 			result = convert_CtScheduled_from_ion_to_cgr(IonContact, CgrContact, reference_time);
 		}
@@ -686,13 +684,7 @@ static int convert_contact_from_cgr_to_ion(Contact *CgrContact, IonCXref *IonCon
 	int result = -1;
 	if (IonContact != NULL && CgrContact != NULL)
 	{
-		// TODO consider other types of contacts,
-		// TODO but SABR talks about only scheduled contacts
-		if (CgrContact->type == Registration)
-		{
-			result = convert_CtRegistration_from_cgr_to_ion(CgrContact, IonContact);
-		}
-		else if (CgrContact->type == Scheduled)
+	    if (CgrContact->type == TypeScheduled)
 		{
 			result = convert_CtScheduled_from_cgr_to_ion(CgrContact, IonContact, reference_time);
 		}
@@ -1451,6 +1443,9 @@ static int convert_bundle_from_ion_to_cgr(unsigned long long toNode, time_t curr
 
 	if (IonBundle != NULL && CgrBundle != NULL)
 	{
+        uint32_t regionNbr = 0;
+        oK(ionRegionOf(getOwnNodeNbr(), (uvast) toNode, &regionNbr));
+        CgrBundle->regionNbr = (unsigned long) regionNbr;
 
 		CgrBundle->terminus_node = toNode;
 
@@ -1981,10 +1976,6 @@ static int add_contact(IonCXref *ContactInION, time_t reference_time)
 
 	if (result == 0)
 	{
-		if (CgrContact.type == Registration)
-		{
-			CgrContact.fromTime = -1;
-		}
 
 #if (GET_MTV_FROM_SDR)
 		// TODO CONSIDER TO MOVE MTVs INTO CONVERT CONTACT FUNCTION
@@ -1997,7 +1988,7 @@ static int add_contact(IonCXref *ContactInION, time_t reference_time)
 
 		// Try to add contact
 		// Use the MTV passed as argument
-		result = addContact(CgrContact.fromNode, CgrContact.toNode, CgrContact.fromTime,
+		result = addContact(CgrContact.regionNbr, CgrContact.fromNode, CgrContact.toNode, CgrContact.fromTime,
 				CgrContact.toTime, CgrContact.xmitRate, CgrContact.confidence, COPY_MTV, mtv);
 
 		if(result >= 1)
