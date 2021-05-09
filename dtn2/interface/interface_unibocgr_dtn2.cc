@@ -94,6 +94,11 @@ static dtn::UniboCGRBundleRouter* uniborouter;
  */
 static CgrBundle *cgrBundle = NULL;
 
+/**
+ * \brief Default region number.
+ */
+static const unsigned long defaultRegionNbr = 1;
+
 #define printDebugIonRoute(ionwm, route) do {  } while(0)
 
 //ported from ION bpv6 for CGRR and RGR extension
@@ -264,6 +269,7 @@ static int convert_bundle_from_dtn2_to_cgr(time_t current_time, dtn::Bundle *Dtn
 			convert << s;
 			convert >> destNode;
 			CgrBundle->terminus_node = destNode;
+            CgrBundle->regionNbr = defaultRegionNbr;
 
 			#if (MSR == 1)
 					CgrBundle->msrRoute = NULL;
@@ -472,7 +478,7 @@ static int add_contact(char * fileline)
 	int count = 10, n=0, result = -2;
 	long long fn = 0;
 	long unsigned int xn = 0;
-	CgrContact.type = Scheduled;
+	CgrContact.type = TypeScheduled;
 	//fromTime
 	if(fileline[count] == '+')
 	{
@@ -527,7 +533,7 @@ static int add_contact(char * fileline)
 	if (result == 0)
 	{
 		// Try to add contact
-		result = addContact(CgrContact.fromNode, CgrContact.toNode, CgrContact.fromTime,
+		result = addContact(defaultRegionNbr, CgrContact.fromNode, CgrContact.toNode, CgrContact.fromTime,
 				CgrContact.toTime, CgrContact.xmitRate, CgrContact.confidence, 0, NULL);
 		if(result >= 1)
 		{
