@@ -171,7 +171,7 @@ function mv_unibo_cgr_to_ion() {
 		echo "Updating the configure script..."
 		cd "$ION" && autoreconf -fi && echo -e "\nNow you can compile and install in the usual way with configure/make/make install\n" \
 		&& echo "configure sintax from ION's root directory:" \
-		&& echo "./configure --enable-unibo-cgr CPPFLAGS='-DRGREB=1 -DCGRREB=1'" \
+		&& echo "./configure --enable-unibo-cgr CPPFLAGS='-DRGR=1 -DRGREB=1 -DCGRR=1 -DCGRREB=1'" \
 		&& echo "If you don't want RGR or CGRR just don't specify them in CPPFLAGS."
 	else
 		echo -e "\nPlease install missing packages and launch autoreconf -fi in $ION to update the configure script.\n" 1>&2
