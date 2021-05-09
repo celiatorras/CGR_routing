@@ -143,7 +143,13 @@ Additional information</h3>
 <p><em>Compilation Switches</em></p>
 <p>The exact behavior of Unibo-CGR depends on the settings of configuration switches. Researchers proficient in CGR routing can override defaults by editing the Unibo-CGR/core/config.h file. Some experimental features are not available on specific BP implementations.</p>
 <p><em>Use in ION</em></p>
-<p>The use of Unibo-CGR in ION does not differ from the use of previous implementation of CGR/SABR, a part experimental features that can be optionally enabled/disabled by overriding defaults (see above).</p>
+<p>The use of Unibo-CGR in ION does not differ from the use of previous implementation of CGR/SABR, a part experimental features that can be optionally enabled/disabled by overriding defaults (see above). <br  />
+ Launch the configure script with the following sintax (from ION's root directory): <br  />
+ Only Unibo-CGR: ./configure &ndash;enable-unibo-cgr <br  />
+ Unibo-CGR + RGR Ext. Block: ./configure &ndash;enable-unibo-cgr CPPFLAGS='-DRGREB=1' <br  />
+ Unibo-CGR + CGRR Ext. Block: ./configure &ndash;enable-unibo-cgr CPPFLAGS='-DCGRREB=1' <br  />
+ Unibo-CGR + RGR and CGRR Ext. Block: ./configure &ndash;enable-unibo-cgr CPPFLAGS='-DRGREB=1 -DCGRREB=1' <br  />
+ Unibo-CGR disabled: ./configure</p>
 <p><em>Use in DTN2</em></p>
 <p><a class="el" href="struct_contact.html">Contact</a> plan: The use of Unibo-CGR requires that the contact plan be provided as an external file (contact-plan.txt, to be placed in the directory from which the dtnd daemon is launched) at dtnd daemon start-up. The syntax is exactly the same as that used in ION, including the possible bidirectional interpretation of single “range” instructions, for the sake of commonality. A simple example file is provided for user convenience in Unibo-CGR/dtn2/aux_files.</p>
 <p>Configuration file: The Unibo-CGR bundle router must be selected in the DTN2 configuration file (usually in /etc/dtn.conf). See Unibo-CGR/dtn2/aux_files/README for more details.</p>

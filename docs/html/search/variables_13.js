@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['visited_1383',['visited',['../structcgr_contact_note.html#a4b66973fd0abdd396e7c9af5f52a9600',1,'cgrContactNote']]]
+  ['warranty_1252',['WARRANTY',['../unibo-cgr_2_r_e_a_d_m_e_8txt.html#a24709b1f345ef20abd0dcf59eff96acf',1,'README.txt']]]
 ];
