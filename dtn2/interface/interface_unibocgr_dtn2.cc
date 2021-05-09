@@ -478,7 +478,7 @@ static int add_contact(char * fileline)
 	int count = 10, n=0, result = -2;
 	long long fn = 0;
 	long unsigned int xn = 0;
-	CgrContact.type = Scheduled;
+	CgrContact.type = TypeScheduled;
 	//fromTime
 	if(fileline[count] == '+')
 	{
