@@ -44,5 +44,5 @@ var searchData=
   ['dlvconfidence_205',['dlvConfidence',['../struct_cgr_bundle.html#a172bfd87a716cb37bd05da5516e09fe1',1,'CgrBundle']]],
   ['do_5fnot_5fcopy_5fmtv_206',['DO_NOT_COPY_MTV',['../contacts_8h.html#a5bb9af596c6179940d58a02773f94aee',1,'contacts.h']]],
   ['doxyfile_2etxt_207',['Doxyfile.txt',['../_doxyfile_8txt.html',1,'']]],
-  ['dtn2_208',['DTN2',['../unibo-cgr_2_r_e_a_d_m_e_8txt.html#a0053df0ace87002a2d81a3588a355ebd',1,'DTN2(DTNME, the NASA MSFC version). Some advanced features of Unibo-CGR rely on two experimental bundle extensions:&#160;README.txt'],['../unibo-cgr_2_r_e_a_d_m_e_8txt.html#a7da8489160432101e757b72c6d3f39d2',1,'DTN2(Makefile, Bundle.Router.cc, etc.) _ docs _doxygen html documentation_ Packages for a specific implementation will include only the interface(s) involved. Copyright(c) 2020:&#160;README.txt']]]
+  ['dtnme_208',['DTNME',['../unibo-cgr_2_r_e_a_d_m_e_8txt.html#a8eb64aeaef74218f00893fb659ae1f3d',1,'DTNME(DTNME, the NASA MSFC version). Some advanced features of Unibo-CGR rely on two experimental bundle extensions:&#160;README.txt'],['../unibo-cgr_2_r_e_a_d_m_e_8txt.html#a21a4fe4f3b56571de3944f176593c84f',1,'DTNME(Makefile, Bundle.Router.cc, etc.) _ docs _doxygen html documentation_ Packages for a specific implementation will include only the interface(s) involved. Copyright(c) 2020:&#160;README.txt']]]
 ];

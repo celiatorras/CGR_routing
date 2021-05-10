@@ -8,7 +8,7 @@ var searchData=
   ['neighbors_5flist_5fbuilded_415',['neighbors_list_builded',['../struct_neighbors_s_a_p.html#ab844f65f32c9e299528a147f8a9d4077',1,'NeighborsSAP']]],
   ['neighborsfound_416',['neighborsFound',['../struct_phase_two_s_a_p.html#a23da848dcaf36c7850c362639d3f2492',1,'PhaseTwoSAP']]],
   ['neighborssap_417',['NeighborsSAP',['../struct_neighbors_s_a_p.html',1,'']]],
-  ['networking_418',['Networking',['../unibo-cgr_2_r_e_a_d_m_e_8txt.html#a056ec6b03791d65ab005cc8cb85fb047',1,'README.txt']]],
+  ['networking_418',['Networking',['../unibo-cgr_2_r_e_a_d_m_e_8txt.html#a4c962eb510a65645cc67e71662f708c2',1,'README.txt']]],
   ['next_419',['next',['../structnode_elt.html#a8dc065147a8be2a883d6aa283ab7a3b7',1,'nodeElt']]],
   ['nextcontactindijkstraqueue_420',['nextContactInDijkstraQueue',['../structcgr_contact_note.html#a96cb543f899732c1f2492b88990db977',1,'cgrContactNote']]],
   ['node_421',['node',['../structnode.html',1,'node'],['../nodes_8h.html#ac09cf950484bd9550d14d602b0e5e7fb',1,'Node():&#160;nodes.h']]],

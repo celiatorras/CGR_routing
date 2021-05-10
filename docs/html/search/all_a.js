@@ -5,7 +5,7 @@ var searchData=
   ['lastcontact_350',['lastContact',['../struct_dijkstra_queue.html#a1051b7ee14ca563cc84ff21bd0560852',1,'DijkstraQueue']]],
   ['left_351',['LEFT',['../rbt_8c.html#a437ef08681e7210d6678427030446a54',1,'rbt.c']]],
   ['length_352',['length',['../structlist.html#a90bf0058c728d7cea7de336a1251f387',1,'list::length()'],['../structrbt.html#a90bf0058c728d7cea7de336a1251f387',1,'rbt::length()'],['../struct_geo_route.html#ac8d42bcd4a44e078047ccd7291059238',1,'GeoRoute::length()']]],
-  ['license_353',['License',['../unibo-cgr_2_r_e_a_d_m_e_8txt.html#a1912818cff6aeb3565db8d96fc526ae3',1,'README.txt']]],
+  ['license_353',['License',['../unibo-cgr_2_r_e_a_d_m_e_8txt.html#afd7fa3098fa6937206766f844b0448c2',1,'README.txt']]],
   ['list_354',['list',['../structlist.html',1,'list'],['../structnode_elt.html#ab513edab4c8af027712bb2842435b2bd',1,'nodeElt::list()'],['../list__type_8h.html#a2f83d70457d96c5f0328f29529375850',1,'List():&#160;list_type.h']]],
   ['list_2ec_355',['list.c',['../list_8c.html',1,'']]],
   ['list_2eh_356',['list.h',['../list_8h.html',1,'']]],

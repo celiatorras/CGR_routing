@@ -1,7 +1,7 @@
 var searchData=
 [
   ['id_314',['id',['../struct_cgr_bundle.html#a794dee9d818111941db25311c40ff008',1,'CgrBundle']]],
-  ['in_315',['in',['../unibo-cgr_2_r_e_a_d_m_e_8txt.html#ae0b7f5e1c944bd2a90e0908a72cc4ac2',1,'README.txt']]],
+  ['in_315',['in',['../unibo-cgr_2_r_e_a_d_m_e_8txt.html#a8517e86557fb7c1a052c0e6864ada9ef',1,'README.txt']]],
   ['increasecgrscalar_316',['increaseCgrScalar',['../scalar_8c.html#a9f13077bc4034037913f20f2ef1dcbfa',1,'increaseCgrScalar(CgrScalar *s, long int i):&#160;scalar.c'],['../scalar_8h.html#a4239c7d4594c902fe99bd6ad3401c96b',1,'increaseCgrScalar(CgrScalar *, long int):&#160;scalar.c']]],
   ['initialize_5fbundle_317',['initialize_bundle',['../bundles_8c.html#aedca7d28bbf50ad503b35828c0d327c5',1,'initialize_bundle(int backward_propagation, int critical, float dlvConfidence, time_t expiration_time, Priority priority, unsigned int ordinal, int probe, int fragmentable, long unsigned int size, unsigned long long sender_node, unsigned long long terminus_node, CgrBundle *bundle):&#160;bundles.c'],['../bundles_8h.html#aedca7d28bbf50ad503b35828c0d327c5',1,'initialize_bundle(int backward_propagation, int critical, float dlvConfidence, time_t expiration_time, Priority priority, unsigned int ordinal, int probe, int fragmentable, long unsigned int size, unsigned long long sender_node, unsigned long long terminus_node, CgrBundle *bundle):&#160;bundles.c']]],
   ['initialize_5fcgr_318',['initialize_cgr',['../cgr_8c.html#abd3626d2c4c02a6686f155b6813065e1',1,'initialize_cgr(time_t time, unsigned long long ownNode):&#160;cgr.c'],['../cgr_8h.html#abd3626d2c4c02a6686f155b6813065e1',1,'initialize_cgr(time_t time, unsigned long long ownNode):&#160;cgr.c']]],
@@ -22,8 +22,8 @@ var searchData=
   ['interface_5fcgr_5fion_2eh_333',['interface_cgr_ion.h',['../ion__bpv6_2interface_2interface__cgr__ion_8h.html',1,'(Global Namespace)'],['../ion__bpv7_2interface_2interface__cgr__ion_8h.html',1,'(Global Namespace)']]],
   ['interface_5funibocgr_5fdtn2_2ecc_334',['interface_unibocgr_dtn2.cc',['../interface__unibocgr__dtn2_8cc.html',1,'']]],
   ['interface_5funibocgr_5fdtn2_2eh_335',['interface_unibocgr_dtn2.h',['../interface__unibocgr__dtn2_8h.html',1,'']]],
-  ['interfaces_336',['interfaces',['../unibo-cgr_2_r_e_a_d_m_e_8txt.html#a08c18da6b8a7590461ee4d9541ecc54e',1,'README.txt']]],
-  ['ion_337',['ION',['../unibo-cgr_2_r_e_a_d_m_e_8txt.html#a215f03c6e8fef1e0484a3990da5c46cf',1,'README.txt']]],
+  ['interfaces_336',['interfaces',['../unibo-cgr_2_r_e_a_d_m_e_8txt.html#aabfc0efb4ae1d132dd13bd4e4cb13852',1,'README.txt']]],
+  ['ion_337',['ION',['../unibo-cgr_2_r_e_a_d_m_e_8txt.html#a4c660c8e95787cbceebc2e94ff88c980',1,'README.txt']]],
   ['ipn_5fnumber_338',['ipn_number',['../struct_neighbor.html#a36670a306074bf658d15e6c19ef98c3d',1,'Neighbor']]],
   ['is_5fcritical_339',['IS_CRITICAL',['../bundles_8h.html#add3256e3f4a59e84460f170f5eaaf980',1,'bundles.h']]],
   ['is_5ffragmentable_340',['IS_FRAGMENTABLE',['../bundles_8h.html#a1c20353c8e494b9b0ccdf7d129de735d',1,'bundles.h']]],

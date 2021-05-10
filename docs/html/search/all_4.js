@@ -3,7 +3,7 @@ var searchData=
   ['encode_5fcgrr_5froute_209',['encode_cgrr_route',['../ion__bpv7_2extensions_2cgrr_2cgrr__utils_8c.html#a249cbfc86bf1f22d7a5e04d5a406826c',1,'cgrr_utils.c']]],
   ['encode_5frgr_210',['encode_rgr',['../ion__bpv7_2extensions_2rgr_2rgr__utils_8c.html#a1f220afa28f3fff0499cb138376b0885',1,'encode_rgr(GeoRoute *geoRouteToEncode, unsigned char **bufferEncoded):&#160;rgr_utils.c'],['../ion__bpv7_2extensions_2rgr_2rgr__utils_8h.html#a1f220afa28f3fff0499cb138376b0885',1,'encode_rgr(GeoRoute *geoRouteToEncode, unsigned char **bufferEncoded):&#160;rgr_utils.c']]],
   ['encode_5funique_5fcgrr_5froute_211',['encode_unique_cgrr_route',['../ion__bpv6_2extensions_2cgrr_2cgrr__msr__utils_8c.html#a3307bf6edca7527a9c49f60547807f9b',1,'encode_unique_cgrr_route(ExtensionBlock *blk, Object extBlkAddr, Bundle *bundle, CGRRoute *cgrr_route):&#160;cgrr_msr_utils.c'],['../ion__bpv7_2extensions_2cgrr_2cgrr__msr__utils_8c.html#a3307bf6edca7527a9c49f60547807f9b',1,'encode_unique_cgrr_route(ExtensionBlock *blk, Object extBlkAddr, Bundle *bundle, CGRRoute *cgrr_route):&#160;cgrr_msr_utils.c']]],
-  ['end_212',['end',['../unibo-cgr_2_r_e_a_d_m_e_8txt.html#a0badfc34c6d7be80f70f8214efeda180',1,'README.txt']]],
+  ['end_212',['end',['../unibo-cgr_2_r_e_a_d_m_e_8txt.html#a02f61c9dddce3a9c6586ac587640e9a5',1,'README.txt']]],
   ['end_5fcall_5flog_213',['end_call_log',['../cgr_8h.html#a044c2cddfecd2d7e1306b977e298f6e6',1,'cgr.h']]],
   ['epoch_5f2000_5fsec_214',['EPOCH_2000_SEC',['../interface__unibocgr__dtn2_8cc.html#ac80010c02b2c78d8877f6ac4a5daae31',1,'interface_unibocgr_dtn2.cc']]],
   ['erase_5fcgr_5froute_215',['erase_cgr_route',['../routes_8c.html#a1eba11813191baa4d4d16dd66e354dc8',1,'routes.c']]],
