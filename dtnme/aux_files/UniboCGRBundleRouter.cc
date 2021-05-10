@@ -31,15 +31,13 @@
  *    See the Agreement for the specific language governing permissions and
  *    limitations.
  */
-
-
 /*
 *     UniboCGRBundleRouter.cc
 *
-*  This is a modification of BundleRouter made by Giacomo Gori
-*  on Summer 2020 with Carlo Caini as supervisor.
-*  It's purpose is to make possible for DTN2 to work with interface_unibocgr_dtn2
-*  to use Unibo-CGR as routing mechanism
+*  This is a modification of UniboCGRBundleRouter made by Giacomo Gori
+*  on Spring 2021 with Carlo Caini as supervisor.
+*  It's purpose is to make possible for DTNME v1.0 beta to work with interface_unibocgr_dtn2
+*  to use UniboCGR as routing mechanism. 
 */
 
 #ifdef HAVE_CONFIG_H
@@ -55,12 +53,12 @@
 #include "contacts/ContactManager.h"
 #include "contacts/Link.h"
 #include "reg/Registration.h"
-#include "session/Session.h"
 
-//Interface for Unibo-CGR
-#include "Unibo-CGR/dtn2/interface/interface_unibocgr_dtn2.h"
+//Interface for UniboCGR
+#include "Unibo-CGR/dtnme/interface/interface_unibocgr_dtn2.h"
 //Giacomo Gori
 #define NOMINAL_PRIMARY_BLKSIZE	29 // from ION 4.0.0: bpv7/library/libbpP.c
+
 namespace dtn {
 
 void unibo_cgr_router_shutdown(void*)
@@ -79,20 +77,21 @@ UniboCGRBundleRouter::UniboCGRBundleRouter(const char* classname,
 
     // register the global shutdown function
     BundleDaemon::instance()->set_rtr_shutdown(
-    		unibo_cgr_router_shutdown, (void *) 0);
-   //Giacomo:: getting necessary info & call initialize
-   struct timeval tv;
-   gettimeofday(&tv, NULL);
-   EndpointID eid = BundleDaemon::instance()->local_eid_ipn();
-   std::string ipnName = eid.str();
-   std::string delimiter1 = ":";
-   std::string delimiter2 = ".";
-   std::string s = ipnName.substr(ipnName.find(delimiter1) + 1, ipnName.find(delimiter2) - 1);
-   std::stringstream convert;
-   long ownNode;
-   convert << s;
-   convert >> ownNode;
-   initialize_contact_graph_routing(ownNode, tv.tv_sec, this);
+            unibo_cgr_router_shutdown, (void *) 0);
+    //Giacomo:: getting necessary info & call initialize
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    EndpointID eid = BundleDaemon::instance()->local_eid_ipn();
+    std::string ipnName = eid.str();
+    std::string delimiter1 = ":";
+    std::string delimiter2 = ".";
+    std::string s = ipnName.substr(ipnName.find(delimiter1) + 1, ipnName.find(delimiter2) - 1);
+    std::stringstream convert;
+    long ownNode;
+    convert << s;
+    convert >> ownNode;
+    initialize_contact_graph_routing(ownNode, tv.tv_sec, this);
+
 }
 
 UniboCGRBundleRouter::UniboCGRBundleRouter()
@@ -170,7 +169,6 @@ UniboCGRBundleRouter::handle_changed_routes()
     // want to send a bundle back where it came from
     reception_cache_.evict_all();
     reroute_all_bundles();
-    reroute_all_sessions();
 }
 
 //----------------------------------------------------------------------
@@ -181,121 +179,15 @@ UniboCGRBundleRouter::handle_event(BundleEvent* event)
 }
 
 //----------------------------------------------------------------------
-Session*
-UniboCGRBundleRouter::get_session_for_bundle(Bundle* bundle)
-{
-    if (bundle->session_flags() != 0)
-    {
-        log_debug("get_session_for_bundle: bundle id %"PRIbid" is a subscription msg",
-                  bundle->bundleid());
-        return NULL;
-    }
-
-    if (bundle->sequence_id().empty()  &&
-        bundle->obsoletes_id().empty() &&
-        bundle->session_eid().length() == 0)
-    {
-        log_debug("get_session_for_bundle: bundle id %"PRIbid" not a session bundle",
-                  bundle->bundleid());
-        return NULL;
-    }
-
-    EndpointID session_eid = bundle->session_eid();
-    if (session_eid.length() == 0)
-    {
-        session_eid.assign(std::string("dtn-unicast-session:") +
-                           bundle->source().str() +
-                           "," +
-                           bundle->dest().str());
-        ASSERT(session_eid.valid());
-    }
-
-    Session* session = sessions_.get_session(session_eid);
-    log_debug("get_session_for_bundle: *%p *%p", bundle, session);
-    return session;
-}
-
-//----------------------------------------------------------------------
-bool
-UniboCGRBundleRouter::add_bundle_to_session(Bundle* bundle, Session* session)
-{
-    // XXX/demmer is this the right deletion reason for obsoletes??
-    static BundleProtocol::status_report_reason_t deletion_reason =
-        BundleProtocol::REASON_DEPLETED_STORAGE;
-    
-    log_debug("adding *%p to *%p", bundle, session);
-
-    if (! bundle->sequence_id().empty())
-    {
-        oasys::ScopeLock l(session->bundles()->lock(),
-                           "UniboCGRBundleRouter::add_subscriber");
-        BundleList::iterator iter = session->bundles()->begin();
-        while (iter != session->bundles()->end())
-        {
-            Bundle* old_bundle = *iter;
-            ++iter; // in case we remove the bundle from the list
-
-            // make sure the old bundle has a sequence id
-            if (old_bundle->sequence_id().empty()) {
-                continue;
-            }
-
-            // first check if the newly arriving bundle causes an old one
-            // to be obsolete
-            if (bundle->obsoletes_id() >= old_bundle->sequence_id())
-            {
-                log_debug("*%p obsoletes *%p... removing old bundle",
-                          bundle, old_bundle);
-            
-                bool ok = session->bundles()->erase(old_bundle);
-                ASSERT(ok);
-                BundleDaemon::post_at_head(
-                    new BundleDeleteRequest(old_bundle, deletion_reason));
-                continue;
-            }
-
-            // next check if the existing bundle obsoletes this one
-            if (old_bundle->obsoletes_id() >= bundle->sequence_id())
-            {
-                log_debug("*%p obsoletes *%p... ignoring new arrival",
-                          old_bundle, bundle);
-                BundleDaemon::post_at_head(
-                    new BundleDeleteRequest(bundle, deletion_reason));
-                return false;
-            }
-
-            // now check if the new and existing bundles have the same
-            // sequence id, in which case we discard the new arrival as
-            // well
-            if (bundle->sequence_id() == old_bundle->sequence_id())
-            {
-                log_debug("*%p and *%p have same sequence id... "
-                          "ignoring new arrival",
-                          old_bundle, bundle);
-                BundleDaemon::post_at_head(
-                    new BundleDeleteRequest(bundle, deletion_reason));
-                return false;
-            }
-            
-            log_debug("compared *%p and *%p, nothing is obsoleted",
-                      old_bundle, bundle);
-        }
-    }
-
-    session->bundles()->push_back(bundle);
-    session->sequence_id()->update(bundle->sequence_id());
-
-    return true;
-}
-
-//----------------------------------------------------------------------
 void
 UniboCGRBundleRouter::handle_bundle_received(BundleReceivedEvent* event)
 {
+    if (BundleDaemon::instance()->shutting_down()) return;
+
     bool should_route = true;
     
     Bundle* bundle = event->bundleref_.object();
-    log_debug("handle bundle received: *%p", bundle);
+    //log_debug("handle bundle received: *%p", bundle);
 
     EndpointID remote_eid(EndpointID::NULL_EID());
 
@@ -303,37 +195,6 @@ UniboCGRBundleRouter::handle_bundle_received(BundleReceivedEvent* event)
         remote_eid = event->link_->remote_eid();
     }
 
-    if (! reception_cache_.add_entry(bundle, remote_eid))
-    {
-        log_info("ignoring duplicate bundle: *%p", bundle);
-        BundleDaemon::post_at_head(
-            new BundleDeleteRequest(bundle, BundleProtocol::REASON_NO_ADDTL_INFO));
-        return;
-    }
-
-    // check if the bundle is part of a session, either because it has
-    // a sequence id and/or obsoletes id, or because it has an
-    // explicit session eid. if it is part of the session, add it to
-    // the session list
-    Session* session = get_session_for_bundle(bundle);
-    if (session != NULL)
-    {
-        // add the bundle to the session list, which checks whether 
-        // it obsoletes any existing bundles on the session, as well
-        // as whether the bundle itself is obsolete on arrival.
-        should_route = add_bundle_to_session(bundle, session);
-        if (! should_route) {
-            log_debug("session bundle %"PRIbid" is DOA", bundle->bundleid());
-            return; // don't route it 
-        }
-    }
-
-    // check if the bundle is a session subscription management bundle
-    // XXX/demmer maybe use a registration instead??
-    if (bundle->session_flags() != 0) {
-        should_route = handle_session_bundle(event);
-    }
-    
     if (should_route) {
         route_bundle(bundle);
     } else {
@@ -365,7 +226,6 @@ UniboCGRBundleRouter::remove_from_deferred(const BundleRef& bundle, int actions)
         
         DeferredList* deferred = deferred_list(link);
 
-        //dzdebug
         oasys::ScopeLock l(deferred->list()->lock(), 
                            "UniboCGRBundleRouter::remove_from_deferred");
 
@@ -373,8 +233,8 @@ UniboCGRBundleRouter::remove_from_deferred(const BundleRef& bundle, int actions)
         if (deferred->find(bundle, &info))
         {
             if (info.action() & actions) {
-                log_debug("removing bundle *%p from link *%p deferred list",
-                          bundle.object(), (*iter).object());
+                //log_debug("removing bundle *%p from link *%p deferred list",
+                //          bundle.object(), (*iter).object());
                 deferred->del(bundle);
             }
         }
@@ -385,9 +245,11 @@ UniboCGRBundleRouter::remove_from_deferred(const BundleRef& bundle, int actions)
 void
 UniboCGRBundleRouter::handle_bundle_transmitted(BundleTransmittedEvent* event)
 {
+    if (BundleDaemon::instance()->shutting_down()) return;
+
     const BundleRef& bundle = event->bundleref_;
-    log_debug("handle bundle transmitted (%s): *%p", 
-              event->success_?"success":"failure", bundle.object());
+    //log_debug("handle bundle transmitted (%s): *%p", 
+    //          event->success_?"success":"failure", bundle.object());
 
     if (!event->success_) {
         // try again if not successful the first time 
@@ -409,34 +271,25 @@ UniboCGRBundleRouter::handle_bundle_transmitted(BundleTransmittedEvent* event)
 bool
 UniboCGRBundleRouter::can_delete_bundle(const BundleRef& bundle)
 {
-    log_debug("UniboCGRBundleRouter::can_delete_bundle: checking if we can delete *%p",
-              bundle.object());
+    //log_debug("UniboCGRBundleRouter::can_delete_bundle: checking if we can delete *%p",
+    //          bundle.object());
 
     // check if we haven't yet done anything with this bundle
     if (bundle->fwdlog()->get_count(ForwardingInfo::TRANSMITTED |
-                                    ForwardingInfo::DELIVERED) == 0)
+                                    ForwardingInfo::DELIVERED)
+                < bundle->expected_delivery_and_transmit_count())
     {
-        log_debug("UniboCGRBundleRouter::can_delete_bundle(%"PRIbid"): "
-                  "not yet transmitted or delivered",
-                  bundle->bundleid());
+        //log_debug("UniboCGRBundleRouter::can_delete_bundle(%" PRIbid "): "
+        //          "not yet transmitted or delivered the expected number of times",
+        //          bundle->bundleid());
         return false;
     }
 
     // check if we have local custody
-    if (bundle->local_custody()) {
-        log_debug("UniboCGRBundleRouter::can_delete_bundle(%"PRIbid"): "
-                  "not deleting because we have custody",
-                  bundle->bundleid());
-        return false;
-    }
-
-    // check if the bundle is part of a session with subscribers
-    Session* session = get_session_for_bundle(bundle.object());
-    if (session && !session->subscribers().empty())
-    {
-        log_debug("UniboCGRBundleRouter::can_delete_bundle(%"PRIbid"): "
-                  "session has subscribers",
-                  bundle->bundleid());
+    if (bundle->local_custody() || bundle->bibe_custody()) {
+        //log_debug("UniboCGRBundleRouter::can_delete_bundle(%" PRIbid "): "
+        //          "not deleting because we have custody",
+        //          bundle->bundleid());
         return false;
     }
 
@@ -447,32 +300,19 @@ UniboCGRBundleRouter::can_delete_bundle(const BundleRef& bundle)
 void
 UniboCGRBundleRouter::delete_bundle(const BundleRef& bundle)
 {
-    log_debug("delete *%p", bundle.object());
+    //log_debug("delete *%p", bundle.object());
 
     remove_from_deferred(bundle, ForwardingInfo::ANY_ACTION);
-
-    Session* session = get_session_for_bundle(bundle.object());
-    if (session)
-    {
-        bool ok = session->bundles()->erase(bundle);
-        (void)ok;
-        
-        log_debug("delete_bundle: removing *%p from *%p: %s",
-                  bundle.object(), session, ok ? "success" : "not in session list");
-
-        // XXX/demmer adjust sequence id for session??
-    }
-
-
-    // XXX/demmer clean up empty sessions?
 }
 
 //----------------------------------------------------------------------
 void
 UniboCGRBundleRouter::handle_bundle_cancelled(BundleSendCancelledEvent* event)
 {
+    if (BundleDaemon::instance()->shutting_down()) return;
+
     Bundle* bundle = event->bundleref_.object();
-    log_debug("handle bundle cancelled: *%p", bundle);
+    //log_debug("handle bundle cancelled: *%p", bundle);
 
     // if the bundle has expired, we don't want to reroute it.
     // XXX/demmer this might warrant a more general handling instead?
@@ -536,16 +376,28 @@ UniboCGRBundleRouter::should_fwd(const Bundle* bundle, RouteEntry* route)
     // node, then don't send it back as long as the entry is still in
     // the reception cache (meaning our routes haven't changed).
     EndpointID prevhop;
+
+
+//dzdebug - just use prevhop in bundle to prevent sending back to original sender for now
+/*
     if (reception_cache_.lookup(bundle, &prevhop))
     {
         if (prevhop == route->link()->remote_eid() &&
             prevhop != EndpointID::NULL_EID())
         {
-            log_debug("should_fwd bundle %"PRIbid": "
+            log_debug("should_fwd bundle %" PRIbid ": "
                       "skip %s since bundle arrived from the same node",
                       bundle->bundleid(), route->link()->name());
             return false;
         }
+    }
+*/
+    if ( (bundle->prevhop() == route->link()->remote_eid()) &&
+        (bundle->prevhop() != EndpointID::NULL_EID()) ) {
+        log_debug("should_fwd bundle %" PRIbid ": "
+                  "skip %s since bundle arrived from the same node",
+                  bundle->bundleid(), route->link()->name());
+        return false;
     }
 
     return BundleRouter::should_fwd(bundle, route->link(), route->action());
@@ -575,13 +427,15 @@ UniboCGRBundleRouter::handle_contact_up(ContactUpEvent* event)
     // (or part of one), which we don't handle here since we can't
     // distinguish that case from one in which the CL is actually
     // sending data, just taking a long time to do so.
+    oasys::SPtr_Timer base_sptr;
+    SPtr_RerouteTimer t;
 
     RerouteTimerMap::iterator iter = reroute_timers_.find(link->name_str());
     if (iter != reroute_timers_.end()) {
-        log_debug("link %s reopened, cancelling reroute timer", link->name());
-        RerouteTimer* t = iter->second;
+        base_sptr = iter->second;
         reroute_timers_.erase(iter);
-        t->cancel();
+        oasys::SharedTimerSystem::instance()->cancel(base_sptr);
+        base_sptr.reset();
     }
 }
 
@@ -605,20 +459,14 @@ UniboCGRBundleRouter::handle_contact_down(ContactDownEvent* event)
                       "scheduling reroute timer in %u seconds",
                       link->name(), num_queued,
                       link->params().potential_downtime_);
-            RerouteTimer* t = new RerouteTimer(this, link);
-            t->schedule_in(link->params().potential_downtime_ * 1000);
+
+            SPtr_RerouteTimer t = std::make_shared<RerouteTimer>(this, link);
+            oasys::SPtr_Timer base_sptr = t;
+            oasys::SharedTimerSystem::instance()->schedule_in(link->params().potential_downtime_ * 1000, base_sptr);
             
             reroute_timers_[link->name_str()] = t;
         }
     }
-}
-
-//----------------------------------------------------------------------
-void
-UniboCGRBundleRouter::RerouteTimer::timeout(const struct timeval& now)
-{
-    (void)now;
-    router_->reroute_bundles(link_);
 }
 
 //----------------------------------------------------------------------
@@ -649,12 +497,24 @@ UniboCGRBundleRouter::reroute_bundles(const LinkRef& link)
     while (! link->queue()->empty()) {
         bundle = link->queue()->front();
         actions_->cancel_bundle(bundle.object(), link);
-        ASSERT(! bundle->is_queued_on(link->queue()));
+
+        //XXX/dz TCPCL can't guarantee that bundle can be immediately removed from the queue
+        //ASSERT(! bundle->is_queued_on(link->queue()));
     }
 
     // there should never have been any in flight since the link is
     // unavailable
-    ASSERT(link->inflight()->empty());
+    //dz - ION3.6.2 killm and restart did not clear inflight so rerouting them also
+    //ASSERT(link->inflight()->empty());
+
+    while (! link->inflight()->empty()) {
+        bundle = link->inflight()->front();
+        actions_->cancel_bundle(bundle.object(), link);
+
+        //XXX/dz TCPCL can't guarantee that bundle can be immediately removed from the inflight queue
+        //ASSERT(! bundle->is_queued_on(link->inflight()));
+    }
+
 }    
 
 //----------------------------------------------------------------------
@@ -705,9 +565,9 @@ UniboCGRBundleRouter::handle_link_deleted(LinkDeletedEvent* event)
     RerouteTimerMap::iterator iter = reroute_timers_.find(link->name_str());
     if (iter != reroute_timers_.end()) {
         log_debug("link %s deleted, cancelling reroute timer", link->name());
-        RerouteTimer* t = iter->second;
+        oasys::SPtr_Timer base_sptr = iter->second;
         reroute_timers_.erase(iter);
-        t->cancel();
+        oasys::SharedTimerSystem::instance()->cancel(base_sptr);
     }
 }
 
@@ -715,7 +575,7 @@ UniboCGRBundleRouter::handle_link_deleted(LinkDeletedEvent* event)
 void
 UniboCGRBundleRouter::handle_link_check_deferred(LinkCheckDeferredEvent* event)
 {
-    log_debug("LinkCheckDeferred event for *%p", event->linkref_.object());
+    //log_debug("LinkCheckDeferred event for *%p", event->linkref_.object());
     check_next_hop(event->linkref_);
 }
 
@@ -747,26 +607,6 @@ UniboCGRBundleRouter::get_routing_state(oasys::StringBuffer* buf)
 {
     buf->appendf("Route table for %s router:\n\n", name_.c_str());
     route_table_->dump(buf);
-
-    if (!sessions_.empty())
-    {
-        buf->appendf("Session table (%zu sessions):\n", sessions_.size());
-        sessions_.dump(buf);
-        buf->appendf("\n");
-    }
-
-    if (!session_custodians_.empty())
-    {
-        buf->appendf("Session custodians (%zu registrations):\n",
-                     session_custodians_.size());
-
-        for (RegistrationList::iterator iter = session_custodians_.begin();
-             iter != session_custodians_.end(); ++iter)
-        {
-            buf->appendf("    *%p\n", *iter);
-        }
-        buf->appendf("\n");
-    }
 }
 
 //----------------------------------------------------------------------
@@ -793,6 +633,8 @@ UniboCGRBundleRouter::tcl_dump_state(oasys::StringBuffer* buf)
 bool
 UniboCGRBundleRouter::fwd_to_nexthop(Bundle* bundle, RouteEntry* route)
 {
+    bool result = false;
+
     const LinkRef& link = route->link();
 
     // if the link is available and not open, open it
@@ -805,7 +647,7 @@ UniboCGRBundleRouter::fwd_to_nexthop(Bundle* bundle, RouteEntry* route)
     // always add the bundle to the link's deferred list so that they will
     // be delivered in the correct order. future calls to check_next_hop
     // will move the bundle to the transmit queue in due time
-    DeferredList* deferred = dtn::UniboCGRBundleRouter::deferred_list(link);
+    DeferredList* deferred = deferred_list(link);
     if (! bundle->is_queued_on(deferred->list())) {
         BundleRef bref(bundle, "UniboCGRBundleRouter::fwd_to_nexthop");
         ForwardingInfo info(ForwardingInfo::NONE,
@@ -819,6 +661,8 @@ UniboCGRBundleRouter::fwd_to_nexthop(Bundle* bundle, RouteEntry* route)
                            "UniboCGRBundleRouter::fwd_to_nexthop");
 
         deferred->add(bref, info);
+
+        result = true;
     } else {
         log_warn("bundle *%p already exists on deferred list of link *%p",
                  bundle, link.object());
@@ -827,13 +671,14 @@ UniboCGRBundleRouter::fwd_to_nexthop(Bundle* bundle, RouteEntry* route)
     // XXX/dz could check to see if there is space available on the queue 
     // and call check_next_hop here if needed...
 
-    return false;
+    return result;
 }
 
 //----------------------------------------------------------------------
 int
 UniboCGRBundleRouter::getBacklogForNode(unsigned long long neighbor, int priority, long int* byteApp, long int * byteTot)
 {
+    //Giacomo:
     //Dal neighbor forma il nome completo del nodo (ipn:neighbor.0)
     //poi consulta la routing table e ottiene in matches il nexthop link
 	//infine calcola i byte in coda applicabili e totali
@@ -921,17 +766,18 @@ UniboCGRBundleRouter::route_bundle(Bundle* bundle, bool skip_check_next_hop)
     RouteEntryVec matches;
     RouteEntryVec::iterator iter;
     int result_cgr;
-    log_debug("route_bundle: checking bundle %"PRIbid, bundle->bundleid());
 
     // check to see if forwarding is suppressed to all nodes
     if (bundle->fwdlog()->get_count(EndpointIDPattern::WILDCARD_EID(),
                                     ForwardingInfo::SUPPRESSED) > 0)
     {
         log_info("route_bundle: "
-                 "ignoring bundle %"PRIbid" since forwarding is suppressed",
+                 "ignoring bundle %" PRIbid " since forwarding is suppressed",
                  bundle->bundleid());
         return 0;
     }
+
+    
     LinkRef null_link("UniboCGRBundleRouter::route_bundle");
     //Giacomo: chiamo UniboCGR e prendo il risultato
     struct timeval tv;
@@ -958,32 +804,37 @@ UniboCGRBundleRouter::route_bundle(Bundle* bundle, bool skip_check_next_hop)
     	EndpointID* eidRes = new EndpointID(result[i]);
     	route_table_->get_matching(*eidRes, null_link, &matches);
     }
+
     // sort the matching routes by priority, allowing subclasses to
     // override the way in which the sorting occurs
     sort_routes(bundle, &matches);
-    log_debug("route_bundle bundle id %"PRIbid": checking %zu route entry matches",
-              bundle->bundleid(), matches.size());
+
+    //log_debug("route_bundle bundle id %" PRIbid ": checking %zu route entry matches",
+    //          bundle->bundleid(), matches.size());
+
     bool forwarded;    
     unsigned int count = 0;
     for (iter = matches.begin(); iter != matches.end(); ++iter)
     {
         RouteEntry* route = *iter;
-        log_debug("checking route entry %p link %s (%p)",
-                  *iter, route->link()->name(), route->link().object());
+
+        //log_debug("checking route entry %p link %s (%p) [remote EID: %s]",
+        //          *iter, route->link()->name(), route->link().object(), 
+        //          route->link()->remote_eid().c_str());
 
         if (! should_fwd(bundle, *iter)) {
             continue;
         }
 
-        DeferredList* dl = dtn::UniboCGRBundleRouter::deferred_list(route->link());
+        DeferredList* dl = deferred_list(route->link());
 
         if (dl == 0)
           continue;
 
         if ( bundle->is_queued_on(dl->list()) ) {
-            log_debug("route_bundle bundle %"PRIbid": "
-                      "ignoring link *%p since already deferred",
-                      bundle->bundleid(), route->link().object());
+            //log_debug("route_bundle bundle %" PRIbid ": "
+            //          "ignoring link *%p since already deferred",
+            //          bundle->bundleid(), route->link().object());
             continue;
         }
 
@@ -1005,11 +856,18 @@ UniboCGRBundleRouter::route_bundle(Bundle* bundle, bool skip_check_next_hop)
         
         if (forwarded ) {
             ++count;
+
+
+            // only send it through the primary path if one exists
+            if (BundleRouter::config_.static_router_prefer_always_on_ &&
+                (route->link()->type() == Link::ALWAYSON)) {
+                break;
+            }
         }
     }
 
-    log_debug("route_bundle bundle id %"PRIbid": forwarded on %u links",
-              bundle->bundleid(), count);
+    //log_debug("route_bundle bundle id %" PRIbid ": forwarded on %u links",
+    //          bundle->bundleid(), count);
     return count;
 }
 
@@ -1027,43 +885,51 @@ UniboCGRBundleRouter::check_next_hop(const LinkRef& next_hop)
 {
     // if the link isn't open, there's nothing to do now
     if (! next_hop->isopen()) {
-        log_debug("check_next_hop %s -> %s: link not open...",
-                  next_hop->name(), next_hop->nexthop());
+        //log_debug("check_next_hop %s -> %s: link not open...",
+        //          next_hop->name(), next_hop->nexthop());
         return;
     }
     
     // if the link queue doesn't have space (based on the low water
     // mark) don't do anything
     if (! next_hop->queue_has_space()) {
-        log_debug("check_next_hop %s -> %s: no space in queue...",
-                  next_hop->name(), next_hop->nexthop());
+        //log_debug("check_next_hop %s -> %s: no space in queue...",
+        //          next_hop->name(), next_hop->nexthop());
         return;
     }
 
-    log_debug("check_next_hop %s -> %s: checking deferred bundle list...",
-              next_hop->name(), next_hop->nexthop());
+    //log_debug("check_next_hop %s -> %s: checking deferred bundle list...",
+    //          next_hop->name(), next_hop->nexthop());
 
     // because the loop below will remove the current bundle from
     // the deferred list, invalidating any iterators pointing to its
     // position, make sure to advance the iterator before processing
     // the current bundle
-    DeferredList* deferred = dtn::UniboCGRBundleRouter::deferred_list(next_hop);
+    DeferredList* deferred = deferred_list(next_hop);
 
     // XXX/dz only move up to the Link high queue limit bundles in any one call
     // otherwise there is always space available in the queue and this loop
     // will not end until the entire list of bundles is transmitted.
-    u_int bundles_moved = 0;
-    u_int max_to_move = next_hop->params().qlimit_bundles_high_;
+    size_t bundles_moved = 0;
+    size_t max_to_move = next_hop->params().qlimit_bundles_high_;
+
+    // if queue was changed from active limits to not active then move all bundles
+    if (0 == max_to_move)
+    {
+        max_to_move = deferred->list()->size();
+    }
+
     BundleRef bundle("UniboCGRBundleRouter::check_next_hop");
 
-    oasys::ScopeLock l(deferred->list()->lock(), 
-                       "UniboCGRBundleRouter::check_next_hop");
+    deferred->list()->lock()->lock(__func__);
+
     BundleList::iterator iter = deferred->list()->begin();
     while (iter != deferred->list()->end())
     {
         if (next_hop->queue_is_full()) {
-            log_debug("check_next_hop %s: link queue is full, stopping loop",
-                      next_hop->name());
+            //log_debug("check_next_hop %s: link queue is full, stopping loop",
+            //          next_hop->name());
+            deferred->list()->lock()->unlock();
             break;
         }
         
@@ -1080,8 +946,8 @@ UniboCGRBundleRouter::check_next_hop(const LinkRef& next_hop)
         if (! BundleRouter::should_fwd(bundle.object(), next_hop,
                                        info.action()))
         {
-            log_debug("check_next_hop: not forwarding to link %s",
-                      next_hop->name());
+            //log_debug("check_next_hop: not forwarding to link %s",
+            //          next_hop->name());
             continue;
         }
         
@@ -1097,18 +963,31 @@ UniboCGRBundleRouter::check_next_hop(const LinkRef& next_hop)
 
         // remove the bundle from the deferred list
         deferred->del(bundle);
-    
-        log_debug("check_next_hop: sending *%p to *%p",
-                  bundle.object(), next_hop.object());
+
+        // release the deferred list lock to prevent possible deadlock if a redirect to BIBE
+        // takes place while queueing the bndle
+        deferred->list()->lock()->unlock();
+
+
+        //log_debug("check_next_hop: sending *%p to *%p",
+        //          bundle.object(), next_hop.object());
         actions_->queue_bundle(bundle.object() , next_hop,
                                info.action(), info.custody_spec());
 
         // break out if we have now moved the max
         if (++bundles_moved >= max_to_move) {
-            log_debug("check_next_hop %s: moved max bundles to queue: %u",
-                      next_hop->name(), max_to_move);
+            //log_debug("check_next_hop %s: moved max bundles to queue: %u",
+            //          next_hop->name(), max_to_move);
             break;
         }
+
+        deferred->list()->lock()->lock(__func__);
+
+        iter = deferred->list()->begin();
+    }
+
+    if (deferred->list()->lock()->is_locked_by_me()) {
+        deferred->list()->lock()->unlock();
     }
 }
 
@@ -1120,14 +999,6 @@ UniboCGRBundleRouter::reroute_all_bundles()
     // process, the lock is now only taken when the iterator is being
     // updated.
  
-#ifdef BDSTATS_ENABLED
-    // useful info if working with BD Stats
-    log_crit("reroute_all_bundles - entered");
-    oasys::Time now;
-    now.get_time();
-#endif
-
-
     log_debug("reroute_all_bundles... %zu bundles on pending list",
               pending_bundles_->size());
 
@@ -1145,11 +1016,7 @@ UniboCGRBundleRouter::reroute_all_bundles()
     bool skip_check_next_hop = false;
     while (true)
     {
-        #ifdef PENDING_BUNDLES_IS_MAP
-            route_bundle(iter->second, skip_check_next_hop); // for <map> lists
-        #else
-            route_bundle(*iter, skip_check_next_hop); // for <lists> lists
-        #endif
+        route_bundle(iter->second, skip_check_next_hop); // for <map> lists
 
         // only do the check_next_hop for the first bundle which 
         // primes the pump for all of the other bundles
@@ -1165,10 +1032,6 @@ UniboCGRBundleRouter::reroute_all_bundles()
         }
         pending_bundles_->lock()->unlock();
     }
-
-#ifdef BDSTATS_ENABLED
-    log_crit("reroute_all_bundles - exit - elapsed: %d", now.elapsed_ms());
-#endif // BDSTATS_ENABLED
 }
 
 //----------------------------------------------------------------------
@@ -1230,8 +1093,8 @@ UniboCGRBundleRouter::DeferredList::add(const BundleRef&      bundle,
         return false;
     }
 
-    log_debug("adding *%p to deferred (size: %zu, count: %xu)",
-              bundle.object(), list_.size(), count_);
+    //log_debug("adding *%p to deferred (size: %zu, count: %zu)",
+    //          bundle.object(), list_.size(), count_);
 
     count_++;
     info_.insert(InfoMap::value_type(bundle->bundleid(), info));
@@ -1256,8 +1119,8 @@ UniboCGRBundleRouter::DeferredList::del(const BundleRef& bundle)
     ASSERT(count_ > 0);
     count_--;
    
-    log_debug("removed *%p from deferred (size: %zu, count: %zu)",
-              bundle.object(), list_.size(), count_);
+    //log_debug("removed *%p from deferred (size: %zu, count: %zu)",
+    //          bundle.object(), list_.size(), count_);
 
     return true;
 }
@@ -1283,330 +1146,6 @@ UniboCGRBundleRouter::handle_registration_added(RegistrationAddedEvent* event)
     if (reg == NULL || reg->session_flags() == 0) {
         return;
     }
-
-    log_debug("got new session registration %u", reg->regid());
-
-    if (reg->session_flags() & Session::CUSTODY) {
-        log_debug("session custodian registration %u", reg->regid());
-        session_custodians_.push_back(reg);
-    }
-
-    else if (reg->session_flags() & Session::SUBSCRIBE) {
-        log_debug("session subscription registration %u", reg->regid());
-        Session* session = sessions_.get_session(reg->endpoint());
-        session->add_subscriber(Subscriber(reg));
-        subscribe_to_session(Session::SUBSCRIBE, session);
-    }
-
-    else if (reg->session_flags() & Session::PUBLISH) {
-        log_debug("session publish registration %u", reg->regid());
-
-        Session* session = sessions_.get_session(reg->endpoint());
-        if (session->upstream().is_null()) {
-            log_debug("unknown upstream for publish registration... "
-                      "trying to find one");
-            find_session_upstream(session);
-        }
-
-        // XXX/demmer do something about publish
-    }
-}
-
-//----------------------------------------------------------------------
-bool
-UniboCGRBundleRouter::subscribe_to_session(int mode, Session* session)
-{
-    if (! session->upstream().is_local()) {
-        // XXX/demmer should set replyto to handle upstream nodes that
-        // don't understand the session block
-
-        Bundle* bundle = new TempBundle();
-        bundle->set_do_not_fragment(1);
-        bundle->mutable_source()->assign(BundleDaemon::instance()->local_eid());
-        bundle->mutable_dest()->assign("dtn-session:" + session->eid().str());
-        bundle->mutable_replyto()->assign(EndpointID::NULL_EID());
-        bundle->mutable_custodian()->assign(EndpointID::NULL_EID());
-        bundle->set_expiration(config_.subscription_timeout_);
-        bundle->set_singleton_dest(true);
-        bundle->mutable_session_eid()->assign(session->eid());
-        bundle->set_session_flags(mode);
-        bundle->mutable_sequence_id()->assign(*session->sequence_id());
-
-        log_debug("sending subscribe bundle to session %s (timeout %u seconds)",
-                  session->eid().c_str(), config_.subscription_timeout_);
-        
-        BundleDaemon::post_at_head(
-            new BundleReceivedEvent(bundle, EVENTSRC_ROUTER));
-
-        if (session->resubscribe_timer() != NULL) {
-            log_debug("cancelling old resubscribe timer");
-            session->resubscribe_timer()->cancel();
-        }
-        
-        u_int resubscribe_timeout = config_.subscription_timeout_ * 1000 / 2;
-        log_debug("scheduling resubscribe timer in %u msecs",
-                  resubscribe_timeout);
-        ResubscribeTimer* timer = new ResubscribeTimer(this, session);
-        timer->schedule_in(resubscribe_timeout);
-        session->set_resubscribe_timer(timer);
-        
-    } else {
-        // XXX/demmer todo
-        log_debug("local upstream source: notifying registration");
-    }
-
-    return true;
-}
-
-//----------------------------------------------------------------------
-UniboCGRBundleRouter::ResubscribeTimer::ResubscribeTimer(UniboCGRBundleRouter* router,
-                                                     Session* session)
-    : router_(router), session_(session)
-{
-}
-
-//----------------------------------------------------------------------
-void
-UniboCGRBundleRouter::ResubscribeTimer::timeout(const struct timeval& now)
-{
-    (void)now;
-    router_->logf(oasys::LOG_DEBUG, "resubscribe timer fired for session *%p",
-                  session_);
-    router_->subscribe_to_session(Session::RESUBSCRIBE, session_);
-    session_->set_resubscribe_timer(NULL);
-    delete this;
-}
-
-//----------------------------------------------------------------------
-bool
-UniboCGRBundleRouter::handle_session_bundle(BundleReceivedEvent* event)
-{
-    Bundle* bundle = event->bundleref_.object();
-
-    ASSERT(bundle->session_flags() != 0);
-    ASSERT(bundle->session_eid() != EndpointID::NULL_EID());
-    
-    Session* session = sessions_.get_session(bundle->session_eid());
-
-    log_debug("handle_session_bundle: got bundle *%p for session %d",
-              bundle, session->id());
-              
-    // XXX/demmer handle reload from db...
-    if (event->source_ == EVENTSRC_STORE) {
-        log_err("handle_session_bundle: can't handle reload from db yet");
-        return false;
-    }
-
-    bool should_route = true;
-    switch (bundle->session_flags()) {
-    case Session::SUBSCRIBE:
-    case Session::RESUBSCRIBE:
-    {
-        // look for whether we have an upstream route yet. if not,
-        // keep the bundle in queue to forward onwards towards the
-        // session root
-        if (session->upstream().is_null()) {
-            log_debug("handle_session_bundle: "
-                      "unknown upstream... trying to find one");
-            
-            if (find_session_upstream(session))
-            {
-                ASSERT(!session->upstream().is_null());
-                
-                const Subscriber& upstream = session->upstream();
-                if (upstream.is_local())
-                {
-                    log_debug("handle_session_bundle: "
-                              "forwarding %s bundle to upstream registration",
-                              Session::flag_str(bundle->session_flags()));
-                    upstream.reg()->session_notify(bundle);
-                    should_route = false;
-                }
-                else
-                {
-                    log_debug("handle_session_bundle: "
-                              "found upstream *%p... routing bundle",
-                              &upstream);
-                }
-            }
-            else
-            {
-                // XXX/demmer what to do here? maybe if we add
-                // something to ack the subscription then this should
-                // defer the ack?
-                log_info("can't find an upstream for session %s... "
-                         "waiting until route arrives",
-                         session->eid().c_str());
-            }
-        }
-        else
-        {
-            const Subscriber& upstream = session->upstream();
-            log_debug("handle_session_bundle: "
-                      "already subscribed to session through upstream *%p... "
-                      "suppressing subscription bundle %"PRIbid,
-                      &upstream, bundle->bundleid());
-
-            bundle->fwdlog()->add_entry(EndpointIDPattern::WILDCARD_EID(),
-                                        ForwardingInfo::FORWARD_ACTION,
-                                        ForwardingInfo::SUPPRESSED);
-            should_route = false;
-        }
-        
-        // add the new subscriber to the session. if the downstream is
-        // already subscribed, then add_subscriber doesn't do
-        // anything. XXX/demmer it should reset the stale subscription
-        // timer...
-        if (event->source_ == EVENTSRC_PEER)
-        {
-            if (bundle->prevhop().str() != "" &&
-                bundle->prevhop()       != EndpointID::NULL_EID())
-            {
-                log_debug("handle_session_bundle: "
-                          "adding downstream subscriber %s (seqid *%p)",
-                          bundle->prevhop().c_str(), &bundle->sequence_id());
-                
-                add_subscriber(session, bundle->prevhop(), bundle->sequence_id());
-            }
-            else
-            {
-                // XXX/demmer what to do here??
-                log_err("handle_session_bundle: "
-                        "downstream subscriber with no prevhop!!!!");
-            }
-        }
-        break;
-    }
-
-    default:
-    {
-        log_err("session flags %x not implemented", bundle->session_flags());
-    }
-    }
-
-    return should_route;
-}
-
-//----------------------------------------------------------------------
-void
-UniboCGRBundleRouter::reroute_all_sessions()
-{
-    log_debug("reroute_all_bundles... %zu sessions",
-              sessions_.size());
-
-    for (SessionTable::iterator iter = sessions_.begin();
-         iter != sessions_.end(); ++iter)
-    {
-        find_session_upstream(iter->second);
-    }
-}
-
-//----------------------------------------------------------------------
-bool
-UniboCGRBundleRouter::find_session_upstream(Session* session)
-{
-    // first look for a local custody registration
-    for (RegistrationList::iterator iter = session_custodians_.begin();
-         iter != session_custodians_.end(); ++iter)
-    {
-        Registration* reg = *iter;
-        if (reg->endpoint().match(session->eid())) {
-            Subscriber new_upstream(reg);
-            if (session->upstream() == new_upstream) {
-                log_debug("find_session_upstream: "
-                          "session %s upstream custody registration %d unchanged",
-                          session->eid().c_str(), reg->regid());
-            } else {
-                log_debug("find_session_upstream: "
-                          "session %s found new custody registration %d",
-                          session->eid().c_str(), reg->regid());
-                session->set_upstream(new_upstream);
-            }
-            return true;
-        }
-    }
-
-    // XXX/demmer for now this just looks up the route for the
-    // bundle destination (which should be in the dtn-session: scheme)
-    // and extracts the next hop from that
-    RouteEntryVec matches;
-    RouteEntryVec::iterator iter;
-    
-    EndpointID subscribe_eid("dtn-session:" + session->eid().str());
-    route_table_->get_matching(subscribe_eid, &matches);
-
-    // XXX/demmer do something about this...
-    // sort_routes(bundle, &matches);
-
-    for (iter = matches.begin(); iter != matches.end(); ++iter)
-    {
-        const LinkRef& link = (*iter)->link();
-        if (link->remote_eid().str() == "" ||
-            link->remote_eid() == EndpointID::NULL_EID())
-        {
-            log_warn("find_session_upstream: "
-                     "got route match with no remote eid");
-            // XXX/demmer uh...
-            continue;
-        }
-
-        Subscriber new_upstream(link->remote_eid());
-        if (session->upstream() == new_upstream) {
-            log_debug("find_session_upstream: "
-                      "session %s found existing upstream %s",
-                      session->eid().c_str(), link->remote_eid().c_str());
-        } else {
-            log_debug("find_session_upstream: session %s new upstream %s",
-                      session->eid().c_str(), link->remote_eid().c_str());
-            session->set_upstream(Subscriber(link->remote_eid()));
-            add_subscriber(session, link->remote_eid(), SequenceID());
-        }
-        return true;
-    }
-
-    log_warn("find_session_upstream: can't find upstream for session %s",
-             session->eid().c_str());
-    return false;
-}
-
-//----------------------------------------------------------------------
-void
-UniboCGRBundleRouter::add_subscriber(Session*          session,
-                                 const EndpointID& peer,
-                                 const SequenceID& known_seqid)
-{
-    log_debug("adding new subscriber for session %s -> %s",
-              session->eid().c_str(), peer.c_str());
-    
-    session->add_subscriber(Subscriber(peer));
-
-    // XXX/demmer check for duplicates?
-    
-    RouteEntry *entry = new RouteEntry(session->eid(), peer);
-    entry->set_action(ForwardingInfo::COPY_ACTION);
-    route_table_->add_entry(entry);
-
-    log_debug("routing %zu session bundles", session->bundles()->size());
-    oasys::ScopeLock l(session->bundles()->lock(),
-                       "UniboCGRBundleRouter::add_subscriber");
-    for (BundleList::iterator iter = session->bundles()->begin();
-         iter != session->bundles()->end(); ++iter)
-    {
-        Bundle* bundle = *iter;
-        if (! bundle->sequence_id().empty() &&
-            bundle->sequence_id() <= known_seqid)
-        {
-            log_debug("suppressing transmission of bundle %"PRIbid" (seqid *%p) "
-                      "to subscriber %s since covered by seqid *%p",
-                      bundle->bundleid(), &bundle->sequence_id(),
-                      peer.c_str(), &known_seqid);
-            bundle->fwdlog()->add_entry(peer, ForwardingInfo::COPY_ACTION,
-                                        ForwardingInfo::SUPPRESSED);
-            continue;
-        }
-
-        route_bundle(*iter);
-    }
 }
 
 //----------------------------------------------------------------------
@@ -1623,6 +1162,25 @@ UniboCGRBundleRouter::handle_registration_expired(RegistrationExpiredEvent* even
     // XXX/demmer lookup session and remove reg from subscribers
     // and/or remove the whole session if reg is the custodian
     (void)event;
+}
+
+//----------------------------------------------------------------------
+UniboCGRBundleRouter::RerouteTimer::RerouteTimer(UniboCGRBundleRouter* router, const LinkRef& link)
+            : router_(router), link_(link)
+{
+}
+
+//----------------------------------------------------------------------
+UniboCGRBundleRouter::RerouteTimer::~RerouteTimer()
+{
+}
+
+//----------------------------------------------------------------------
+void
+UniboCGRBundleRouter::RerouteTimer::timeout(const struct timeval& now)
+{
+    (void)now;
+    router_->reroute_bundles(link_);
 }
 
 

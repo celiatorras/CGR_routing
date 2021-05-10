@@ -269,7 +269,7 @@ static int convert_bundle_from_dtn2_to_cgr(time_t current_time, dtn::Bundle *Dtn
 			convert << s;
 			convert >> destNode;
 			CgrBundle->terminus_node = destNode;
-            CgrBundle->regionNbr = defaultRegionNbr;
+			CgrBundle->regionNbr = defaultRegionNbr;
 
 			#if (MSR == 1)
 					CgrBundle->msrRoute = NULL;
@@ -338,7 +338,7 @@ static int convert_bundle_from_dtn2_to_cgr(time_t current_time, dtn::Bundle *Dtn
 				//CgrBundle->expiration_time = IonBundle->expirationTime
 				//		- IonBundle->id.creationTime.seconds + offset;
 
-				CgrBundle->expiration_time = Dtn2Bundle->expiration() + offset;
+				CgrBundle->expiration_time = Dtn2Bundle->expiration_millis() + offset;
 				//Read PreviousHop Extension
 				std::string ipnName2 = Dtn2Bundle->prevhop().str();
 				if (ipnName2.rfind("dtn", 0) == 0) {
