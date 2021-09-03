@@ -169,7 +169,7 @@ extern uvast findLoopEntryNode(GeoRoute *route, uvast nodeNum)
 {
 	char *temp;
 //	char *next;
-	char stringNodeNum[sizeof(uvast) + 5];
+	char stringNodeNum[25];
 //	char subString[256];
 	uvast failedNode = 0;
 
