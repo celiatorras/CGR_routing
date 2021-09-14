@@ -61,6 +61,7 @@
 
 #define NOMINAL_PRIMARY_BLKSIZE	29 // from ION 4.0.0: bpv7/library/libbpP.c
 #define EPOCH_2000_SEC 946684800
+#define UNUSED(x) (void)(x)
 
 
 /**
@@ -243,6 +244,8 @@ static int get_cgrr_ext_block(dtn::Bundle *bundle, CGRRouteBlock **resultBlk)
 static int convert_bundle_from_dtn2_to_cgr(time_t current_time, dtn::Bundle *Dtn2Bundle, CgrBundle *CgrBundle)
 {
 	//TODO Consider to take count of extensions
+	//To avoid warning
+	UNUSED(current_time);
 	int result = -1;
 	time_t offset;
 #if (MSR == 1)
@@ -366,7 +369,7 @@ static int convert_bundle_from_dtn2_to_cgr(time_t current_time, dtn::Bundle *Dtn
 				if(pr==0) {CgrBundle->priority_level = Bulk;}
 				if(pr==1) {CgrBundle->priority_level = Normal;}
 				if(pr==2) {CgrBundle->priority_level = Expedited;}
-				if(pr<0 || pr>2) {CgrBundle->priority_level = Normal; writeLog("Error: priority of bundle is not a valid value: %zu. Using default: normal", pr);}
+				if(pr>2) {CgrBundle->priority_level = Normal; writeLog("Error: priority of bundle is not a valid value: %zu. Using default: normal", pr);}
 				CgrBundle->dlvConfidence = 0;
 					result = 0;
 			}
@@ -410,6 +413,8 @@ static int convert_routes_from_cgr_to_dtn2(long unsigned int evc, List cgrRoutes
 	ListElt *elt;
 	Route *current;
 	size_t count = 0;
+	UNUSED(count);
+	UNUSED(evc);
 	int result = 0;
 	int numRes = 0;
 	for (elt = cgrRoutes->first; elt != NULL && result >= 0; elt = elt->next)
@@ -470,11 +475,13 @@ static int convert_routes_from_cgr_to_dtn2(long unsigned int evc, List cgrRoutes
  *
  *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
  *  -------- | --------------- | -----------------------------------------------
- *  02/07/20 | G. Gori		    |  Initial Implementation and documentation.
+ *  02/07/20 | G. Gori	       |  Initial Implementation and documentation.
  *****************************************************************************/
 static int add_contact(char * fileline)
 {
 	Contact CgrContact;
+	CgrContact.fromTime = 0;
+	CgrContact.toTime = 0;
 	int count = 10, n=0, result = -2;
 	long long fn = 0;
 	long unsigned int xn = 0;
@@ -579,6 +586,8 @@ static int add_contact(char * fileline)
 static int add_range(char* fileline)
 {
 	Range CgrRange;
+	CgrRange.fromTime = 0;
+	CgrRange.toTime = 0;
 	int result = -1;
 	int n = 0;
 	int count = 8;
@@ -681,6 +690,9 @@ static int add_range(char* fileline)
 static int read_file_contactranges(char * filename)
 {
 	int result = 0, totAdded = 0, stop = 0;
+	UNUSED(totAdded);
+	UNUSED(stop);
+	
 	int skip = 0, count = 1;
 	int result_contacts = 0, result_ranges = 0;
 	int fd = open(filename, O_RDONLY);
@@ -830,6 +842,7 @@ static int update_contact_plan(char * filename, bool update)
 		else
 		{
 			result = 0;
+			printf("Contact plan read: %d\n", result_read);
 		}
 		struct timeval tv;
 		gettimeofday(&tv, NULL);
@@ -874,13 +887,15 @@ static int update_contact_plan(char * filename, bool update)
  *  -------- | --------------- | -----------------------------------------------
  *  01/07/20 | G. Gori         |  Initial Implementation and documentation.
  *****************************************************************************/
+ 
+ /* Commented to avoid warning
 static int exclude_neighbors()
 {
 	int result = 0;
 	free_list_elts(excludedNeighbors); //clear the previous list
 	return result;
-}
-
+} 
+*/
 /******************************************************************************
  *
  * \par Function Name:
@@ -920,14 +935,15 @@ int callUniboCGR(time_t time, dtn::Bundle *bundle, std::string *res)
 	int result = -5;
 	List cgrRoutes = NULL;
 	UniboCgrSAP sap = get_unibo_cgr_sap(NULL);
-
+	UNUSED(sap);
 	record_total_interface_start_time();
 	debug_printf("Entry point interface.");
 
 	if (initialized && bundle != NULL)
 	{
 		// INPUT CONVERSION: check if the contact plan has been changed, in affermative case update it
-		result = update_contact_plan("", false);
+		char avoidWarn[2] = "\0";
+		result = update_contact_plan(avoidWarn, false);
 		if (result != -2)
 		{
 			// INPUT CONVERSION: learn the bundle's characteristics and store them into the CGR's bundle struct
@@ -1026,6 +1042,7 @@ int computeApplicableBacklog(unsigned long long neighbor, int priority, unsigned
 		CgrScalar *CgrTotalBacklog)
 {
 	int result = -1;
+	UNUSED(ordinal);
 	long int byteTot; long int byteApp;
 	if (CgrApplicableBacklog != NULL && CgrTotalBacklog != NULL)
 	{
@@ -1124,6 +1141,7 @@ int initialize_contact_graph_routing(unsigned long long ownNode, time_t time, dt
 
 		if (excludedNeighbors != NULL && cgrBundle != NULL)
 		{
+			printf("own Node: %d\n", ownNode);
 			result = initialize_cgr(0, ownNode);
 
 			if (result == 1)
@@ -1139,6 +1157,7 @@ int initialize_contact_graph_routing(unsigned long long ownNode, time_t time, dt
 					result = -2;
 				}
 				uniborouter = router;
+				printf("CGR initialized. \n");
 			}
 			else
 			{

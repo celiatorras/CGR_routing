@@ -76,6 +76,7 @@ BUNDLING_SRCS := 												\
 	bundling/CustodySignal.cc			\
 	bundling/CustodyTimer.cc			\
 	bundling/Dictionary.cc          	\
+	bundling/FormatUtils.cc				\
 	bundling/ForwardingInfo.cc			\
 	bundling/ForwardingLog.cc			\
 	bundling/FragmentManager.cc			\
@@ -83,6 +84,7 @@ BUNDLING_SRCS := 												\
 	bundling/ExpirationTimer.cc			\
 	bundling/GbofId.cc  		        \
 	bundling/MetadataBlock.cc			\
+	bundling/PayloadBlockProcessorHelper.cc \
 	bundling/SDNV.cc					\
 
 CONTACT_SRCS :=						\
@@ -133,7 +135,8 @@ CMD_SRCS :=						\
 	cmd/ShutdownCommand.cc		\
 	cmd/StorageCommand.cc		\
 	cmd/TestCommand.cc			\
-        cmd/ContactCommand.cc           \
+	cmd/ContactCommand.cc       \
+	cmd/VersionCommand.cc       \
 
 
 NAMING_SRCS :=					\
@@ -202,7 +205,7 @@ DTPC_SRCS :=							\
 	dtpc/DtpcTopicExpirationTimer.cc	\
 	dtpc/DtpcTopicStore.cc				\
 	dtpc/DtpcTopicTable.cc				\
-
+	
 UNIBOCGR_SRCS :=				\
 	routing/Unibo-CGR/core/bundles/bundles.c	\
 	routing/Unibo-CGR/core/cgr/cgr.c		\
