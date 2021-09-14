@@ -185,6 +185,10 @@ int tryMSR(time_t current_time, CgrBundle *bundle, List excludedNeighbors, FILE*
 	int result = -3;
 	List routes = get_routes(NULL);
 
+#if (LOG == 0)
+    (void) file_call; /* unused */
+#endif
+
 	debug_printf("Entry point.");
 
 	if(bundle != NULL && excludedNeighbors != NULL && bestRoutes != NULL)

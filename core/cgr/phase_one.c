@@ -1294,6 +1294,10 @@ static Route* get_best_known_route(RtgObject *rtgObj, unsigned long long neighbo
 	Route *bestRoute = NULL, *current;
 	ListElt *elt;
 
+#if (MAX_DIJKSTRA_ROUTES == 1)
+    (void) neighbor; /* unused */
+#endif
+
 	for (elt = rtgObj->knownRoutes->first; elt != NULL; elt = elt->next)
 	{
 		if (elt->data != NULL)
@@ -2532,7 +2536,7 @@ static int computeOneRoutePerNeighbor(Node *terminusNode, long unsigned int miss
 						result++;
 						remove_neighbor_from_known_routes(rtgObj->knownRoutes, route->neighbor);
 
-						if (result >= missingNeighbors)
+						if ((long unsigned int) result >= missingNeighbors)
 						{
 							stop = 1;
 						}
