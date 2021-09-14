@@ -434,7 +434,7 @@ UniboCGRBundleRouter::handle_contact_up(ContactUpEvent* event)
     if (iter != reroute_timers_.end()) {
         base_sptr = iter->second;
         reroute_timers_.erase(iter);
-        oasys::SharedTimerSystem::instance()->cancel(base_sptr);
+        oasys::SharedTimerSystem::instance()->cancel_timer(base_sptr);
         base_sptr.reset();
     }
 }
@@ -567,7 +567,7 @@ UniboCGRBundleRouter::handle_link_deleted(LinkDeletedEvent* event)
         log_debug("link %s deleted, cancelling reroute timer", link->name());
         oasys::SPtr_Timer base_sptr = iter->second;
         reroute_timers_.erase(iter);
-        oasys::SharedTimerSystem::instance()->cancel(base_sptr);
+        oasys::SharedTimerSystem::instance()->cancel_timer(base_sptr);
     }
 }
 
@@ -799,7 +799,7 @@ UniboCGRBundleRouter::route_bundle(Bundle* bundle, bool skip_check_next_hop)
     std::istringstream iss(res);
     for(std::string res; iss >> res; )
         result.push_back(res);
-    for(int i = 0; i < result.size(); i++)
+    for(long unsigned int i = 0; i < result.size(); i++)
     {
     	EndpointID* eidRes = new EndpointID(result[i]);
     	route_table_->get_matching(*eidRes, null_link, &matches);
