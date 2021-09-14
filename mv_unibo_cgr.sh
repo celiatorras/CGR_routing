@@ -215,6 +215,9 @@ function mv_unibo_cgr_to_dtnme() {
 	update_config_file "$CONFIG_FILE" MSR_PRECONF 0
 	update_config_file "$CONFIG_FILE" UNIBO_CGR_SUGGESTED_SETTINGS 0
 
+	# enable logging by default in DTNME
+	update_config_file "$CONFIG_FILE" LOG 1
+
 	echo
 
 }
