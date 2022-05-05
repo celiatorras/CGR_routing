@@ -682,7 +682,7 @@ void destroy_cgr(time_t time)
  *****************************************************************************/
 static void parse_excluded_nodes(List excludedNodes)
 {
-	ListElt *main_elt, *next_main;
+	ListElt *main_elt;
 	ListElt *current_elt, *next_current;
 	unsigned long long *main_node;
 	unsigned long long *current_node;
@@ -691,7 +691,6 @@ static void parse_excluded_nodes(List excludedNodes)
 	main_elt = excludedNodes->first;
 	while(main_elt != NULL)
 	{
-		next_main = main_elt->next;
 		if(main_elt->data != NULL)
 		{
 			main_node = (unsigned long long *) main_elt->data;
@@ -715,13 +714,15 @@ static void parse_excluded_nodes(List excludedNodes)
 
 				current_elt = next_current;
 			}
+
+            main_elt = main_elt->next;
 		}
 		else
 		{
+            current_elt = main_elt->next;
 			list_remove_elt(main_elt);
+            main_elt = current_elt;
 		}
-
-		main_elt = next_main;
 	}
 
 	return;
