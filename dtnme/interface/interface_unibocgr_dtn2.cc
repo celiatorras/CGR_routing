@@ -40,8 +40,9 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <string.h>
-
-
+#include <unistd.h>
+#include <iostream>
+#include <time.h>
 
 #include "../../core/library/commonDefines.h"
 #include "../../core/cgr/cgr.h"
@@ -57,6 +58,7 @@
 #include "../../core/cgr/cgr_phases.h"
 #include "../../core/msr/msr_utils.h"
 #include "../../core/time_analysis/time.h"
+#include "../../../../contact_plan/ContactPlanManager.h"
 
 
 #define NOMINAL_PRIMARY_BLKSIZE	29 // from ION 4.0.0: bpv7/library/libbpP.c
@@ -99,6 +101,15 @@ static CgrBundle *cgrBundle = NULL;
  * \brief Default region number.
  */
 static const unsigned long defaultRegionNbr = 1;
+
+/**
+ *  \Object to manage the load and update of contatc-plan.txt
+ */
+dtn::ContactPlanManager *planManager;
+
+struct timeval lastread_struct;
+time_t lastread;
+struct stat st;
 
 #define printDebugIonRoute(ionwm, route) do {  } while(0)
 
@@ -928,28 +939,30 @@ static int exclude_neighbors()
  *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
  *  -------- | --------------- | -----------------------------------------------
  *  05/07/20 | G. Gori		    |  Initial Implementation and documentation.
+ *  19/04/22 | Federico Le Pera |  Support to update contact plan only if it changes
  *****************************************************************************/
 int callUniboCGR(time_t time, dtn::Bundle *bundle, std::string *res)
 {
-
 	int result = -5;
+	int entries = -1;
 	List cgrRoutes = NULL;
 	UniboCgrSAP sap = get_unibo_cgr_sap(NULL);
 	UNUSED(sap);
 	record_total_interface_start_time();
 	debug_printf("Entry point interface.");
-
 	if (initialized && bundle != NULL)
 	{
-		// INPUT CONVERSION: check if the contact plan has been changed, in affermative case update it
-		char avoidWarn[2] = "\0";
-		result = update_contact_plan(avoidWarn, false);
-		if (result != -2)
+		//planManager->isCGRupdateComparedList();
+		//removeRangesContacts();
+		planManager->update_contact_plan(CONTACT_FILE);
+		//printf("The contact-plan.txt was modified at ReferenceTime (Unix time): %ld s\n", date);
+		if (result != -2 && result !=-1)
 		{
 			// INPUT CONVERSION: learn the bundle's characteristics and store them into the CGR's bundle struct
 			result = convert_bundle_from_dtn2_to_cgr(time - reference_time, bundle, cgrBundle);
 			if (result == 0)
 			{
+
 				//Start log only after checking that bundle is ok
 				start_call_log(time - reference_time,sap.count_bundles);
 				print_log_bundle_id(cgrBundle->id.source_node,
@@ -958,6 +971,12 @@ int callUniboCGR(time_t time, dtn::Bundle *bundle, std::string *res)
 						cgrBundle->id.fragment_length,
 						cgrBundle->id.fragment_offset);
 				writeLog("Payload length: %zu.", bundle->payload().length());
+				if(cgrBundle->terminus_node==localIpn)
+				{
+					writeLog("Bundle destination reached");
+					log_fflush();
+					return 1;
+				}
 				debug_printf("Go to CGR.");
 				// Call Unibo-CGR
 				result = getBestRoutes(time - reference_time, cgrBundle, excludedNeighbors,
@@ -969,7 +988,7 @@ int callUniboCGR(time_t time, dtn::Bundle *bundle, std::string *res)
 					// put them into ION's Lyst
 					result = convert_routes_from_cgr_to_dtn2(
 							cgrBundle->evc, cgrRoutes, res);
-
+					free_list_elts(excludedNeighbors);
 					if (result == -1)
 					{
 						result = -8;
@@ -986,6 +1005,7 @@ int callUniboCGR(time_t time, dtn::Bundle *bundle, std::string *res)
 			}
 			reset_bundle(cgrBundle);
 		}
+		if(result==-1)result=-2;
 	}
 
 	debug_printf("result -> %d\n", result);
@@ -1123,10 +1143,12 @@ void destroy_contact_graph_routing(time_t time)
  *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
  *  -------- | --------------- | -----------------------------------------------
  *  01/07/20 | G. Gori         |  Initial Implementation and documentation.
+ *  20/03/22 | Federico Le Pera|  Now interface_unibocgr using the ContactPlanManager
+ *  						   |  to read the contact-plan.txt and init the sturcts of CGR
  *****************************************************************************/
 int initialize_contact_graph_routing(unsigned long long ownNode, time_t time, dtn::UniboCGRBundleRouter *router)
 {
-
+	planManager = new dtn::ContactPlanManager("uniboCGR");
 	int result = 1;
 	char fileName[100] = CONTACT_FILE;
 	if(!(ownNode != 0 && time >= 0))
@@ -1150,12 +1172,13 @@ int initialize_contact_graph_routing(unsigned long long ownNode, time_t time, dt
 				reference_time = time;
 				localIpn = ownNode;
 				writeLog("Reference time (Unix time): %ld s.", (long int) reference_time);
-
-				if(update_contact_plan(fileName, true) < 0)
+				if(planManager->read_contact_plan(fileName)< 0)
 				{
 					printf("Cannot update contact plan in Unibo-CGR: can't open file");
 					result = -2;
 				}
+				if(result == 1)
+				printCurrentState();
 				uniborouter = router;
 				printf("CGR initialized. \n");
 			}
@@ -1176,11 +1199,32 @@ int initialize_contact_graph_routing(unsigned long long ownNode, time_t time, dt
 
 	return result;
 }
-
-
-
-
-
+/******************************************************************************
+ *
+ * \par Function Name:
+ *      get_CPManager
+ *
+ * \brief return the current CPManager
+ *
+ *
+ * \par Date Written:
+ *      2/05/22
+ *
+ * \return int
+ *
+ * \retval  *ContactPlanManager
+ *
+ *
+ * \par Revision History:
+ *
+ *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
+ *  -------- | --------------- | -----------------------------------------------
+ *  02/05/22 | Federico le Pera|  Initial Implementation and documentation.
+ *****************************************************************************/
+dtn::ContactPlanManager* get_CPManager()
+{
+	return planManager;
+}
 
 
 
