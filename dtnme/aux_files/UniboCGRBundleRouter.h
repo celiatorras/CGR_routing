@@ -42,6 +42,7 @@ in Spring 2021 to make it compatible with DTNME 1.0 beta under supervision of Ca
 
 #include <third_party/oasys/util/StringUtils.h>
 
+#include "../contact_plan/ContactPlanManager.h"
 #include "BundleRouter.h"
 #include "RouterInfo.h"
 #include "bundling/BundleInfoCache.h"
@@ -88,6 +89,7 @@ public:
     virtual void handle_registration_added(RegistrationAddedEvent* event);
     virtual void handle_registration_removed(RegistrationRemovedEvent* event);
     virtual void handle_registration_expired(RegistrationExpiredEvent* event);
+    virtual void handle_contact_plan_up(ContactPlanUpEvent *event);
     /// @}
 
 
@@ -273,7 +275,7 @@ public:
 
     /// Helper accessor to return the deferred queue for a link
     DeferredList* deferred_list(const LinkRef& link);
-
+    ContactPlanManager *planManager;
 };
 
 } // namespace dtn

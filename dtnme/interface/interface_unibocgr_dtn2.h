@@ -36,6 +36,8 @@
 #include "../../../../bundling/Bundle.h"
 #include "../../../RouteEntry.h"
 #include "../../../UniboCGRBundleRouter.h"
+#include "../../../../contact_plan/CPContact.h"
+#include "../../../../contact_plan/CPRange.h"
 
 #ifdef QUEUE_DELAY
 #undef QUEUE_DELAY
@@ -60,7 +62,7 @@ extern int callUniboCGR(time_t time, dtn::Bundle *bundle,
 		 std::string *res);
 extern void destroy_contact_graph_routing(time_t time);
 extern int initialize_contact_graph_routing(unsigned long long ownNode, time_t time, dtn::UniboCGRBundleRouter* router);
-
+dtn::ContactPlanManager* get_CPManager();
 #ifdef __cplusplus
 }
 #endif

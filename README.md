@@ -103,9 +103,15 @@ Unibo-CGR disabled: ./configure
 
 _Use in DTNME_
 
-Contact plan: The use of Unibo-CGR requires that the contact plan be provided as an external file (contact-plan.txt, to be placed in the directory from which the dtnd daemon is launched) at dtnd daemon start-up. The syntax is exactly the same as that used in ION, including the possible bidirectional interpretation of single “range” instructions, for the sake of commonality. A simple example file is provided for user convenience in Unibo-CGR/dtnme/aux_files.
+##### New version [July 2022 - Work in progress]
 
-Configuration file: The Unibo-CGR bundle router must be selected in the DTNME configuration file (usually in /etc/dtn.conf). See Unibo-CGR/dtnme/aux_files/README for more details.
+The code that manages the contact plan has been moved to a new repository: https://gitlab.com/ccaini/unibo-dtnme/. Be sure to include it inside the DTNME source tree before starting the build process.
+
+##### Old version [before July 2022]
+
+~~Contact plan: The use of Unibo-CGR requires that the contact plan be provided as an external file (contact-plan.txt, to be placed in the directory from which the dtnd daemon is launched) at dtnd daemon start-up. The syntax is exactly the same as that used in ION, including the possible bidirectional interpretation of single “range” instructions, for the sake of commonality. A simple example file is provided for user convenience in Unibo-CGR/dtnme/aux_files.~~
+
+~~Configuration file: The Unibo-CGR bundle router must be selected in the DTNME configuration file (usually in /etc/dtn.conf). See Unibo-CGR/dtnme/aux_files/README for more details.~~
 
 _DTNME Limitations_
 

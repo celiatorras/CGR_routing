@@ -44,6 +44,7 @@
 #  include <dtn-config.h>
 #endif
 
+#include "../contact_plan/ContactPlanManager.h"
 #include "UniboCGRBundleRouter.h"
 #include "RouteTable.h"
 #include "bundling/BundleActions.h"
@@ -403,6 +404,41 @@ UniboCGRBundleRouter::should_fwd(const Bundle* bundle, RouteEntry* route)
     return BundleRouter::should_fwd(bundle, route->link(), route->action());
 }
 
+//----------------------------------------------------------------------
+void
+UniboCGRBundleRouter::handle_contact_plan_up(ContactPlanUpEvent *event)
+{
+	ContactManager* contact_manager = BundleDaemon::instance()->contactmgr();
+	int receiver = event->receiver;
+	printf("Contatto aperto verso : %d\n", receiver);
+	//Get all links
+	contact_manager->lock()->lock(__func__);
+	const LinkSet* links = contact_manager->links();
+
+	int to;
+	LinkSet::const_iterator iter;
+	for (iter = links->begin(); iter != links->end(); ++iter) {
+		const LinkRef& link = *iter;
+
+		ASSERT(link != NULL);
+
+		//If the remote node isn't an ipn node, do nothing
+		EndpointID remote_eid = link->remote_eid();
+		if(!planManager->is_ipn(remote_eid))
+			continue;
+
+		//Check if the remote node of the link equals
+		//the remote node of the contact which fired the event
+		to = planManager->get_ipn(remote_eid);
+		if(to == receiver)
+			check_next_hop(link);
+	}
+
+	contact_manager->lock()->unlock();
+	if (contact_manager->lock()->is_locked_by_me()) {
+		contact_manager->lock()->unlock();
+	}
+}
 //----------------------------------------------------------------------
 void
 UniboCGRBundleRouter::handle_contact_up(ContactUpEvent* event)
@@ -883,6 +919,26 @@ UniboCGRBundleRouter::sort_routes(Bundle* bundle, RouteEntryVec* routes)
 void
 UniboCGRBundleRouter::check_next_hop(const LinkRef& next_hop)
 {
+	const EndpointID remote_eid_ = next_hop->remote_eid();
+	std::string ipnName = remote_eid_.str();
+	std::string linkNameString = next_hop->name_str();
+
+	//Flag signalling whether the ContactPlanManager is used or not
+	//The remote eid must have an ipn name
+	planManager = get_CPManager();
+	bool CPM_on = planManager->is_ipn(remote_eid_);
+
+	if(CPM_on) {
+		bool result = false;
+
+		//Call the CPManager to acknowledge if there is an open contact
+		//to the next_hop
+		result = planManager->is_there_open_contact_now(remote_eid_);
+
+		//if there is no contact, there is nothing to do now
+		if(!result)
+			return;
+	}
     // if the link isn't open, there's nothing to do now
     if (! next_hop->isopen()) {
         //log_debug("check_next_hop %s -> %s: link not open...",
