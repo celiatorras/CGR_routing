@@ -77,16 +77,16 @@ function update_config_file() {
 
 function mv_unibo_cgr_to_ion() {
 
-	UNIBO_CGR="$1"
-	ION="$2"
-	ION_BPV7="$ION/bpv7"
-	AUX_BPV7="$UNIBO_CGR/ion_bpv7/aux_files"
-	EXT_BPV7="$UNIBO_CGR/ion_bpv7/extensions"
-	CONFIG_FILE_BPV7="$ION_BPV7/cgr/Unibo-CGR/core/config.h"
-	ION_BPV6="$ION/bpv6"
-	AUX_BPV6="$UNIBO_CGR/ion_bpv6/aux_files"
-	EXT_BPV6="$UNIBO_CGR/ion_bpv6/extensions"
-	CONFIG_FILE_BPV6="$ION_BPV6/cgr/Unibo-CGR/core/config.h"
+	local UNIBO_CGR="$1"
+	local ION="$2"
+	local ION_BPV7="$ION/bpv7"
+	local AUX_BPV7="$UNIBO_CGR/ion_bpv7/aux_files"
+	local EXT_BPV7="$UNIBO_CGR/ion_bpv7/extensions"
+	local CONFIG_FILE_BPV7="$ION_BPV7/cgr/Unibo-CGR/core/config.h"
+	local ION_BPV6="$ION/bpv6"
+	local AUX_BPV6="$UNIBO_CGR/ion_bpv6/aux_files"
+	local EXT_BPV6="$UNIBO_CGR/ion_bpv6/extensions"
+	local CONFIG_FILE_BPV6="$ION_BPV6/cgr/Unibo-CGR/core/config.h"
 
 	echo ""
 	echo "Moving Unibo-CGR into ION..."
@@ -103,7 +103,7 @@ function mv_unibo_cgr_to_ion() {
 	cp -pf "$AUX_BPV6/ipnfw.c"        "$ION_BPV6/ipn/"
 	cp -pf "$AUX_BPV6/libcgr.c"       "$ION_BPV6/cgr/"
 #	cp -pf "$AUX_BPV6/Makefile.am"    "$ION/"
-  cp -pf "$AUX_BPV6/configure.ac"   "$ION/"
+	cp -pf "$AUX_BPV6/configure.ac"   "$ION/"
 
 	echo "Moving extensions for bpv6..."
 	rm -rf "$ION_BPV6/library/ext/cgrr"
@@ -180,12 +180,57 @@ function mv_unibo_cgr_to_ion() {
 	echo ""
 }
 
+function update_dtnme_srcs() {
+	local DTNME_MAKEFILE="$1"
+	local TO_ADD="$2"
+	local SRCS_NAME="$3"
+
+#	check if we tweaked the makefile in a previous run
+	if grep -q "$SRCS_NAME" "$DTNME_MAKEFILE" ; then
+		return
+	fi
+
+	local TEMP_FILE=".temp_dtnme_makefile"
+	touch "$TEMP_FILE"
+	chown --reference="$DTNME_MAKEFILE" "$TEMP_FILE"
+
+#	find first occurrence of "SERVLIB_SRCS" in Makefile
+	local lineNum=$(grep -n 'SERVLIB_SRCS' "$DTNME_MAKEFILE" | cut -d":" -f 1 | head -n 1)
+
+#	copy first part of Makefile
+	head -n $(($lineNum-1)) "$DTNME_MAKEFILE" > "$TEMP_FILE"
+
+#	insert section "$SRCS_NAME" with source filenames before SERVLIB_SRCS
+	echo -e "$SRCS_NAME := \t\\" >> "$TEMP_FILE"
+	while read srcLine; do
+#	skip empty lines
+	if test -z "$srcLine" ; then
+		break
+	fi
+	echo -e "\t$srcLine\t\\"
+	done < "$TO_ADD" >> "$TEMP_FILE"
+	echo >> "$TEMP_FILE"
+
+#	copy SERVLIB_SRCS line
+	sed -n "$lineNum"'p' < "$DTNME_MAKEFILE" >> "$TEMP_FILE"
+
+#	insert line "$(SRCS_NAME) \" in SERVLIB_SRCS
+	echo -e "\t"'$('"$SRCS_NAME"')'"\t\t\t\t\\" >> "$TEMP_FILE"
+
+#	copy remaining part of Makefile
+	tail -n +$(($lineNum + 1)) "$DTNME_MAKEFILE" >> "$TEMP_FILE"
+
+	mv "$TEMP_FILE" "$DTNME_MAKEFILE"
+}
+
+
 function mv_unibo_cgr_to_dtnme() {
 
-	UNIBO_CGR="$1"
-	DTNME="$2"
-	DTNME_ROUTING="$DTNME/servlib/routing"
-	CONFIG_FILE="$DTNME_ROUTING/Unibo-CGR/core/config.h"
+	local UNIBO_CGR="$1"
+	local DTNME="$2"
+	local DTNME_ROUTING="$DTNME/servlib/routing"
+	local CONFIG_FILE="$DTNME_ROUTING/Unibo-CGR/core/config.h"
+	local AUX_DIR="$UNIBO_CGR/dtnme/aux_files"
 
 	echo ""
 	echo "Moving Unibo-CGR into DTNME..."
@@ -193,10 +238,17 @@ function mv_unibo_cgr_to_dtnme() {
 	cp -rpf "$UNIBO_CGR" "$DTNME_ROUTING/Unibo-CGR"
 
 	echo "Moving auxiliary files into DTNME..."
-	cp -pf "$UNIBO_CGR/dtnme/aux_files/BundleRouter.cc"         "$DTNME_ROUTING/"
-	cp -pf "$UNIBO_CGR/dtnme/aux_files/UniboCGRBundleRouter.cc" "$DTNME_ROUTING/"
-	cp -pf "$UNIBO_CGR/dtnme/aux_files/UniboCGRBundleRouter.h"  "$DTNME_ROUTING/"
-	cp -pf "$UNIBO_CGR/dtnme/aux_files/Makefile"                "$DTNME/servlib/"
+	cp -pf "$AUX_DIR/BundleRouter.cc"         "$DTNME_ROUTING/"
+	cp -pf "$AUX_DIR/UniboCGRBundleRouter.cc" "$DTNME_ROUTING/"
+	cp -pf "$AUX_DIR/UniboCGRBundleRouter.h"  "$DTNME_ROUTING/"
+
+	echo "------------------------------------"
+	echo "dependency: ContactPlanManager"
+	"$UNIBO_CGR/dtnme/aux_files/ContactPlanManager/mv_contact_plan_manager.sh" dtnme "$UNIBO_CGR/dtnme/aux_files/ContactPlanManager/" "$DTNME"
+	echo "------------------------------------"
+
+	echo "Update Makefile..."
+	update_dtnme_srcs "$DTNME/servlib/Makefile" "$UNIBO_CGR/dtnme/aux_files/SourceList.txt" "UNIBOCGR_SRCS"
 
 	echo "Removing unnecessary files from Unibo-CGR for DTNME..."
 	rm -rf "$DTNME_ROUTING/Unibo-CGR/ion_bpv6"
@@ -215,7 +267,7 @@ function mv_unibo_cgr_to_dtnme() {
 	update_config_file "$CONFIG_FILE" MSR_PRECONF 0
 	update_config_file "$CONFIG_FILE" UNIBO_CGR_SUGGESTED_SETTINGS 0
 
-	# enable logging by default in DTNME
+#	enable logging by default in DTNME
 	update_config_file "$CONFIG_FILE" LOG 1
 
 	echo
