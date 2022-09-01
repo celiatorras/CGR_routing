@@ -31,10 +31,23 @@
 set -euo pipefail
 
 function help_fun() {
-	echo "Usage: $0 <ion | dtnme> </path/to/Unibo-CGR/> </path/to/ION/ | /path/to/DTNME/>" 1>&2
+	echo "Usage: $0 [--no-config] <ion | dtnme> </path/to/Unibo-CGR/> </path/to/ION/ | /path/to/DTNME/>" 1>&2
 	echo "This script includes Unibo-CGR in either ION or DTNME." 1>&2
 	echo "Launch this script with the three parameters explicited in the Usage string." 1>&2
+	echo "The --no-config option keeps the Unibo-CGR config.h file unchanged."
 }
+
+NO_CONFIG="false"
+
+if test $# -eq 4 ; then
+	if test "$1" != "--no-config" ; then
+		help_fun
+		exit 1
+	fi
+	NO_CONFIG="true"
+	shift
+fi
+
 
 if test $# -ne 3
 then
@@ -97,19 +110,9 @@ function mv_unibo_cgr_to_ion() {
 	cp -rpf "$UNIBO_CGR" "$ION_BPV6/cgr/Unibo-CGR"
 
 	echo "Moving auxiliary files for bpv6..."
-	cp -pf "$AUX_BPV6/bpextensions.c" "$ION_BPV6/library/ext/"
-	cp -pf "$AUX_BPV6/cgr.h"          "$ION_BPV6/library/"
-	cp -pf "$AUX_BPV6/cgrfetch.c"     "$ION_BPV6/utils/"
-	cp -pf "$AUX_BPV6/ipnfw.c"        "$ION_BPV6/ipn/"
-	cp -pf "$AUX_BPV6/libcgr.c"       "$ION_BPV6/cgr/"
-#	cp -pf "$AUX_BPV6/Makefile.am"    "$ION/"
-	cp -pf "$AUX_BPV6/configure.ac"   "$ION/"
-
+	"$AUX_BPV6/mv_unibo_cgr_ion_bpv6_aux_files.sh" "$AUX_BPV6" "$ION"
 	echo "Moving extensions for bpv6..."
-	rm -rf "$ION_BPV6/library/ext/cgrr"
-	cp -rpf "$EXT_BPV6/cgrr" "$ION_BPV6/library/ext/"
-	rm -rf "$ION_BPV6/library/ext/rgr"
-	cp -rpf "$EXT_BPV6/rgr" "$ION_BPV6/library/ext/"
+	"$EXT_BPV6/mv_unibo_cgr_ion_bpv6_extensions.sh" "$EXT_BPV6" "$ION"
 
 	echo "Removing unnecessary files from Unibo-CGR for bpv6..."
 	rm -rf "$ION_BPV6/cgr/Unibo-CGR/ion_bpv7"
@@ -124,17 +127,8 @@ function mv_unibo_cgr_to_ion() {
 	rm -rf "$ION_BPV7/cgr/Unibo-CGR"
 	cp -rpf "$UNIBO_CGR" "$ION_BPV7/cgr/Unibo-CGR"
 
-#	echo "Moving auxiliary files for bpv7..."
-#	cp -pf "$AUX_BPV7/bp.h"           "$ION_BPV7/include/"
-#	cp -pf "$AUX_BPV7/bpextensions.c" "$ION_BPV7/library/ext/"
-#	cp -pf "$AUX_BPV7/libcgr.c"       "$ION_BPV7/cgr/"
-#	cp -pf "$AUX_BPV7/Makefile.am"    "$ION/"
-
 	echo "Moving extensions for bpv7..."
-	rm -rf "$ION_BPV7/library/ext/cgrr"
-	cp -rpf "$EXT_BPV7/cgrr" "$ION_BPV7/library/ext/"
-	rm -rf "$ION_BPV7/library/ext/rgr"
-	cp -rpf "$EXT_BPV7/rgr" "$ION_BPV7/library/ext/"
+	"$EXT_BPV7/mv_unibo_cgr_ion_bpv7_extensions.sh" "$EXT_BPV7" "$ION"
 
 	echo "Removing unnecessary files from Unibo-CGR for bpv7..."
 	rm -rf "$ION_BPV7/cgr/Unibo-CGR/ion_bpv6"
@@ -145,9 +139,11 @@ function mv_unibo_cgr_to_ion() {
 #	rm -rf "$ION_BPV7/cgr/Unibo-CGR/ion_bpv7/aux_files"
 #	rm -rf "$ION_BPV7/cgr/Unibo-CGR/ion_bpv7/extensions"
 
-	echo "Updating Unibo-CGR's config.h file for ION..."
-	update_config_file "$CONFIG_FILE_BPV6" CGR_BUILD_FOR_ION 1
-	update_config_file "$CONFIG_FILE_BPV7" CGR_BUILD_FOR_ION 1
+	if test "$NO_CONFIG" = "false" ; then
+		echo "Updating Unibo-CGR's config.h file for ION..."
+		update_config_file "$CONFIG_FILE_BPV6" CGR_BUILD_FOR_ION 1
+		update_config_file "$CONFIG_FILE_BPV7" CGR_BUILD_FOR_ION 1
+	fi
 
 	echo ""
 
@@ -238,13 +234,12 @@ function mv_unibo_cgr_to_dtnme() {
 	cp -rpf "$UNIBO_CGR" "$DTNME_ROUTING/Unibo-CGR"
 
 	echo "Moving auxiliary files into DTNME..."
-	cp -pf "$AUX_DIR/BundleRouter.cc"         "$DTNME_ROUTING/"
-	cp -pf "$AUX_DIR/UniboCGRBundleRouter.cc" "$DTNME_ROUTING/"
-	cp -pf "$AUX_DIR/UniboCGRBundleRouter.h"  "$DTNME_ROUTING/"
+	"$AUX_DIR/mv_unibo_cgr_dtnme_aux_files.sh" "$AUX_DIR" "$DTNME"
 
 	echo "------------------------------------"
 	echo "dependency: ContactPlanManager"
-	"$UNIBO_CGR/dtnme/aux_files/ContactPlanManager/mv_contact_plan_manager.sh" dtnme "$UNIBO_CGR/dtnme/aux_files/ContactPlanManager/" "$DTNME"
+	local CONTACT_PLAN_MANAGER_DIR="$AUX_DIR/ContactPlanManager"
+	"$CONTACT_PLAN_MANAGER_DIR/mv_contact_plan_manager.sh" dtnme "$CONTACT_PLAN_MANAGER_DIR/" "$DTNME"
 	echo "------------------------------------"
 
 	echo "Update Makefile..."
@@ -258,17 +253,18 @@ function mv_unibo_cgr_to_dtnme() {
 	rm -rf "$DTNME_ROUTING/Unibo-CGR/docs/.doxygen"
 #	rm -rf "$DTNME_ROUTING/Unibo-CGR/dtnme/aux_files"
 
-	echo "Updating Unibo-CGR's config.h file for DTNME..."
-	update_config_file "$CONFIG_FILE" CGR_BUILD_FOR_ION 0
-	update_config_file "$CONFIG_FILE" CGR_AVOID_LOOP 0
-	update_config_file "$CONFIG_FILE" MSR 0
-	update_config_file "$CONFIG_FILE" CGRR 0
-	update_config_file "$CONFIG_FILE" RGR 0
-	update_config_file "$CONFIG_FILE" MSR_PRECONF 0
-	update_config_file "$CONFIG_FILE" UNIBO_CGR_SUGGESTED_SETTINGS 0
-
-#	enable logging by default in DTNME
-	update_config_file "$CONFIG_FILE" LOG 1
+	if test "$NO_CONFIG" = "false" ; then
+		echo "Updating Unibo-CGR's config.h file for DTNME..."
+		update_config_file "$CONFIG_FILE" CGR_BUILD_FOR_ION 0
+		update_config_file "$CONFIG_FILE" CGR_AVOID_LOOP 0
+		update_config_file "$CONFIG_FILE" MSR 0
+		update_config_file "$CONFIG_FILE" CGRR 0
+		update_config_file "$CONFIG_FILE" RGR 0
+		update_config_file "$CONFIG_FILE" MSR_PRECONF 0
+		update_config_file "$CONFIG_FILE" UNIBO_CGR_SUGGESTED_SETTINGS 0
+#		enable logging by default in DTNME
+		update_config_file "$CONFIG_FILE" LOG 1
+	fi
 
 	echo
 
@@ -276,10 +272,10 @@ function mv_unibo_cgr_to_dtnme() {
 
 if test "$BP_IMPL_NAME" = "ion"
 then
-	mv_unibo_cgr_to_ion "$UNIBO_CGR_DIR" "$BP_IMPL_DIR"
+	mv_unibo_cgr_to_ion "$UNIBO_CGR_DIR" "$BP_IMPL_DIR" "$NO_CONFIG"
 elif test "$BP_IMPL_NAME" = "dtnme"
 then
-	mv_unibo_cgr_to_dtnme "$UNIBO_CGR_DIR" "$BP_IMPL_DIR"
+	mv_unibo_cgr_to_dtnme "$UNIBO_CGR_DIR" "$BP_IMPL_DIR" "$NO_CONFIG"
 else
 	help_fun
 	exit 1
