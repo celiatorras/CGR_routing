@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -euo
+set -euo pipefail
 
 EXT_BPV6="$1"
 ION="$2"

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -euo
+set -euo pipefail
 
 AUX_DIR="$1"
 DTNME="$2"
