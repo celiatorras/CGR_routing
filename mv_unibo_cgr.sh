@@ -238,11 +238,13 @@ function mv_unibo_cgr_to_dtnme() {
 
 	echo "------------------------------------"
 	echo "dependency: ContactPlanManager"
-	local CONTACT_PLAN_MANAGER_DIR="$AUX_DIR/ContactPlanManager"
-	"$CONTACT_PLAN_MANAGER_DIR/mv_contact_plan_manager.sh" dtnme "$CONTACT_PLAN_MANAGER_DIR/" "$DTNME"
+	echo "Launch mv_unibo_dtnme_cpm.sh to include the Unibo-DTNME-CPM into DTNME"
+	local CONTACT_PLAN_MANAGER_DIR="$UNIBO_CGR/dtnme/Unibo-DTNME-CPM"
+	"$CONTACT_PLAN_MANAGER_DIR/mv_unibo_dtnme_cpm.sh" "$CONTACT_PLAN_MANAGER_DIR/" "$DTNME"
+	echo "Unibo-DTNME-CPM has been included"
 	echo "------------------------------------"
 
-	echo "Update Makefile..."
+	echo "Update DTNME/servlib/Makefile..."
 	update_dtnme_srcs "$DTNME/servlib/Makefile" "$UNIBO_CGR/dtnme/aux_files/SourceList.txt" "UNIBOCGR_SRCS"
 
 	echo "Removing unnecessary files from Unibo-CGR for DTNME..."
