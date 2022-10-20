@@ -29,24 +29,17 @@
 set -euo pipefail
 
 function help_fun() {
-	echo "Usage: $0 <ion | dtnme> </path/to/Unibo-CGR/> " 1>&2
+	echo "Usage: $0 </path/to/Unibo-CGR/> " 1>&2
 	echo "This script fetch Unibo-CGR's dependencies." 1>&2
 }
 
-if test $# -ne 2
+if test $# -ne 1
 then
 	help_fun
 	exit 1
 fi
 
-BP_IMPL_NAME="$1"
-UNIBO_CGR_DIR="$2"
-
-if test "$BP_IMPL_NAME" != "ion" -a "$BP_IMPL_NAME" != "dtnme"
-then
-	help_fun
-	exit 1
-fi
+UNIBO_CGR_DIR="$1"
 
 if ! test -d "$UNIBO_CGR_DIR"
 then
@@ -102,27 +95,23 @@ function fetch_gitlab_file() {
 function fetch_unibo_dtnme_file() {
     local REMOTE_FILE="$1"
     local PROJECT_ID="30169226"
-    local BRANCH="master"
+    local BRANCH="developCaini"
 
     fetch_gitlab_file "$PROJECT_ID" "$BRANCH" "$REMOTE_FILE"
 }
 
-function fetch_dtnme_dependencies() {
+function fetch_unibo_dtnme_dependencies() {
     local UNIBO_CGR="$1"
 
     # fetch ContactPlanManager dependency
-    local CPM_DIR="$UNIBO_CGR/dtnme/aux_files/ContactPlanManager"
+    local CPM_DIR="$UNIBO_CGR/dtnme/Unibo-DTNME-CPM"
     mkdir -p "$CPM_DIR"
-    local CPM_FETCH_FILENAME="fetch_contact_plan_manager.sh"
-    local CPM_FETCH_REMOTE_PATH="$CPM_FETCH_FILENAME"
-    fetch_unibo_dtnme_file "$CPM_FETCH_REMOTE_PATH" > "$CPM_DIR/$CPM_FETCH_FILENAME"
+    # download fetch_unibo_dtnme_cpm.sh from Unibo-DTNME-CPM GitLab repository
+    fetch_unibo_dtnme_file "fetch_unibo_dtnme_cpm.sh" > "$CPM_DIR/fetch_unibo_dtnme_cpm.sh"
     # add execute permission
-    chmod +x "$CPM_FETCH"
-    # launch ContactPlanManager fetch script
-    "$CPM_FETCH" dtnme "$CPM_DIR"
+    chmod +x "$CPM_DIR/fetch_unibo_dtnme_cpm.sh"
+    # launch fetch_unibo_dtnme_cpm.sh to download all other Unibo-DTNME-CPM files from GitLab
+    "$CPM_DIR/fetch_unibo_dtnme_cpm.sh" "$CPM_DIR"
 }
 
-if test "$BP_IMPL_NAME" = "dtnme"
-then
-	fetch_dtnme_dependencies "$UNIBO_CGR_DIR"
-fi
+fetch_unibo_dtnme_dependencies "$UNIBO_CGR_DIR"
