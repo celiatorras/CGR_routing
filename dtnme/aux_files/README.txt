@@ -1,15 +1,18 @@
 This directory contains a few auxiliary files necessary to enable the use of Unibo-CGR in DTN2/DTNME.
-They are taken from homonimous original files, or are directly derived from them. Therefore they maintain their original copyright and license.
+They are taken from homonyms original files, or are directly derived from them. Therefore they maintain their original copyright and license.
 
 To include Unibo-CGR in DTN2/DTNME insert Unibo-CGR directory under ./servlib/routing/. 
-Then copy these auxilairy files in the following directories ("." is DTNME's root directory)
+Then copy these auxiliary files in the following directories ("." is DTNME's root directory)
 
 BundleRouter.cc:            ./servlib/routing/
 UniboCGRBundleRouter.cc:    ./servlib/routing/
 UniboCGRBundleRouter.h:     ./servlib/routing/
-Makefile:                   ./servlib/
+
+The DTNME/servlib/Makefile should also be updated with a new target "UNIBOCGR_SRCS" whose .cc files are those listed into SourceList.txt.
+Then you should append $(UNIBOCGR_SRCS) to SERVLIB_SRCS.
 
 The auxiliary file "contact-plan.txt" contains an example of contact plan and the syntax of the instructions accepted. It must be placed in the directory from which the dtnd daemon is launched.
+For further explanation about contact plan management is recommended to give a glance to Unibo-DTNME-CPM (https://gitlab.com/ccaini/unibo-dtnme).
 
 Compile and install the usual way.
 

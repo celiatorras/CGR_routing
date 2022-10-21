@@ -84,8 +84,8 @@ _Including Unibo-CGR in a pre-existent BP release._
 
 Although Unibo-CGR has been designed to be as much independent as possible from the BP implementation to the modification of few files in pre-existing BP releases that do not include Unibo-CGR is obviously necessary. The files to be replaced or added outside the Unibo-CGR root are included in BP-specific aux_files directories.  
 _Note (ION)_: After the download rename the root directory to "Unibo-CGR" and put it under (ION's root directory)/bpv*/cgr/ then read the files Unibo-CGR/ion_bpv*/aux_files/README.txt and Unibo-CGR/ion_bpv*/extensions/README.txt.  
-_Note (DTNME)_: After the download rename the root directory to "Unibo-CGR" and put it under (DTNME's root directory)/servlib/routing/ then read the file Unibo-CGR/dtnme/aux_files/README.txt.  
-Alternatively, the script mv_unibo_cgr.sh allows the user to carry out an automatic inclusion (launch it without parameters to print the help).
+_Note (DTNME)_: After the download rename the root directory to "Unibo-CGR" and put it under (DTNME's root directory)/servlib/routing/ then read the file Unibo-CGR/dtnme/aux_files/README.txt. Moreover, you must first include Unibo-DTNME-CPM into the DTNME source tree (download @ https://gitlab.com/ccaini/unibo-dtnme). 
+Alternatively, the scripts fetch_unibo_cgr_dependencies.sh (only DTNME, download of Unibo-DTNME-CPM dependency) and mv_unibo_cgr.sh allow the user to carry out an automatic inclusion (launch it without parameters to print the help).
 
 _Compilation Switches_
 
@@ -103,23 +103,15 @@ Unibo-CGR disabled: ./configure
 
 _Use in DTNME_
 
-##### New version [July 2022 - Work in progress]
+Support to DTNME contacts and ranges is given by means of Unibo-DTNME-CPM (https://gitlab.com/ccaini/unibo-dtnme),
+so we recommend to give a glance to the README of Unibo-DTNME-CPM for further explanations about contact plan management.
 
-The code that manages the contact plan has been moved to a new repository: https://gitlab.com/ccaini/unibo-dtnme/. Be sure to include it inside the DTNME source tree before starting the build process.
-
-##### Old version [before July 2022]
-
-~~Contact plan: The use of Unibo-CGR requires that the contact plan be provided as an external file (contact-plan.txt, to be placed in the directory from which the dtnd daemon is launched) at dtnd daemon start-up. The syntax is exactly the same as that used in ION, including the possible bidirectional interpretation of single “range” instructions, for the sake of commonality. A simple example file is provided for user convenience in Unibo-CGR/dtnme/aux_files.~~
-
-~~Configuration file: The Unibo-CGR bundle router must be selected in the DTNME configuration file (usually in /etc/dtn.conf). See Unibo-CGR/dtnme/aux_files/README for more details.~~
 
 _DTNME Limitations_
 
-1. DTNME does not support, at present, scheduled contacts. As a result, bundle enqueued by CGR to a neighbor are immediately sent if the link is active, independently of what reported in the contact plan. In other words, in DTNME, by contrast to ION, the contact plan is used only by CGR, not to enforce link activity.  
-2. contacts cannot be updated/changed once the dtnd daemon has started. This limitation could be partially removed, should CGR be used in production on DTNME nodes, by allowing subsequent reading of the contact plan file.  
-3. As said before, at present DTNME interface lacks RGR and CGRR. As a result, MSR and anti-loop mechanism must be disabled in Unibo-CGR/core/config.h. This switches are automatically disabled if the inclusion is carried out by means of the script mv_unibo_cgr.sh.  
-4. The previous hop mechanism, based on the addition of a specific extension block to each bundle (see RFC 6259), seems to rely on a different mechanism in DTNME. This prevents ION nodes from knowing the EID of the previous hop in mixed environments, whenever the previous node is a DTNME node (even if declared and advertised with an ipn EID). As a result, ping-pong events may occur. In tests we had to disable reverse contact to prevent them.
-5. Bundle reforwarding after forfait time has not been implemented yet.
+1. At present DTNME interface lacks RGR and CGRR. As a result, MSR and anti-loop mechanism must be disabled in Unibo-CGR/core/config.h. This switches are automatically disabled if the inclusion is carried out by means of the script mv_unibo_cgr.sh.  
+2. The previous hop mechanism, based on the addition of a specific extension block to each bundle (see RFC 6259), seems to rely on a different mechanism in DTNME. This prevents ION nodes from knowing the EID of the previous hop in mixed environments, whenever the previous node is a DTNME node (even if declared and advertised with an ipn EID). As a result, ping-pong events may occur. In tests we had to disable reverse contact to prevent them.
+3. Bundle reforwarding after forfait time has not been implemented yet.
 
 _Logs_
 
