@@ -104,7 +104,7 @@ Unibo-CGR disabled: ./configure
 _Use in DTNME_
 
 Support to DTNME contacts and ranges is given by means of Unibo-DTNME-CPM (https://gitlab.com/ccaini/unibo-dtnme),
-so we recommend to give a glance to the README of Unibo-DTNME-CPM for further explanations about contact plan management.
+so we recommend to give a glance to the README of Unibo-DTNME-CPM for further explanation about contact plan management.
 
 
 _DTNME Limitations_
