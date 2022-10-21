@@ -78,14 +78,19 @@ You should have received a copy of the GNU General Public License along with Uni
 
 Auxiliary files maintain their original licences.
 
-#### Additional information
+#### Including Unibo-CGR in a pre-existent BP release
+Although Unibo-CGR has been designed to be independent of BP implementations, through the use of a common core and implementation specific interfaces, a few additional files must be added or replaced in BP implementations that do not natively include Unibo-CGR (note that Unibo-CGR is already included in latest ION releases). These files are included in BP-specific aux_files directories (see above).
 
-_Including Unibo-CGR in a pre-existent BP release._
+_Note (ION)_: After downloading Unibo-CGR, use the script mv_unibo_cgr.sh to carry out an automatic inclusion (launch the script without parameters to print the help). Alternatively, for manual installation, rename Unibo-CGR root directory as "Unibo-CGR" and move it in (ION's root directory)/bpv*/cgr/; then follows the instructions given in the files Unibo-CGR/ion_bpv*/aux_files/README.txt and Unibo-CGR/ion_bpv*/extensions/README.txt.  
+_Note (DTNME)_: The current version of the Unibo-CGR interface to DTNME requires the use of the Contact Plan Manager (CPM) classes provided by the UNIBO-DTNME-CPM project. The step for an automatic installation are the following
+- Download Unibo-CGR files
+- use the script fetch_unibo_cgr_dependencies.sh (in the Unibo-CGR directory just downloaded). This script will download the files of Unibo-FTNME Contact Plan Manager (CPM) into Unibo-CGR
+- use the script mv_unibo_cgr.sh. This script will include both Unibo-DTNME-CPM and Unibo-CGR files into DTNME (launch the script without parameters to print the help). 
 
-Although Unibo-CGR has been designed to be as much independent as possible from the BP implementation to the modification of few files in pre-existing BP releases that do not include Unibo-CGR is obviously necessary. The files to be replaced or added outside the Unibo-CGR root are included in BP-specific aux_files directories.  
-_Note (ION)_: After the download rename the root directory to "Unibo-CGR" and put it under (ION's root directory)/bpv*/cgr/ then read the files Unibo-CGR/ion_bpv*/aux_files/README.txt and Unibo-CGR/ion_bpv*/extensions/README.txt.  
-_Note (DTNME)_: After the download rename the root directory to "Unibo-CGR" and put it under (DTNME's root directory)/servlib/routing/ then read the file Unibo-CGR/dtnme/aux_files/README.txt. Moreover, you must first include Unibo-DTNME-CPM into the DTNME source tree (download @ https://gitlab.com/ccaini/unibo-dtnme). 
+Alternatively, manual installation is also possible, although not recomended. After downloading rename Unibo-CGR root directory as "Unibo-CGR" and move it in (DTNME's root directory)/servlib/routing/ then follows the instructions gioven in the file Unibo-CGR/dtnme/aux_files/README.txt. Moreover, you must first include Unibo-DTNME-CPM into the DTNME source tree (download @ https://gitlab.com/ccaini/unibo-dtnme). 
 Alternatively, the scripts fetch_unibo_cgr_dependencies.sh (only DTNME, download of Unibo-DTNME-CPM dependency) and mv_unibo_cgr.sh allow the user to carry out an automatic inclusion (launch it without parameters to print the help).
+
+#### Additional information
 
 _Compilation Switches_
 
