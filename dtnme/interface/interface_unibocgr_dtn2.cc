@@ -330,7 +330,7 @@ static int convert_bundle_from_dtn2_to_cgr(time_t current_time, dtn::Bundle *Dtn
 
 				 // TODO CgrBundle->id.source_node = Dtn2Bundle->source();
 				CgrBundle->id.source_node = 0; // TODO TEMP
-				CgrBundle->id.creation_timestamp = Dtn2Bundle->creation_ts().seconds_;
+				CgrBundle->id.creation_timestamp = Dtn2Bundle->creation_ts().secs_or_millisecs_;
 				CgrBundle->id.sequence_number = Dtn2Bundle->creation_ts().seqno_;
 				if( Dtn2Bundle->is_fragment())
 				{
@@ -347,7 +347,13 @@ static int convert_bundle_from_dtn2_to_cgr(time_t current_time, dtn::Bundle *Dtn
 
 				CgrBundle->evc = computeBundleEVC(CgrBundle->size); // SABR 2.4.3
 
-				offset = Dtn2Bundle->creation_ts().seconds_ + EPOCH_2000_SEC - reference_time;
+/*CCaini We must distibguish if in ms or s; if in ms we have to divide by 1000. In ION bpv7
+				  Need to convert from msec (since EPOCH 2000) to seconds since 1970 
+                        time_t creationTimeInSeconds = (time_t) ( IonBundle->id.creationTime.msec / 1000 ) + EPOCH_2000_SEC;
+Se il tempo e' > di 720 642 050 000 (1 nov 21:01 in ms) allora per forza e' in ms e devo quindi dividere per 1000 
+*/
+
+				offset = Dtn2Bundle->creation_ts().secs_or_millisecs_ + EPOCH_2000_SEC - reference_time;
 				//offset è la differenza tra la creazione del bundle e il momento di partenza del demone dtnd
 				//CgrBundle->expiration_time = IonBundle->expirationTime
 				//		- IonBundle->id.creationTime.seconds + offset;
@@ -1163,7 +1169,7 @@ int initialize_contact_graph_routing(unsigned long long ownNode, time_t time, dt
 
 		if (excludedNeighbors != NULL && cgrBundle != NULL)
 		{
-			printf("own Node: %d\n", ownNode);
+			printf("own Node: %lld\n", ownNode);//CCaini modified from %d to %lld
 			result = initialize_cgr(0, ownNode);
 
 			if (result == 1)
