@@ -241,7 +241,7 @@ static int get_cgrr_ext_block(dtn::Bundle *bundle, CGRRouteBlock **resultBlk)
  * \retval -1  Arguments error
  * \retval -2 Bundle have a DTN name, not IPN. Can't use CGR.
  *
- * \param[in]    current_time       The current time, in differential time from reference_time
+ * \param[in]    current_time       The current time, in differential time from reference_time in s
  * \param[in]    *Dtn2Bundle        The bundle in DTN2
  * \param[out]   *CgrBundle         The bundle in this CGR's implementation.
  *
@@ -273,7 +273,8 @@ static int convert_bundle_from_dtn2_to_cgr(time_t current_time, dtn::Bundle *Dtn
 		  // it's a dtn name, can't use CGR
 		  result = -2;
 		}
-		else
+		else //parse the ipn EID to find the destNode (the node number)
+//CCaini we should add a check to verify that the EID is ipn; do not assume it is, as now.
 		{
 			std::string delimiter1 = ":";
 			std::string delimiter2 = ".";
@@ -315,7 +316,8 @@ static int convert_bundle_from_dtn2_to_cgr(time_t current_time, dtn::Bundle *Dtn
 					SET_CRITICAL(CgrBundle);
 				}
 					#endif
-				/*Non ho trovato info sul backward propagation
+				/*Non ho trovato info sul backward propagation CCaini: this infromation is provided by ION, but most
+  				 likely not by DTNME 
 				if (!(IS_CRITICAL(CgrBundle)) && IonBundle->returnToSender)
 				{
 					SET_BACKWARD_PROPAGATION(CgrBundle);
@@ -329,9 +331,11 @@ static int convert_bundle_from_dtn2_to_cgr(time_t current_time, dtn::Bundle *Dtn
 				#endif
 
 				 // TODO CgrBundle->id.source_node = Dtn2Bundle->source();
-				CgrBundle->id.source_node = 0; // TODO TEMP
+				CgrBundle->id.source_node = 0; // TODO TEMP CCaini it should  be trivial to add; it should be a field of Dtn2Bundle
+//if the source id dtn, keep 0; otherwise insert the node number . It is used only by logs. We should actually pass the EID, such as ipn:3.4 as a string
 				CgrBundle->id.creation_timestamp = Dtn2Bundle->creation_ts().secs_or_millisecs_;
 				CgrBundle->id.sequence_number = Dtn2Bundle->creation_ts().seqno_;
+//	                        CgrBundle->bp_version = Dtn2Bundle->bp_version();
 				if( Dtn2Bundle->is_fragment())
 				{
 					CgrBundle->id.fragment_length = Dtn2Bundle->frag_length();
@@ -347,18 +351,15 @@ static int convert_bundle_from_dtn2_to_cgr(time_t current_time, dtn::Bundle *Dtn
 
 				CgrBundle->evc = computeBundleEVC(CgrBundle->size); // SABR 2.4.3
 
-/*CCaini We must distibguish if in ms or s; if in ms we have to divide by 1000. In ION bpv7
-				  Need to convert from msec (since EPOCH 2000) to seconds since 1970 
-                        time_t creationTimeInSeconds = (time_t) ( IonBundle->id.creationTime.msec / 1000 ) + EPOCH_2000_SEC;
-Se il tempo e' > di 720 642 050 000 (1 nov 21:01 in ms) allora per forza e' in ms e devo quindi dividere per 1000 
-*/
-
+/*CCaini  In the new Unibo-CGR version the offset will be calculated in Unibo-CGR core*/
+//
 				offset = Dtn2Bundle->creation_ts().secs_or_millisecs_ + EPOCH_2000_SEC - reference_time;
-				//offset è la differenza tra la creazione del bundle e il momento di partenza del demone dtnd
+
+				//offset relative_creation_time_in_s è la differenza tra la creazione del bundle e il momento di partenza del demone dtnme in s
 				//CgrBundle->expiration_time = IonBundle->expirationTime
 				//		- IonBundle->id.creationTime.seconds + offset;
 
-				CgrBundle->expiration_time = Dtn2Bundle->expiration_millis() + offset;
+				CgrBundle->expiration_time = Dtn2Bundle->expiraton_millis() + offset;
 				//Read PreviousHop Extension
 				std::string ipnName2 = Dtn2Bundle->prevhop().str();
 				if (ipnName2.rfind("dtn", 0) == 0) {
@@ -1152,6 +1153,8 @@ void destroy_contact_graph_routing(time_t time)
  *  20/03/22 | Federico Le Pera|  Now interface_unibocgr using the ContactPlanManager
  *  						   |  to read the contact-plan.txt and init the sturcts of CGR
  *****************************************************************************/
+
+CCaini uint64_t instead of unsigned long long
 int initialize_contact_graph_routing(unsigned long long ownNode, time_t time, dtn::UniboCGRBundleRouter *router)
 {
 	planManager = new dtn::ContactPlanManager("uniboCGR");
@@ -1170,7 +1173,7 @@ int initialize_contact_graph_routing(unsigned long long ownNode, time_t time, dt
 		if (excludedNeighbors != NULL && cgrBundle != NULL)
 		{
 			printf("own Node: %lld\n", ownNode);//CCaini modified from %d to %lld
-			result = initialize_cgr(0, ownNode);
+			result = initialize_cgr(0, ownNode);//CCaini del core di Unibo-CGR
 
 			if (result == 1)
 			{

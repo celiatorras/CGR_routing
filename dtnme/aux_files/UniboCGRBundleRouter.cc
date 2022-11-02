@@ -82,14 +82,14 @@ UniboCGRBundleRouter::UniboCGRBundleRouter(const char* classname,
     //Giacomo:: getting necessary info & call initialize
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    EndpointID eid = BundleDaemon::instance()->local_eid_ipn();
-    std::string ipnName = eid.str();
+    EndpointID local_eid_ipn = BundleDaemon::instance()->local_eid_ipn();//copy the local EID ipn
+    std::string ipnName = local_eid_ipn.str();
     std::string delimiter1 = ":";
     std::string delimiter2 = ".";
     std::string s = ipnName.substr(ipnName.find(delimiter1) + 1, ipnName.find(delimiter2) - 1);
     std::stringstream convert;
-    long ownNode;
-    convert << s;
+    long ownNode; //uint_64
+    convert << s;//this line and the next convert a string into a number
     convert >> ownNode;
     initialize_contact_graph_routing(ownNode, tv.tv_sec, this);
 
