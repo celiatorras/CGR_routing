@@ -359,7 +359,7 @@ static int convert_bundle_from_dtn2_to_cgr(time_t current_time, dtn::Bundle *Dtn
 				//CgrBundle->expiration_time = IonBundle->expirationTime
 				//		- IonBundle->id.creationTime.seconds + offset;
 
-				CgrBundle->expiration_time = Dtn2Bundle->expiraton_millis() + offset;
+				CgrBundle->expiration_time = Dtn2Bundle->expiration_millis() + offset;
 				//Read PreviousHop Extension
 				std::string ipnName2 = Dtn2Bundle->prevhop().str();
 				if (ipnName2.rfind("dtn", 0) == 0) {
