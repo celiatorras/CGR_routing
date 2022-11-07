@@ -1154,7 +1154,7 @@ void destroy_contact_graph_routing(time_t time)
  *  						   |  to read the contact-plan.txt and init the sturcts of CGR
  *****************************************************************************/
 
-CCaini uint64_t instead of unsigned long long
+uint64_t instead of unsigned long long
 int initialize_contact_graph_routing(unsigned long long ownNode, time_t time, dtn::UniboCGRBundleRouter *router)
 {
 	planManager = new dtn::ContactPlanManager("uniboCGR");
