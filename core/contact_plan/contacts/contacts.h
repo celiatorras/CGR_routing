@@ -33,64 +33,40 @@
 #define SOURCES_CONTACTS_PLAN_CONTACTS_CONTACTS_H_
 
 #include <sys/time.h>
+
+#include "../../UniboCGRSAP.h"
 #include "../../library/commonDefines.h"
 #include "../../library/list/list_type.h"
 #include "../../library_from_ion/rbt/rbt_type.h"
 
-#ifndef REVISABLE_CONFIDENCE
-/**
- * \brief Set to 1 if you want to permits that contact's confidence can be changed.
- *        Set to 0 otherwise.
- */
-#define REVISABLE_CONFIDENCE 1
+#ifdef __cplusplus
+extern "C"
+{
 #endif
-
-#ifndef REVISABLE_XMIT_RATE
-/**
- * \brief Set to 1 if you want to permits that contact's xmitRate (and MTVs) can be changed.
- *        Set to 0 otherwise.
- *
- * \par Notes:
- *          1. I suggest you to set this macro to 1 if you don't read (and update) the contact plan
- *             directly from a file but you read the contacts from another C struct by BP interface.
- */
-#define REVISABLE_XMIT_RATE 1
-#endif
-
-#if (REVISABLE_CONFIDENCE && REVISABLE_XMIT_RATE)
-#undef REVISABLE_CONTACT
-#define REVISABLE_CONTACT 1
-#endif
-
-#define COPY_MTV 1
-#define DO_NOT_COPY_MTV 0
 
 typedef struct cgrContactNote ContactNote;
 
+// support to new types must be carefully designed -- at present only scheduled type is supported
 typedef enum
 {
-	TypeRegistration = 1,
-	TypeScheduled,
-	TypeSuppressed,
-	TypePredicted,
-	TypeHypothetical,
-	TypeDiscovered
+    //TypeRegistration = 1,
+    TypeScheduled,
+    //TypeSuppressed,
+    //TypePredicted,
+    //TypeHypothetical,
+    //TypeDiscovered
 } CtType;
 
 typedef struct
 {
-    /**
-     * \brief Common region of both sender and receiver
-     */
-     unsigned long regionNbr;
 	/**
 	 * \brief Sender node (ipn node number)
 	 */
-	unsigned long long fromNode;
+	uint64_t fromNode;
 	/**
 	 * \brief Receiver node (ipn node number)
 	 */
-	unsigned long long toNode;
+	uint64_t toNode;
 	/**
 	 * \brief Start transit time
 	 */
@@ -102,7 +78,7 @@ typedef struct
 	/**
 	 * \brief In bytes per second
 	 */
-	long unsigned int xmitRate;
+	uint64_t xmitRate;
 	/**
 	 * \brief Confidence that the contact will materialize
 	 */
@@ -155,11 +131,11 @@ struct cgrContactNote
 	/**
 	 * \brief Ranges sum to reach the toNode
 	 */
-	unsigned int owltSum;
+	uint64_t owltSum;
 	/**
 	 * \brief Number of hops to reach this contact during Dijkstra's search.
 	 */
-	unsigned int hopCount;
+	uint32_t hopCount;
 	/**
 	 * \brief Product of the confidence of each contacts in the path to
 	 * reach this contact and of the contact's confidence itself
@@ -180,64 +156,46 @@ struct cgrContactNote
 	/**
 	 * \brief The owlt of the range found.
 	 */
-	unsigned int owlt;
+	uint32_t owlt;
 	/**
 	 * \brief
 	 */
 	Contact *nextContactInDijkstraQueue;
 };
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
 extern int compare_contacts(void *first, void *second);
-extern Contact* create_contact(unsigned long regionNbr, unsigned long long fromNode, unsigned long long toNode,
-		time_t fromTime, time_t toTime, long unsigned int xmitRate, float confidence, CtType type);
+extern Contact* create_contact(uint64_t fromNode, uint64_t toNode,
+		time_t fromTime, time_t toTime, uint64_t xmitRate, float confidence, CtType type);
 extern void free_contact(void*);
 
-extern int create_ContactsGraph();
-extern void destroy_ContactsGraph();
-extern void reset_ContactsGraph();
+extern int ContactSAP_open(UniboCGRSAP* uniboCgrSap);
+extern void ContactSAP_close(UniboCGRSAP* uniboCgrSap);
+extern void reset_ContactsGraph(UniboCGRSAP* uniboCgrSap);
 
-extern void removeExpiredContacts(time_t time);
-extern void remove_contact_from_graph(unsigned long regionNbr, time_t *fromTime, unsigned long long fromNode,
-		unsigned long long toNode);
-extern void remove_contact_elt_from_graph(Contact *elt);
-int add_contact_to_graph(unsigned long regionNbr, unsigned long long fromNode, unsigned long long toNode, time_t fromTime,
-		time_t toTime, long unsigned int xmitRate, float confidence, int copyMTV, double mtv[]);
-extern void discardAllRoutesFromContactsGraph();
+extern void removeExpiredContacts(UniboCGRSAP* uniboCgrSap);
+extern void remove_contact_from_graph(UniboCGRSAP* uniboCgrSap, time_t fromTime, uint64_t fromNode, uint64_t toNode);
+extern void remove_contact_elt_from_graph(UniboCGRSAP* uniboCgrSap, Contact *elt);
+int add_contact_to_graph(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime,
+                         time_t toTime, uint64_t xmitRate, float confidence, int copyMTV, const double mtv[]);
+extern void discardAllRoutesFromContactsGraph(UniboCGRSAP* uniboCgrSap);
 
-extern Contact* get_contact(unsigned long regionNbr, unsigned long long fromNode, unsigned long long toNode, time_t fromTime,
-		RbtNode **node);
-extern Contact* get_first_contact(RbtNode **node);
-extern Contact* get_first_contact_from_node(unsigned long regionNbr, unsigned long long fromNodeNbr, RbtNode **node);
-extern Contact* get_first_contact_from_node_to_node(unsigned long regionNbr, unsigned long long fromNodeNbr,
-		unsigned long long toNodeNbr, RbtNode **node);
+extern Contact* get_contact(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime,
+                            RbtNode **node);
+extern Contact* get_first_contact(UniboCGRSAP* uniboCgrSap, RbtNode **node);
+extern Contact* get_first_contact_from_node(UniboCGRSAP* uniboCgrSap, uint64_t fromNodeNbr, RbtNode **node);
+extern Contact* get_first_contact_from_node_to_node(UniboCGRSAP* uniboCgrSap, uint64_t fromNodeNbr,
+                                                    uint64_t toNodeNbr, RbtNode **node);
 extern Contact* get_next_contact(RbtNode **node);
 extern Contact* get_prev_contact(RbtNode **node);
-extern Contact * get_contact_with_time_tolerance(unsigned long regionNbr, unsigned long long fromNode, unsigned long long toNode, time_t fromTime, unsigned int tolerance);
+extern Contact * get_contact_with_time_tolerance(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime, uint32_t tolerance);
 
-#if REVISABLE_CONFIDENCE
-extern int revise_confidence(unsigned long regionNbr, unsigned long long fromNode, unsigned long long toNode, time_t fromTime, float newConfidence);
-#endif
-#if REVISABLE_XMIT_RATE
-extern int revise_xmit_rate(unsigned long regionNbr, unsigned long long fromNode, unsigned long long toNode, time_t fromTime, unsigned long int xmitRate, int copyMTV, double mtv[]);
-#endif
-#if REVISABLE_CONTACT
-extern int revise_contact(unsigned long regionNbr, unsigned long long fromNode, unsigned long long toNode, time_t fromTime, float newConfidence, unsigned long int xmitRate, int copyMTV, double mtv[]);
-#endif
 
-extern int refill_mtv(unsigned long regionNbr, unsigned long long fromNode, unsigned long long toNode, time_t fromTime, unsigned int tolerance, unsigned int refillSize, int priority);
+extern int revise_contact_start_time(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime, time_t newFromTime);
+extern int revise_contact_end_time(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime, time_t newEndTime);
+extern int revise_confidence(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime, float newConfidence);
+extern int revise_xmit_rate(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime, uint64_t xmitRate);
 
-extern List get_known_regions();
-
-#if (LOG == 1)
-extern int printContactsGraph(FILE *file, time_t currentTime);
-#else
-#define printContactsGraph(file, currentTime) do {  } while(0)
-#endif
+extern int printContactsGraph(UniboCGRSAP* uniboCgrSap, FILE *file);
 
 #ifdef __cplusplus
 }

@@ -45,6 +45,7 @@
 #include <sys/time.h>
 #include <time.h>
 
+#include "../UniboCGRSAP.h"
 #include "../cgr/cgr_phases.h"
 
 typedef struct
@@ -64,8 +65,8 @@ typedef struct
 typedef struct
 {
 	TimeRecorded phase_time;
-	unsigned int call_counter;
-	unsigned long long timer;
+	uint64_t call_counter;
+	uint64_t timer;
 } PhaseTimeLogger;
 
 typedef struct
@@ -73,11 +74,22 @@ typedef struct
 	PhaseTimeLogger phase_time_logger[3];
 } PhasesTime;
 
-static TimeFile * get_time_file()
+typedef struct
 {
-	static TimeFile timeFile;
+    TimeRecorded total_time;
+    uint64_t timer;
+} TotalTime;
 
-	return &timeFile;
+struct TimeAnalysisSAP {
+    PhasesTime phasesTime;
+    TimeFile timeFile;
+    TotalTime totalCoreTime;
+    TotalTime totalInterfaceTime;
+};
+
+static TimeFile * get_time_file(UniboCGRSAP* uniboCgrSap)
+{
+    return &UniboCGRSAP_get_TimeAnalysisSAP(uniboCgrSap)->timeFile;
 }
 
 #if (COMPUTE_PHASES_TIME)
@@ -106,11 +118,9 @@ static TimeFile * get_time_file()
  *  -------- | --------------- | -----------------------------------------------
  *  20/12/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static PhasesTime *get_phases_time()
+static PhasesTime *get_phases_time(UniboCGRSAP* uniboCgrSap)
 {
-	static PhasesTime phasesTime;
-
-	return &phasesTime;
+	return &UniboCGRSAP_get_TimeAnalysisSAP(uniboCgrSap)->phasesTime;
 }
 
 /******************************************************************************
@@ -135,9 +145,9 @@ static PhasesTime *get_phases_time()
  *  -------- | --------------- | -----------------------------------------------
  *  20/12/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void record_phases_start_time(UniboCgrPhase phase)
+void record_phases_start_time(UniboCGRSAP* uniboCgrSap, UniboCgrPhase phase)
 {
-	PhasesTime *phasesTime = get_phases_time();
+	PhasesTime *phasesTime = get_phases_time(uniboCgrSap);
 	int found = 0;
 	int phaseSelected = 0;
 
@@ -167,8 +177,6 @@ void record_phases_start_time(UniboCgrPhase phase)
 		phasesTime->phase_time_logger[phaseSelected].phase_time.beginOk =
 				clock_gettime(CLOCK_REALTIME, &(phasesTime->phase_time_logger[phaseSelected].phase_time.beginTime));
 	}
-
-	return;
 }
 
 /******************************************************************************
@@ -193,7 +201,7 @@ void record_phases_start_time(UniboCgrPhase phase)
  *  -------- | --------------- | -----------------------------------------------
  *  20/12/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void record_phases_stop_time(UniboCgrPhase phase)
+void record_phases_stop_time(UniboCGRSAP* uniboCgrSap, UniboCgrPhase phase)
 {
 	PhasesTime *phasesTime;
 	int endOk;
@@ -212,7 +220,7 @@ void record_phases_stop_time(UniboCgrPhase phase)
 	found = 0;
 	phaseSelected = 0;
 
-	phasesTime = get_phases_time();
+	phasesTime = get_phases_time(uniboCgrSap);
 
 	if(phase == phaseOne)
 	{
@@ -250,8 +258,6 @@ void record_phases_stop_time(UniboCgrPhase phase)
 
 	}
 
-	return;
-
 }
 
 /*************************************************************/
@@ -259,12 +265,6 @@ void record_phases_stop_time(UniboCgrPhase phase)
 #endif
 
 #if (COMPUTE_TOTAL_CORE_TIME || COMPUTE_TOTAL_INTERFACE_TIME)
-
-typedef struct
-{
-	TimeRecorded total_time;
-	unsigned long long timer;
-} TotalTime;
 
 #if (COMPUTE_TOTAL_CORE_TIME)
 
@@ -292,11 +292,9 @@ typedef struct
  *  -------- | --------------- | -----------------------------------------------
  *  20/12/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static TotalTime *get_total_core_time()
+static TotalTime *get_total_core_time(UniboCGRSAP* uniboCgrSap)
 {
-	static TotalTime totalTime;
-
-	return &totalTime;
+	return &UniboCGRSAP_get_TimeAnalysisSAP(uniboCgrSap)->totalCoreTime;
 }
 
 /******************************************************************************
@@ -319,13 +317,11 @@ static TotalTime *get_total_core_time()
  *  -------- | --------------- | -----------------------------------------------
  *  20/12/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void record_total_core_start_time()
+void record_total_core_start_time(UniboCGRSAP* uniboCgrSap)
 {
-	TotalTime *totalTime = get_total_core_time();
+	TotalTime *totalTime = get_total_core_time(uniboCgrSap);
 
 	totalTime->total_time.beginOk = clock_gettime(CLOCK_REALTIME, &(totalTime->total_time.beginTime));
-
-	return;
 }
 
 /******************************************************************************
@@ -348,7 +344,7 @@ void record_total_core_start_time()
  *  -------- | --------------- | -----------------------------------------------
  *  20/12/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void record_total_core_stop_time()
+void record_total_core_stop_time(UniboCGRSAP* uniboCgrSap)
 {
 	TotalTime *totalTime;
 	int endOk;
@@ -362,12 +358,9 @@ void record_total_core_stop_time()
 		return;
 	}
 
-	totalTime = get_total_core_time();
+	totalTime = get_total_core_time(uniboCgrSap);
 
 	totalTime->timer = (endTime.tv_sec - totalTime->total_time.beginTime.tv_sec) * 1000000000 + endTime.tv_nsec - totalTime->total_time.beginTime.tv_nsec;
-
-	return;
-
 }
 
 /************************************************************/
@@ -400,11 +393,9 @@ void record_total_core_stop_time()
  *  -------- | --------------- | -----------------------------------------------
  *  20/12/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static TotalTime *get_total_interface_time()
+static TotalTime *get_total_interface_time(UniboCGRSAP* uniboCgrSap)
 {
-	static TotalTime totalTime;
-
-	return &totalTime;
+	return &UniboCGRSAP_get_TimeAnalysisSAP(uniboCgrSap)->totalInterfaceTime;
 }
 
 /******************************************************************************
@@ -427,13 +418,11 @@ static TotalTime *get_total_interface_time()
  *  -------- | --------------- | -----------------------------------------------
  *  20/12/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void record_total_interface_start_time()
+void record_total_interface_start_time(UniboCGRSAP* uniboCgrSap)
 {
-	TotalTime *totalTime = get_total_interface_time();
+	TotalTime *totalTime = get_total_interface_time(uniboCgrSap);
 
 	totalTime->total_time.beginOk = clock_gettime(CLOCK_REALTIME, &(totalTime->total_time.beginTime));
-
-	return;
 }
 
 /******************************************************************************
@@ -456,7 +445,7 @@ void record_total_interface_start_time()
  *  -------- | --------------- | -----------------------------------------------
  *  20/12/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void record_total_interface_stop_time()
+void record_total_interface_stop_time(UniboCGRSAP* uniboCgrSap)
 {
 	TotalTime *totalTime;
 	int endOk;
@@ -470,11 +459,9 @@ void record_total_interface_stop_time()
 		return;
 	}
 
-	totalTime = get_total_interface_time();
+	totalTime = get_total_interface_time(uniboCgrSap);
 
 	totalTime->timer = (endTime.tv_sec - totalTime->total_time.beginTime.tv_sec) * 1000000000 + endTime.tv_nsec - totalTime->total_time.beginTime.tv_nsec;
-
-	return;
 
 }
 
@@ -508,23 +495,23 @@ void record_total_interface_stop_time()
  *  -------- | --------------- | -----------------------------------------------
  *  20/12/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void print_time_results(time_t currentTime, unsigned int callNumber, CgrBundleID *id)
+void print_time_results(UniboCGRSAP* uniboCgrSap, time_t currentTime, unsigned int callNumber, CgrBundleID *id)
 {
-	TimeFile *timeFile = get_time_file();
+	TimeFile *timeFile = get_time_file(uniboCgrSap);
 #if (COMPUTE_PHASES_TIME)
-	PhasesTime *phasesTime = get_phases_time();
+	PhasesTime *phasesTime = get_phases_time(uniboCgrSap);
 #endif
 #if (COMPUTE_TOTAL_CORE_TIME)
-	TotalTime *totalCoreTime = get_total_core_time();
+	TotalTime *totalCoreTime = get_total_core_time(uniboCgrSap);
 #endif
 #if (COMPUTE_TOTAL_INTERFACE_TIME)
-	TotalTime *totalInterfaceTime = get_total_interface_time();
+	TotalTime *totalInterfaceTime = get_total_interface_time(uniboCgrSap);
 #endif
 	char row[256];
 	PhasesTime copiedPhasesTime;
 	int i;
-	unsigned long long totalCore = 0;
-	unsigned long long totalInterface = 0;
+	uint64_t totalCore = 0;
+	uint64_t totalInterface = 0;
 	int written;
 	CgrBundleID tempId;
 
@@ -560,8 +547,8 @@ void print_time_results(time_t currentTime, unsigned int callNumber, CgrBundleID
 	}
 #endif
 
-	written = sprintf(row, "%llu,%ld,%u,%llu,%llu,%u,%u,%u,%llu,%llu,%llu,%u,%llu,%u,%llu,%u\n",
-                   get_local_node(), (long int) currentTime, callNumber,
+	written = sprintf(row, "%" PRIu64 ",%ld,%u,%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n",
+                   UniboCGRSAP_get_local_node(uniboCgrSap), (long int) currentTime, callNumber,
                    id->source_node, id->creation_timestamp, id->sequence_number, id->fragment_length,
                    id->fragment_offset, totalInterface, totalCore,
                    copiedPhasesTime.phase_time_logger[0].timer,
@@ -583,7 +570,7 @@ void print_time_results(time_t currentTime, unsigned int callNumber, CgrBundleID
 /******************************************************************************
  *
  * \par Function Name:
- *      initialize_time_analysis
+ *      TimeAnalysisSAP_open
  *
  * \brief  Initialize files and data for the computational load analysis.
  *
@@ -591,7 +578,10 @@ void print_time_results(time_t currentTime, unsigned int callNumber, CgrBundleID
  * \par Date Written:
  *      20/12/20
  *
- * \return void
+ * \return int
+ *
+ * \retval  0 success
+ * \retval -2 MWITHDRAW error
  *
  *
  * \par Revision History:
@@ -599,17 +589,23 @@ void print_time_results(time_t currentTime, unsigned int callNumber, CgrBundleID
  *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
  *  -------- | --------------- | -----------------------------------------------
  *  20/12/20 | L. Persampieri  |  Initial Implementation and documentation.
+ *  21/10/22 | L. Persampieri  |  Renamed function.
  *****************************************************************************/
-void initialize_time_analysis()
+int TimeAnalysisSAP_open(UniboCGRSAP* uniboCgrSap)
 {
-	TimeFile *timeFile = get_time_file();
-	unsigned long long node_eid = get_local_node();
+    if (UniboCGRSAP_get_TimeAnalysisSAP(uniboCgrSap)) return 0;
+    TimeAnalysisSAP* sap = MWITHDRAW(sizeof(TimeAnalysisSAP));
+    if (!sap) { return -2; }
+    UniboCGRSAP_set_TimeAnalysisSAP(uniboCgrSap, sap);
+    memset(sap, 0, sizeof(TimeAnalysisSAP));
+	TimeFile *timeFile = get_time_file(uniboCgrSap);
+	uint64_t node_id = UniboCGRSAP_get_local_node(uniboCgrSap);
 	char file_name[50];
 	char *header = "local_node,current_time,call_num,src,ts,sqn_num,fragL,fragO,total_interface,total_core,ph_1_time,ph_1_calls,ph_2_time,ph_2_calls,ph_3_time,ph_3_calls\n";
 
 	if (timeFile->configured == 0 || timeFile->fd < 0)
 	{
-		sprintf(file_name, "total_%llu.csv", node_eid);
+		sprintf(file_name, "total_%" PRIu64 ".csv", node_id);
 		timeFile->fd = open(file_name, O_WRONLY | O_APPEND | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
 
 		if (timeFile->fd < 0)
@@ -626,12 +622,14 @@ void initialize_time_analysis()
 			timeFile->configured = 1;
 		}
 	}
+
+    return 0;
 }
 
 /******************************************************************************
  *
  * \par Function Name:
- *      destroy_time_analysis
+ *      TimeAnalysisSAP_close
  *
  * \brief  Close files and clear data.
  *
@@ -647,15 +645,22 @@ void initialize_time_analysis()
  *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
  *  -------- | --------------- | -----------------------------------------------
  *  20/12/20 | L. Persampieri  |  Initial Implementation and documentation.
+ *  21/10/22 | L. Persampieri  |  Renamed function.
  *****************************************************************************/
-void destroy_time_analysis()
+void TimeAnalysisSAP_close(UniboCGRSAP* uniboCgrSap)
 {
-	TimeFile *timeFile = get_time_file();
+    if (!UniboCGRSAP_get_TimeAnalysisSAP(uniboCgrSap)) return;
+
+	TimeFile *timeFile = get_time_file(uniboCgrSap);
 
 	if(timeFile->configured && timeFile->fd >= 0)
 	{
 		close(timeFile->fd);
 	}
+
+    memset(UniboCGRSAP_get_TimeAnalysisSAP(uniboCgrSap), 0, sizeof(TimeAnalysisSAP));
+    MDEPOSIT(UniboCGRSAP_get_TimeAnalysisSAP(uniboCgrSap));
+    UniboCGRSAP_set_TimeAnalysisSAP(uniboCgrSap, NULL);
 }
 
 #endif

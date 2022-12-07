@@ -32,7 +32,12 @@
 #define LIBRARY_COMMONDEFINES_H_
 
 #include <sys/time.h>
+#include <stdio.h>
+#include <inttypes.h>
+#include <stdint.h>
+#include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "../config.h"
 
@@ -43,10 +48,6 @@ extern "C"
 
 // just to use with function pointer
 extern void MDEPOSIT_wrapper(void *addr);
-
-#ifdef __cplusplus
-}
-#endif
 
 #define	MAX_POSIX_TIME	2147483647
 
@@ -133,6 +134,9 @@ extern void MDEPOSIT_wrapper(void *addr);
 #define flush_verbose_debug_printf(f_, ...) do {  } while(0)
 #endif
 
-#include "log/log.h"
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
 #endif /* LIBRARY_COMMONDEFINES_H_ */

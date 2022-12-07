@@ -43,13 +43,13 @@
  *
  * \return int
  *
- * \retval  0    Success case: Route has been builded correctly
+ * \retval  0    Success case: Route built correctly
  * \retval -1    Arguments error
  * \retval -2    MWITHDRAW error
  *
  * \param[in]     current_time   The current (differential from interface) time from the start of Unibo-CGR
  * \param[in]     finalContact   The last contact of the route
- * \param[out]    resultRoute    The Route just builded in success case. This field must be
+ * \param[out]    resultRoute    The Route just built in success case. This field must be
  *                               allocated by the caller.
  *
  * \par Revision History:
@@ -109,217 +109,12 @@ int populate_msr_route(time_t current_time, Contact *finalContact, Route *result
 	return result;
 }
 
-#if (CGRR == 1 && MSR == 1)
-
-/******************************************************************************
- *
- * \par Function Name:
- * 		build_msr_route
- *
- * \brief Convert a CGRRoute into Route and attach it to bundle.
- *
- * \par Date Written:
- * 		23/04/20
- *
- * \return int
- *
- * \retval  0   CGRRoute converted correctly in Route and attached it to bundle
- * \retval -1   The Route can't be builded
- * \retval -2   MWITHDRAW error
- * \retval -3   Arguments error
- *
- * \param[in]      current_time   The differencial time from CGR's start
- * \param[in]      cgrrRoute      The CGRRoute that we want to convert in Route
- * \param[in,out]  bundle         The bundle that at the end will contains the builded Route
- *
- * \par Revision History:
- *
- *  DD/MM/YY | AUTHOR          |   DESCRIPTION
- *  -------- | --------------- |  -----------------------------------------------
- *  23/04/20 | L. Persampieri  |   Initial Implementation and documentation.
- *****************************************************************************/
-static int build_msr_route(time_t current_time, CGRRoute* cgrrRoute, CgrBundle *bundle)
-{
-	int result = -1;
-	int stop = 0;
-	unsigned int count;
-	unsigned int localNodePosition, i;
-	unsigned long long prevToNode;
-	Route *newRoute;
-	Contact *contact = NULL, *prevContact;
-	unsigned long long localNode = get_local_node();
-
-	if(cgrrRoute == NULL || bundle == NULL || current_time < 0)
-	{
-		return -3;
-	}
-
-	localNodePosition =  0;
-	stop = 0;
-	for(i = 0; i < cgrrRoute->hopCount && !stop; i++)
-	{
-		if(cgrrRoute->hopList[i].fromNode == localNode)
-		{
-			localNodePosition = i;
-			stop = 1;
-		}
-	}
-	if (stop)
-	{
-		newRoute = create_cgr_route();
-		stop = 0;
-		prevContact = NULL;
-		count = 0;
-		prevToNode = localNode;
-
-		for (i = localNodePosition; i < cgrrRoute->hopCount && !stop; i++)
-		{
-			contact = get_contact_with_time_tolerance(bundle->regionNbr, cgrrRoute->hopList[i].fromNode,
-					cgrrRoute->hopList[i].toNode,
-					cgrrRoute->hopList[i].fromTime, MSR_TIME_TOLERANCE);
-
-			if (contact != NULL && contact->toTime > current_time)
-			{
-				if(prevToNode == contact->fromNode &&
-						((prevToNode != contact->toNode ) ||
-								(count == 0 && bundle->terminus_node == localNode)))
-				{
-					prevToNode = contact->toNode;
-					count++;
-					contact->routingObject->predecessor = prevContact;
-					if(prevContact != NULL)
-					{
-						contact->routingObject->arrivalConfidence =
-							contact->confidence*prevContact->routingObject->arrivalConfidence;
-					}
-					else
-					{
-						contact->routingObject->arrivalConfidence = contact->confidence;
-					}
-					prevContact = contact;
-				}
-				else
-				{
-					stop = 1;
-					verbose_debug_printf("MSR: malformed route...");
-				}
-			}
-			else
-			{
-#if (WISE_NODE == 1)
-				stop = 1;
-#else
-				if(count < MSR_HOPS_LOWER_BOUND)
-				{
-					// Lower bound not reached.
-					stop = 1;
-				}
-				else
-				{
-					contact = prevContact;
-					stop = 2;
-				}
-#endif
-			}
-		}
-
-		if(!stop && (bundle->terminus_node != prevToNode))
-		{
-			stop = 1;
-			verbose_debug_printf("MSR: malformed route...");
-			verbose_debug_printf("prevToNode: %llu, destination: %llu", prevToNode, bundle->terminus_node);
-		}
-
-		if(stop == 1)
-		{
-			delete_msr_route(newRoute);
-			result = -1;
-		}
-		else
-		{
-			if(populate_msr_route(current_time, contact, newRoute) < 0)
-			{
-				result = -2;
-				delete_msr_route(newRoute);
-			}
-			else
-			{
-				// Success case
-				result = 0;
-				bundle->msrRoute = newRoute;
-			}
-		}
-	}
-
-	return result;
-
-}
-
-/******************************************************************************
- *
- * \par Function Name:
- * 		set_msr_route
- *
- * \brief Get the last route from CGRRoute, convert it in Route format and attach it to bundle.
- *
- * \par Date Written:
- * 		23/04/20
- *
- * \return int
- *
- * \retval   0   CGRRoute converted in Route and attached to bundle
- * \retval  -1   CGRRoute can't be converted in Route, or CGRRoute not found
- * \retval  -2   MWITHDRAW error
- * \retval  -3   Arguments error
- *
- * \param[in]      current_time   The differencial time from CGR's start
- * \param[in]      cgrrBlk        The CGRR Extension Block that contains all the routes previously computed
- *                                by some ipn node.
- * \param[in,out]  bundle         The bundle that at the end will contains the builded Route
- *
- * \par Revision History:
- *
- *  DD/MM/YY | AUTHOR          |   DESCRIPTION
- *  -------- | --------------- |  -----------------------------------------------
- *  23/04/20 | L. Persampieri  |   Initial Implementation and documentation.
- *****************************************************************************/
-int set_msr_route(time_t current_time, CGRRouteBlock *cgrrBlk, CgrBundle *bundle)
-{
-	CGRRoute *cgrrRoute;
-	int result = -3;
-
-	if(cgrrBlk != NULL && bundle != NULL)
-	{
-		if(cgrrBlk->recRoutesLength > 0)
-		{
-			cgrrRoute = &(cgrrBlk->recomputedRoutes[cgrrBlk->recRoutesLength - 1]);
-		}
-		else
-		{
-			cgrrRoute = &(cgrrBlk->originalRoute);
-		}
-
-		if(cgrrRoute != NULL)
-		{
-			result = build_msr_route(current_time, cgrrRoute, bundle);
-		}
-		else
-		{
-			result = -1;
-		}
-	}
-
-	return result;
-}
-
-#endif
-
 /******************************************************************************
  *
  * \par Function Name:
  * 		delete_msr_route
  *
- * \brief Delete a route previously builded by populate_msr_route() function.
+ * \brief Delete a route previously built by populate_msr_route() function.
  *
  * \par Date Written:
  * 		23/04/20
@@ -354,5 +149,25 @@ void delete_msr_route(Route *route)
 		memset(route,0,sizeof(Route));
 		MDEPOSIT(route);
 	}
+}
+Route* create_msr_route() {
+    Route* route = MWITHDRAW(sizeof(Route));
+    if (!route) {
+        return NULL;
+    }
+    memset(route, 0, sizeof(Route));
+    route->hops = list_create(NULL, NULL, NULL, NULL);
+    if (!route->hops) {
+        MDEPOSIT(route);
+        return NULL;
+    }
+    return route;
+}
+void reset_msr_route(Route *route) {
+    if (!route) return;
+    List hops = route->hops;
+    free_list_elts(route->hops);
+    memset(route, 0, sizeof(Route));
+    route->hops = hops;
 }
 

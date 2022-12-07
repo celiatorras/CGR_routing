@@ -33,7 +33,10 @@
 
 #if UNIBO_CGR
 
+#include "feature-config.h"
+
 #include <sys/time.h>
+#include <limits.h>
 
 //include from ion
 #include "ion.h"
@@ -45,28 +48,16 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include "../../core/bundles/bundles.h"
-#include "../../core/contact_plan/contacts/contacts.h"
-#include "../../core/cgr/cgr.h"
-#include "../../core/cgr/cgr_phases.h"
-#include "../../core/library_from_ion/scalar/scalar.h"
 
-#include "../../core/contact_plan/contactPlan.h"
-#include "../../core/contact_plan/contacts/contacts.h"
-#include "../../core/contact_plan/ranges/ranges.h"
-#include "../../core/msr/msr_utils.h"
 #include "utility_functions_from_ion/general_functions_ported_from_ion.h"
-#include "../../core/library/commonDefines.h"
-#include "../../core/library/list/list.h"
-#include "../../core/msr/msr.h"
-#include "../../core/time_analysis/time.h"
+#include "../../include/UniboCGR.h"
 
-#if(CGRR)
+#if (CGRREB)
 #include "cgrr.h"
 #include "cgrr_msr_utils.h"
 #include "cgrr_help.h"
 #endif
-#if (RGR)
+#if (RGREB)
 #include "rgr.h"
 #endif
 
@@ -79,17 +70,7 @@
  */
 #define absolute(a) (((a) < 0) ? (-(a)) : (a))
 
-#ifndef GET_MTV_FROM_SDR
-/**
- * \brief Set to 1 if you want to get the MTVs from ION's contact MTVs stored into SDR.
- *        Otherwise set to 0 (they will be computed as xmitRate*(toTime - fromTime)).
- *
- * \hideinitializer
- */
-#define GET_MTV_FROM_SDR 1
-#endif
-
-#ifndef DEBUG_ION_INTERFACE
+#ifndef DEBUG_ION_UNIBO_CGR_INTERFACE
 /**
  * \brief Boolean value used to enable some debug's print for this interface.
  * 
@@ -97,227 +78,318 @@
  *
  * \hideinitializer
  */
-#define DEBUG_ION_INTERFACE 0
+#define DEBUG_ION_UNIBO_CGR_INTERFACE 0
+#endif
+
+#if DEBUG_ION_UNIBO_CGR_INTERFACE
+#define debug_printf(fmt, ...) printf(fmt, ##__VA_ARGS__)
+#else
+#define debug_printf(fmt, ...) do {  } while(0)
 #endif
 
 #define NOMINAL_PRIMARY_BLKSIZE	29 // from ION 4.0.0: bpv7/library/libbpP.c
 
-typedef struct {
-	/**
-	 * \brief ION's reference time, used to convert times from Unibo-CGR (differential time) to ION
-	 */
-	time_t reference_time;
-	/**
-	 * \brief 1 if Unibo-CGR's interface for ION has been initialized. 0 otherwise.
-	 */
-	int initialized;
-} InterfaceUniboCgrSAP;
-
 /**
- * \brief Struct used to mantain in one place all the temporary data used by the interface
- *        in each call. These data make sense only during a call to Unibo-CGR.
+ * \brief Unibo-CGR instance wrapper. Keep also information about the processed bundle.
  */
 typedef struct {
+    /**
+     * \brief Unibo-CGR instance.
+     */
+    UniboCGR uniboCgr;
 	/**
-	 * \brief Bundle sent from ION. We keep the reference to it, in this way
-	 *        Unibo-CGR can talk with CL queue.
+	 * \brief ION Bundle.
 	 */
-	Bundle *ionBundle; /* sent from ION */
+	Bundle *ionBundle;
 	/**
-	 * \brief Bundle sent to Unibo-CGR to find viable route(s) for it.
+	 * \brief Unibo-CGR Bundle.
 	 */
-	CgrBundle *uniboCgrBundle; /* sent to Unibo-CGR */
+	UniboCGR_Bundle uniboCgrBundle;
 	/**
-	 * \brief List of excluded neighbors sent to Unibo-CGR. The bundle cannot be sent
-	 *        to these neighbors.
+	 * \brief Excluded neighbors for the current bundle.
 	 */
-	List excludedNeighbors; /* sent to Unibo-CGR */
+    UniboCGR_excluded_neighbors_list uniboCgrExcludedNeighbors;
+    /**
+     * \brief Unibo-CGR Contact instance.
+     */
+    UniboCGR_Contact uniboCgrContact;
+    /**
+     * \brief Unibo-CGR Range instance.
+     */
+    UniboCGR_Range uniboCgrRange;
+    /**
+     * \brief Region number.
+     *
+     * \note Need it for ION-4.1.1 -- probably not needed in next ION versions (since IonCXref does not contain anymore "regionNbr" field)
+     */
+    uint32_t regionNbr;
 	/**
 	 * \brief Reference to all CgrRoute object created.
 	 */
 	Lyst routes;
-} CurrentCallSAP;
+    /**
+     * \note Just an optimization to keep always a route in the "routes" list
+     */
+    bool first_route;
 
+} ION_UniboCGR;
+
+typedef struct {
+    /**
+     * \brief Copied from IonVDB during the latest contact plan update.
+     */
+    struct timeval contact_plan_edit_time;
+    ION_UniboCGR* home_cgr;
+    ION_UniboCGR* outer_cgr;
+} ION_UniboCGR_SAP;
+
+static void ION_UniboCGR_destroy(ION_UniboCGR* instance);
+static void destroyRouteElt(LystElt elt, void *arg);
+
+static uint64_t convert_scalar_to_uint64(Scalar* scalar) {
+    return  (((uint64_t) scalar->gigs * (uint64_t) ONE_GIG) + (uint64_t) scalar->units);
+}
+
+static void convert_uint64_to_scalar(uint64_t scalarIn, Scalar* scalarOut) {
+    loadScalar(scalarOut, 0);
+    while (scalarIn) {
+        if (scalarIn > (uint64_t) INT_MAX) {
+            increaseScalar(scalarOut, INT_MAX);
+            scalarIn -= INT_MAX;
+        } else {
+            increaseScalar(scalarOut, (int) scalarIn);
+            scalarIn = 0; // done
+        }
+    }
+}
 
 /******************************************************************************
  *
  * \par Function Name:
- * 		get_current_call_sap
+ *      convert_PsmAddress_to_IonCXref
  *
- * \brief Get the CurrentCallSAP with all the values memorized by interface for the current call
- *        to Unibo-CGR.
+ * \brief  Convert a PsmAddress to ION's contact type
  *
  *
  * \par Date Written:
- * 	    02/07/20
+ *      19/02/20
  *
- * \return CurrentCallSAP*
+ * \return IonCXref*
  *
- * \retval  CurrentCallSAP*  The struct with all the values memorized by interface
- *                           for the current call.
+ * \retval  IonCXref*	The contact converted
+ * \retval  NULL        If the address is a NULL pointer
  *
- * \param[in]   *newSap      If you just want a reference to the SAP set NULL here;
- *                           otherwise set a new CurrentCallSAP (the previous one will be overwritten).
+ * \param[in]  ionwm     The partition of the ION's contacts graph
+ * \param[in]  address   The address of the contact in the partition
  *
  *
  * \par Revision History:
  *
- *  DD/MM/YY | AUTHOR          |  DESCRIPTION
+ *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
  *  -------- | --------------- | -----------------------------------------------
- *  02/07/20 | L. Persampieri  |  Initial Implementation and documentation.
+ *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static CurrentCallSAP *get_current_call_sap(CurrentCallSAP *newSap) {
-	static CurrentCallSAP	sap;
-
-	if (newSap != NULL)
-	{
-		sap = *newSap;
-	}
-
-	return &sap;
-}
-
-static void destroyRoute(LystElt elt, void *arg)
+static IonCXref* convert_PsmAddress_to_IonCXref(PsmPartition ionwm, PsmAddress address)
 {
-	PsmPartition ionwm = getIonwm();
-	CgrRoute *route = lyst_data(elt);
+    IonCXref *contact = NULL;
 
-	if (route)
-	{
-		sm_list_destroy(ionwm, route->hops, NULL, NULL);
-		MRELEASE(route);
-	}
+    if (address != 0)
+    {
+        contact = psp(ionwm, address);
+    }
+
+    return contact;
 }
-
 
 /******************************************************************************
  *
  * \par Function Name:
- * 		destroy_current_call_sap
+ *      convert_PsmAddress_to_IonRXref
  *
- * \brief Deallocate all memory referenced by the CurrentCallSAP.
+ * \brief Convert a PsmAddress to ION's range type
  *
  *
  * \par Date Written:
- * 	    02/07/20
+ *      19/02/20
  *
- * \return void
+ * \return IonRXref*
+ *
+ * \retval  IonRXref*  The contact converted
+ * \retval  NULL       If the address is a NULL pointer
+ *
+ * \param[in]   ionwm     The partition of the ION's ranges graph
+ * \param[in]   address   The address of the range in the partition
+ *
  *
  * \par Revision History:
  *
- *  DD/MM/YY | AUTHOR          |  DESCRIPTION
+ *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
  *  -------- | --------------- | -----------------------------------------------
- *  02/07/20 | L. Persampieri  |  Initial Implementation and documentation.
+ *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static void destroy_current_call_sap()
+static IonRXref* convert_PsmAddress_to_IonRXref(PsmPartition ionwm, PsmAddress address)
 {
+    IonRXref *range = NULL;
 
-	CurrentCallSAP *sap = get_current_call_sap(NULL);
+    if (address != 0)
+    {
+        range = psp(ionwm, address);
+    }
 
-	bundle_destroy(sap->uniboCgrBundle);
-	free_list(sap->excludedNeighbors);
-	lyst_delete_set(sap->routes, destroyRoute, NULL);
-	lyst_destroy(sap->routes);
-	sap->ionBundle = NULL;
-	sap->uniboCgrBundle = NULL;
-	sap->excludedNeighbors = NULL;
-	sap->routes = NULL;
-
-	return;
+    return range;
 }
 
-/******************************************************************************
- *
- * \par Function Name:
- * 		initialize_current_call_sap
- *
- * \brief Allocate all memory (list etc.) that will be used by the CurrentCallSAP.
- *        Initialized all CurrentCallSAP's field to a known state.
- *
- *
- * \par Date Written:
- * 	    02/07/20
- *
- * \return int
- *
- * \retval  1    Success case, CurrentCallSAP initialized
- * \retval -2    MWITHDRAW error
- *
- *
- * \par Revision History:
- *
- *  DD/MM/YY | AUTHOR          |  DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  02/07/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-static int initialize_current_call_sap() {
-	int result = 1;
-	CurrentCallSAP *sap = get_current_call_sap(NULL);
-	int ionMemIdx;
+static CgrRoute* allocateIonRoute(PsmPartition ionwm) {
+    CgrRoute* IonRoute  = MTAKE(sizeof(CgrRoute));
+    if (!IonRoute) {
+        return NULL;
+    }
+    // memset((char*) newRoute, 0, sizeof(CgrRoute)); // memory block has been already zeroed out by ION memory allocator
 
-	sap->ionBundle = NULL; // init, no bundle
-	sap->uniboCgrBundle = bundle_create(); //init Unibo-CGR's bundle
-	sap->excludedNeighbors = list_create(NULL, NULL, NULL, MDEPOSIT_wrapper);
-	ionMemIdx = getIonMemoryMgr();
-	sap->routes = lyst_create_using(ionMemIdx);
+    IonRoute->hops = sm_list_create(ionwm);
+    if (!IonRoute->hops) {
+        MRELEASE(IonRoute);
+        return NULL;
+    }
 
-	if (sap->routes == NULL || sap->uniboCgrBundle == NULL || sap->excludedNeighbors == NULL) {
-		result = -2;
-		bundle_destroy(sap->uniboCgrBundle);
-		free_list(sap->excludedNeighbors);
-		lyst_destroy(sap->routes);
-	}
-
-	return result;
+    return IonRoute;
 }
 
-
-/******************************************************************************
- *
- * \par Function Name:
- * 		initialize_cgr_sap
- *
- * \brief Initialize the InterfaceUniboCgrSAP, received as argument, to a known state.
- *        InterfaceUniboCgrSAP must be allocated by the caller.
- *
- *
- * \par Date Written:
- * 	    02/07/20
- *
- * \return int
- *
- * \retval  1    Success case, InterfaceUniboCgrSAP (sap) initialized
- * \retval -1    Error case: arguments error
- *
- * \param[in]      reference_time  The reference_time used by interface to convert all times
- *                                 in differential time, so this is the time "0".
- *                                 It will be saved into CgrSAP.
- * \param[in,out]  sap             The InterfaceUniboCgrSAP that the caller want to initialize.
- *
- *
- * \par Revision History:
- *
- *  DD/MM/YY | AUTHOR          |  DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  02/07/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-static int initialize_cgr_sap(time_t reference_time, InterfaceUniboCgrSAP *sap) {
-	int result = 1;
-
-	if(reference_time < 0 || sap == NULL) {
-		result = -1;
-	}
-	else {
-		sap->reference_time = reference_time;
-		sap->initialized = 1;
-	}
-
-	return result;
+static void releaseIonRoute(CgrRoute* IonRoute, PsmPartition ionwm) {
+    if (!IonRoute) return;
+    sm_list_destroy(ionwm, IonRoute->hops, NULL, NULL);
+    MRELEASE(IonRoute);
 }
 
+static void destroyRouteElt(LystElt elt, void *arg)
+{
+    (void) arg;
+    PsmPartition ionwm = getIonwm();
+    CgrRoute *route = lyst_data(elt);
 
+    releaseIonRoute(route, ionwm);
+}
 
-#if(DEBUG_ION_INTERFACE == 1)
+static int ionInterface_callback_ComputeApplicableBacklog(uint64_t neighbor,
+                                                          UniboCGR_BundlePriority priority,
+                                                          uint8_t ordinal,
+                                                          uint64_t *applicableBacklog,
+                                                          uint64_t *totalBacklog,
+                                                          void* userArg) {
+    (void) priority; // unused
+    (void) ordinal; // unused
+    ION_UniboCGR* instance = (ION_UniboCGR*) userArg;
+    Sdr sdr;
+    char eid[SDRSTRING_BUFSZ];
+    VPlan *vplan;
+    PsmAddress vplanElt;
+    Object planObj;
+    BpPlan plan;
+    Scalar IonApplicableBacklog, IonTotalBacklog;
+
+    isprintf(eid, sizeof eid, "ipn:%" PRIu64 ".0", neighbor);
+    sdr = getIonsdr();
+    findPlan(eid, &vplan, &vplanElt);
+    if (vplanElt != 0)
+    {
+        planObj = sdr_list_data(sdr, vplan->planElt);
+        sdr_read(sdr, (char*) &plan, planObj, sizeof(BpPlan));
+        if (!plan.blocked)
+        {
+            computePriorClaims(&plan, instance->ionBundle, &IonApplicableBacklog, &IonTotalBacklog);
+            *applicableBacklog = convert_scalar_to_uint64(&IonApplicableBacklog);
+            *totalBacklog = convert_scalar_to_uint64(&IonTotalBacklog);
+            return 0;
+        }
+    }
+
+    return -1;
+}
+
+static ION_UniboCGR* ION_UniboCGR_create(uint64_t local_node, time_t reference_time, time_t current_time, PsmPartition ionwm) {
+    ION_UniboCGR* instance = MTAKE(sizeof(ION_UniboCGR));
+    if (!instance) {
+        putErrmsg("Can't create ION_UniboCGR object.", NULL);
+        return NULL;
+    }
+    UniboCGR_Error uniboCgrError;
+    uniboCgrError = UniboCGR_Contact_create(&instance->uniboCgrContact);
+    if (UniboCGR_check_error(uniboCgrError)) {
+        putErrmsg(UniboCGR_get_error_string(uniboCgrError), NULL);
+        ION_UniboCGR_destroy(instance);
+        return NULL;
+    }
+    uniboCgrError = UniboCGR_Range_create(&instance->uniboCgrRange);
+    if (UniboCGR_check_error(uniboCgrError)) {
+        putErrmsg(UniboCGR_get_error_string(uniboCgrError), NULL);
+        ION_UniboCGR_destroy(instance);
+        return NULL;
+    }
+    uniboCgrError = UniboCGR_Bundle_create(&instance->uniboCgrBundle);
+    if (UniboCGR_check_error(uniboCgrError)) {
+        putErrmsg(UniboCGR_get_error_string(uniboCgrError), NULL);
+        ION_UniboCGR_destroy(instance);
+        return NULL;
+    }
+    uniboCgrError = UniboCGR_create_excluded_neighbors_list(&instance->uniboCgrExcludedNeighbors);
+    if (UniboCGR_check_error(uniboCgrError)) {
+        putErrmsg(UniboCGR_get_error_string(uniboCgrError), NULL);
+        ION_UniboCGR_destroy(instance);
+        return NULL;
+    }
+    int ionMemIdx = getIonMemoryMgr();
+    instance->routes = lyst_create_using(ionMemIdx);
+    if (!instance->routes) {
+        putErrmsg("Can't create ION Lyst (routes).", NULL);
+        ION_UniboCGR_destroy(instance);
+        return NULL;
+    }
+    lyst_delete_set(instance->routes, destroyRouteElt, NULL);
+
+    CgrRoute* firstRoute = allocateIonRoute(ionwm);
+    if (!firstRoute) {
+        putErrmsg("Can't create CgrRoute.", NULL);
+        ION_UniboCGR_destroy(instance);
+        return NULL;
+    }
+
+    if (!lyst_insert_last(instance->routes, firstRoute)) {
+        putErrmsg("Can't insert CgrRoute into lyst.", NULL);
+        ION_UniboCGR_destroy(instance);
+        return NULL;
+    }
+
+    instance->first_route = true;
+    
+    uniboCgrError = UniboCGR_open(&instance->uniboCgr,
+                                  current_time,
+                                  reference_time,
+                                  local_node,
+                                  PhaseThreeCostFunction_default,
+                                  ionInterface_callback_ComputeApplicableBacklog,
+                                  instance);
+    if (UniboCGR_check_error(uniboCgrError)) {
+        putErrmsg(UniboCGR_get_error_string(uniboCgrError), NULL);
+        ION_UniboCGR_destroy(instance);
+        return NULL;
+    }
+
+    return instance;
+}
+
+static void ION_UniboCGR_destroy(ION_UniboCGR* instance) {
+    if (!instance) return;
+    UniboCGR_close(&instance->uniboCgr, getCtime());
+    UniboCGR_Contact_destroy(&instance->uniboCgrContact);
+    UniboCGR_Range_destroy(&instance->uniboCgrRange);
+    UniboCGR_Bundle_destroy(&instance->uniboCgrBundle);
+    UniboCGR_destroy_excluded_neighbors_list(&instance->uniboCgrExcludedNeighbors);
+    lyst_delete_set(instance->routes, destroyRouteElt, NULL);
+    lyst_destroy(instance->routes);
+    MRELEASE(instance);
+}
+
+#if(DEBUG_ION_UNIBO_CGR_INTERFACE == 1)
 /******************************************************************************
  *
  * \par Function Name:
@@ -353,15 +425,14 @@ static void printDebugIonRoute(PsmPartition ionwm, CgrRoute *route)
 	SdrObject contactObj;
 	IonCXref *contact;
 	IonContact contactBuf;
-	time_t ref = reference_time;
 	if (route != NULL)
 	{
 		fprintf(stdout, "\nPRINT ION ROUTE\n%-15s %-15s %-15s %-15s %-15s %-15s %s\n", "ToNodeNbr",
 				"FromTime", "ToTime", "ETO", "PBAT", "MaxVolumeAvbl", "BundleECCC");
 		fprintf(stdout, "%-15llu %-15ld %-15ld %-15ld %-15ld %-15g %lu\n",
-				(unsigned long long) route->toNodeNbr, (long int) route->fromTime - ref,
-				(long int) route->toTime - ref, (long int) route->eto - ref,
-				(long int) route->pbat - ref, route->maxVolumeAvbl, (long unsigned int) route->bundleECCC);
+				(unsigned long long) route->toNodeNbr, (long int) route->fromTime,
+				(long int) route->toTime, (long int) route->eto,
+				(long int) route->pbat, route->maxVolumeAvbl, (long unsigned int) route->bundleECCC);
 		fprintf(stdout, "%-15s %-15s %-15s %-15s %-15s %s\n", "Confidence", "Hops", "Overbooked (G)",
 				"Overbooked (U)", "Protected (G)", "Protected (U)");
 		fprintf(stdout, "%-15.2f %-15ld %-15d %-15d %-15d %d\n", route->arrivalConfidence,
@@ -387,7 +458,7 @@ static void printDebugIonRoute(PsmPartition ionwm, CgrRoute *route)
 							"%-15llu %-15llu %-15ld %-15ld %-15lu %-15.2f %-15g %-15g %g\n",
 							(unsigned long long) contact->fromNode,
 							(unsigned long long) contact->toNode,
-							(long int) contact->fromTime - ref, (long int) contact->toTime - ref,
+							(long int) contact->fromTime, (long int) contact->toTime,
 							(long unsigned int) contact->xmitRate, contact->confidence, contactBuf.mtv[0],
 							contactBuf.mtv[1], contactBuf.mtv[2]);
 				}
@@ -403,63 +474,13 @@ static void printDebugIonRoute(PsmPartition ionwm, CgrRoute *route)
 			}
 		}
 
-		debug_fflush(stdout);
+		fflush(stdout);
 
 	}
-
-	return;
 }
 #else
 #define printDebugIonRoute(ionwm, route) do {  } while(0)
 #endif
-
-
-/******************************************************************************
- *
- * \par Function Name:
- *      convert_CtRegistration_from_ion_to_cgr
- *
- * \brief  Convert a Registration contact from ION to this CGR's implementation
- *
- *
- * \par Date Written:
- *     19/02/20
- *
- * \return int
- *
- * \retval   0   Success case
- * \retval  -1   Arguments error
- *
- * \param[in]    *IonContact   The Registration contact in ION.
- * \param[out]   *CgrContact   The Registration contact in this CGR's implementation.
- *
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-int convert_CtRegistration_from_ion_to_cgr(IonCXref *IonContact, Contact *CgrContact)
-{
-	int result = -1;
-
-	if (IonContact != NULL && CgrContact != NULL)
-	{
-        CgrContact->regionNbr = IonContact->regionNbr;
-		CgrContact->fromNode = IonContact->fromNode;
-		CgrContact->toNode = IonContact->toNode;
-		CgrContact->fromTime = MAX_POSIX_TIME;
-		CgrContact->toTime = MAX_POSIX_TIME;
-		CgrContact->type = TypeRegistration;
-		CgrContact->xmitRate = 0;
-		CgrContact->confidence = 1.0F;
-
-		result = 0;
-	}
-
-	return result;
-}
 
 /******************************************************************************
  *
@@ -475,11 +496,9 @@ int convert_CtRegistration_from_ion_to_cgr(IonCXref *IonContact, Contact *CgrCon
  * \return int
  *
  * \retval  0   Success case
- * \retval -1   Arguments error
  *
- * \param[in]    *IonContact    The Scheduled contact in ION.
- * \param[out]   *CgrContact    The Scheduled contact in this CGR's implementation.
- * \param[in]    reference_time The reference time used to convert POSIX time in differential time from it.
+ * \param[in]    ionContact
+ * \param[out]   CgrContact
  *
  *
  * \par Revision History:
@@ -488,73 +507,16 @@ int convert_CtRegistration_from_ion_to_cgr(IonCXref *IonContact, Contact *CgrCon
  *  -------- | --------------- | -----------------------------------------------
  *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int convert_CtScheduled_from_ion_to_cgr(IonCXref *IonContact, Contact *CgrContact, time_t reference_time)
+static int convert_CtScheduled_from_ion_to_cgr(ION_UniboCGR* instance, IonCXref *ionContact, UniboCGR_Contact cgrContact)
 {
-	int result = -1;
-
-	if (IonContact != NULL && CgrContact != NULL)
-	{
-	    CgrContact->regionNbr = IonContact->regionNbr;
-		CgrContact->fromNode = IonContact->fromNode;
-		CgrContact->toNode = IonContact->toNode;
-		CgrContact->fromTime = IonContact->fromTime - reference_time;
-		CgrContact->toTime = IonContact->toTime - reference_time;
-		CgrContact->type = TypeScheduled;
-		CgrContact->xmitRate = IonContact->xmitRate;
-		CgrContact->confidence = IonContact->confidence;
-		// TODO Consider to add MTVs
-
-		result = 0;
-	}
-
-	return result;
-}
-
-/******************************************************************************
- *
- * \par Function Name:
- *      convert_CtRegistration_from_cgr_to_ion
- *
- * \brief Convert a Registration contact from this CGR's implementation to ION
- *
- *
- * \par Date Written:
- *      19/02/20
- *
- * \return int
- *
- * \retval    0  Success case
- * \retval   -1  Arguments error
- *
- * \param[in]   *CgrContact   The Registration contact in this CGR's implementation.
- * \param[out]  *IonContact   The Registration contact in ION.
- *
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-int convert_CtRegistration_from_cgr_to_ion(Contact *CgrContact, IonCXref *IonContact)
-{
-	int result = -1;
-
-	if (IonContact != NULL && CgrContact != NULL)
-	{
-        IonContact->regionNbr = CgrContact->regionNbr;
-		IonContact->fromNode = CgrContact->fromNode;
-		IonContact->toNode = CgrContact->toNode;
-		IonContact->fromTime = MAX_POSIX_TIME;
-		IonContact->toTime = MAX_POSIX_TIME;
-		IonContact->type = CtRegistration;
-		IonContact->xmitRate = 0;
-		IonContact->confidence = 1.0F;
-
-		result = 0;
-	}
-
-	return result;
+    UniboCGR_Contact_set_sender(cgrContact, ionContact->fromNode);
+    UniboCGR_Contact_set_receiver(cgrContact, ionContact->toNode);
+    UniboCGR_Contact_set_start_time(instance->uniboCgr, cgrContact, ionContact->fromTime);
+    UniboCGR_Contact_set_end_time(instance->uniboCgr, cgrContact, ionContact->toTime);
+    UniboCGR_Contact_set_type(cgrContact, UniboCGR_ContactType_Scheduled);
+    UniboCGR_Contact_set_xmit_rate(cgrContact, ionContact->xmitRate);
+    UniboCGR_Contact_set_confidence(cgrContact, ionContact->confidence);
+    return 0;
 }
 
 /******************************************************************************
@@ -571,11 +533,9 @@ int convert_CtRegistration_from_cgr_to_ion(Contact *CgrContact, IonCXref *IonCon
  * \return int
  *
  * \retval   0	Success case
- * \retval  -1  Arguments error
  *
- * \param[in]    *CgrContact    The Scheduled contact in this CGR's implementation.
- * \param[out]   *IonContact    The Scheduled contact in ION.
- * \param[in]    reference_time The reference time used to convert POSIX time in differential time from it.
+ * \param[in]    *CgrContact
+ * \param[out]   *ionContact
  *
  * \par Revision History:
  *
@@ -583,25 +543,23 @@ int convert_CtRegistration_from_cgr_to_ion(Contact *CgrContact, IonCXref *IonCon
  *  -------- | --------------- | -----------------------------------------------
  *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int convert_CtScheduled_from_cgr_to_ion(Contact *CgrContact, IonCXref *IonContact, time_t reference_time)
+static int convert_CtScheduled_from_cgr_to_ion(ION_UniboCGR* instance, UniboCGR_Contact cgrContact, IonCXref *ionContact)
 {
-	int result = -1;
+    /* NOTE:
+     * the "regionNbr" field disappeared in IRR-preview (Scott Burleigh seminar 2021 @ UniBo).
+     * However, this field is necessary in ION-4.1.1.
+     * Need to monitor future versions when IRR will be merged into ION baseline.
+     */
+    ionContact->regionNbr = instance->regionNbr;
+    ionContact->fromNode = UniboCGR_Contact_get_sender(cgrContact);
+    ionContact->toNode = UniboCGR_Contact_get_receiver(cgrContact);
+    ionContact->fromTime = UniboCGR_Contact_get_start_time(instance->uniboCgr, cgrContact);
+    ionContact->toTime = UniboCGR_Contact_get_end_time(instance->uniboCgr, cgrContact);
+    ionContact->type = CtScheduled;
+    ionContact->xmitRate = UniboCGR_Contact_get_xmit_rate(cgrContact);
+    ionContact->confidence = UniboCGR_Contact_get_confidence(cgrContact);
 
-	if (IonContact != NULL && CgrContact != NULL)
-	{
-        IonContact->regionNbr = CgrContact->regionNbr;
-		IonContact->fromNode = CgrContact->fromNode;
-		IonContact->toNode = CgrContact->toNode;
-		IonContact->fromTime = CgrContact->fromTime + reference_time;
-		IonContact->toTime = CgrContact->toTime + reference_time;
-		IonContact->type = CtScheduled;
-		IonContact->xmitRate = CgrContact->xmitRate;
-		IonContact->confidence = CgrContact->confidence;
-
-		result = 0;
-	}
-
-	return result;
+	return 0;
 }
 
 /******************************************************************************
@@ -618,12 +576,10 @@ static int convert_CtScheduled_from_cgr_to_ion(Contact *CgrContact, IonCXref *Io
  * \return int
  *
  * \retval   0  Success case
- * \retval  -1  Arguments error
  * \retval  -2  Unknown contact's type
  *
- * \param[in]   *IonContact    The contact in ION.
- * \param[out]  *CgrContact    The contact in this CGR's implementation.
- * \param[in]   reference_time The reference time used to convert POSIX time in differential time from it.
+ * \param[in]   ionContact
+ * \param[out]  CgrContact
  *
  * \par	Notes:
  *             1.  Only Scheduled contacts are allowed.
@@ -634,22 +590,13 @@ static int convert_CtScheduled_from_cgr_to_ion(Contact *CgrContact, IonCXref *Io
  *  -------- | --------------- | -----------------------------------------------
  *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int convert_contact_from_ion_to_cgr(IonCXref *IonContact, Contact *CgrContact, time_t reference_time)
+static int convert_contact_from_ion_to_cgr(ION_UniboCGR* instance, IonCXref *ionContact, UniboCGR_Contact cgrContact)
 {
-	int result = -1;
-	if (IonContact != NULL && CgrContact != NULL)
-	{
-	    if (IonContact->type == CtScheduled)
-		{
-			result = convert_CtScheduled_from_ion_to_cgr(IonContact, CgrContact, reference_time);
-		}
-		else
-		{
-			result = -2;
-		}
-	}
+    if (ionContact->type == CtScheduled) {
+        return convert_CtScheduled_from_ion_to_cgr(instance, ionContact, cgrContact);
+    }
 
-	return result;
+    return -2;
 }
 
 /******************************************************************************
@@ -666,12 +613,10 @@ static int convert_contact_from_ion_to_cgr(IonCXref *IonContact, Contact *CgrCon
  * \return int
  *
  * \retval  0  Success case
- * \retval -1  Arguments error
  * \retval  -2  Unknown contact's type
  *
- * \param[in]    *CgrContact    The contact in this CGR's implementation.
- * \param[out]   *IonContact    The contact in ION.
- * \param[in]    reference_time The reference time used to convert POSIX time in differential time from it.
+ * \param[in]    CgrContact
+ * \param[out]   ionContact
  *
  * \par Revision History:
  *
@@ -679,22 +624,14 @@ static int convert_contact_from_ion_to_cgr(IonCXref *IonContact, Contact *CgrCon
  *  -------- | --------------- | -----------------------------------------------
  *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int convert_contact_from_cgr_to_ion(Contact *CgrContact, IonCXref *IonContact, time_t reference_time)
+static int convert_contact_from_cgr_to_ion(ION_UniboCGR* instance, UniboCGR_Contact cgrContact, IonCXref *ionContact)
 {
-	int result = -1;
-	if (IonContact != NULL && CgrContact != NULL)
-	{
-	    if (CgrContact->type == TypeScheduled)
-		{
-			result = convert_CtScheduled_from_cgr_to_ion(CgrContact, IonContact, reference_time);
-		}
-		else
-		{
-			result = -2;
-		}
-	}
+    UniboCGR_ContactType cgrContactType = UniboCGR_Contact_get_type(cgrContact);
+    if (cgrContactType == UniboCGR_ContactType_Scheduled) {
+        return convert_CtScheduled_from_cgr_to_ion(instance, cgrContact, ionContact);
+    }
 
-	return result;
+    return -2;
 }
 
 /******************************************************************************
@@ -711,11 +648,9 @@ static int convert_contact_from_cgr_to_ion(Contact *CgrContact, IonCXref *IonCon
  * \return int
  *
  * \retval   0   Success case
- * \retval  -1   Arguments error
  *
- * \param[in]    *IonRange  The range in ION.
- * \param[out]   *CgrRange  The range in this CGR's implementation.
- * \param[in]    reference_time The reference time used to convert POSIX time in differential time from it.
+ * \param[in]    IonRange
+ * \param[out]   uniboCgrRange
  *
  *
  * \par Revision History:
@@ -724,22 +659,14 @@ static int convert_contact_from_cgr_to_ion(Contact *CgrContact, IonCXref *IonCon
  *  -------- | --------------- | -----------------------------------------------
  *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int convert_range_from_ion_to_cgr(IonRXref *IonRange, Range *CgrRange, time_t reference_time)
+static int convert_range_from_ion_to_cgr(ION_UniboCGR* instance, IonRXref *IonRange, UniboCGR_Range uniboCgrRange)
 {
-	int result = -1;
-
-	if (IonRange != NULL && CgrRange != NULL)
-	{
-		CgrRange->fromNode = IonRange->fromNode;
-		CgrRange->toNode = IonRange->toNode;
-		CgrRange->fromTime = IonRange->fromTime - reference_time;
-		CgrRange->toTime = IonRange->toTime - reference_time;
-		CgrRange->owlt = IonRange->owlt;
-
-		result = 0;
-	}
-
-	return result;
+    UniboCGR_Range_set_sender(uniboCgrRange, IonRange->fromNode);
+    UniboCGR_Range_set_receiver(uniboCgrRange, IonRange->toNode);
+    UniboCGR_Range_set_start_time(instance->uniboCgr, uniboCgrRange, IonRange->fromTime);
+    UniboCGR_Range_set_end_time(instance->uniboCgr, uniboCgrRange, IonRange->toTime);
+    UniboCGR_Range_set_one_way_light_time(uniboCgrRange, IonRange->owlt);
+    return 0;
 }
 
 /******************************************************************************
@@ -756,11 +683,9 @@ static int convert_range_from_ion_to_cgr(IonRXref *IonRange, Range *CgrRange, ti
  * \return int
  *
  * \retval  0  Success case
- * \retval -1  Arguments error
  *
- * \param[in]   *CgrRange       The range in this CGR's implementation.
- * \param[out]  *IonRange       The range in ION.
- * \param[in]   reference_time  The reference time used to convert POSIX time in differential time from it.
+ * \param[in]   uniboCgrRange
+ * \param[out]  IonRange
  *
  * \par Revision History:
  *
@@ -768,25 +693,18 @@ static int convert_range_from_ion_to_cgr(IonRXref *IonRange, Range *CgrRange, ti
  *  -------- | --------------- | -----------------------------------------------
  *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int convert_range_from_cgr_to_ion(Range *CgrRange, IonRXref *IonRange, time_t reference_time)
+/*
+static int convert_range_from_cgr_to_ion(ION_UniboCGR* instance, UniboCGR_Range uniboCgrRange, IonRXref *IonRange)
 {
-	int result = -1;
-
-	if (IonRange != NULL && CgrRange != NULL)
-	{
-		IonRange->fromNode = CgrRange->fromNode;
-		IonRange->toNode = CgrRange->toNode;
-		IonRange->fromTime = CgrRange->fromTime + reference_time;
-		IonRange->toTime = CgrRange->toTime + reference_time;
-		IonRange->owlt = CgrRange->owlt;
-
-		result = 0;
-	}
-
-	return result;
+    IonRange->fromNode = UniboCGR_Range_get_sender(uniboCgrRange);
+    IonRange->toNode = UniboCGR_Range_get_receiver(uniboCgrRange);
+    IonRange->fromTime = UniboCGR_Range_get_start_time(instance->uniboCgr, uniboCgrRange);
+    IonRange->toTime = UniboCGR_Range_get_end_time(instance->uniboCgr, uniboCgrRange);
+    IonRange->owlt = UniboCGR_Range_get_one_way_light_time(uniboCgrRange);
+	return 0;
 }
-
-#if (CGR_AVOID_LOOP > 0)
+*/
+#if RGREB
 /******************************************************************************
  *
  * \par Function Name:
@@ -858,135 +776,48 @@ static int get_rgr_ext_block(Bundle *bundle, GeoRoute *resultBlk)
 
 	return result;
 }
+
+/**
+ * \retval 0 success
+ * \retval "< 0" fatal error
+ */
+static int ion_set_geo_route_list(ION_UniboCGR* instance, GeoRoute* rgrBlk) {
+    if (rgrBlk == NULL || rgrBlk->nodes == NULL || rgrBlk->length == 0) {
+        return 0;
+    }
+
+    char* geoRouteString = rgrBlk->nodes;
+    const char* last_char = rgrBlk->nodes + rgrBlk->length - 1;
+    while (true)
+    {
+        geoRouteString = strstr(geoRouteString, "ipn:");
+        if (geoRouteString == NULL) {
+            break;
+        }
+        geoRouteString += 4;
+        if (geoRouteString > last_char) { // protection
+            break;
+        }
+        if (isdigit(*(geoRouteString + 4))) {
+            uvast ipn_node = strtouvast(geoRouteString);
+            UniboCGR_Error error = UniboCGR_Bundle_add_node_in_geographic_route_list(instance->uniboCgrBundle,
+                                                                                     ipn_node);
+            if (UniboCGR_check_error(error)) {
+                if (UniboCGR_check_fatal_error(error)) {
+                    return -1;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
 #endif
 
-#if (CGRR && CGRREB)
+#if CGRREB
 
 // path to macro:
-// CGRR: Unibo-CGR/core/config.h
-// MSR: Unibo-CGR/core/config.h
-// WISE_NODE: Unibo-CGR/core/config.h
 // CGRREB (from ION's root directory): bpv*/library/ext/cgrr/cgrr.h
-
-#if (WISE_NODE)
-
-/******************************************************************************
- *
- * \par Function Name:
- *      refill_mtv_into_ion
- *
- * \brief Refill contact's MTV of some size passed as argument.
- *
- * \par Date Written:
- * 		11/12/20
- *
- * \return int
- *
- * \retval  0   Contact MTVs updated
- * \retval -1   Arguments error
- * \retval -2   Contact not found
- *
- * \param[in]   regionNbr      Contact plan region
- * \param[in]      fromNode       The sender node of the contact
- * \param[in]      toNode         The receiver node of the contact
- * \param[in]      fromTime       The start time of the contact
- * \param[in]      tolerance      Time tolerance
- * \param[in]      refillSize     The size to add into MTV
- * \param[in]      priority       The upper-bound priority. The refillSize will be added
- *                                into all MTV that refers to (all) less or equal priority.
- * \param[in]      reference_time ION's start time
- *
- * \par Revision History:
- *
- *  DD/MM/YY | AUTHOR          |   DESCRIPTION
- *  -------- | --------------- |  -----------------------------------------------
- *  11/12/20 | L. Persampieri  |   Initial Implementation and documentation.
- *****************************************************************************/
-static int refill_mtv_into_ion(uint32_t regionNbr, uvast fromNode, uvast toNode, time_t fromTime, unsigned int tolerance, uvast refillSize, int priority, time_t reference_time)
-{
-	Sdr sdr = getIonsdr();
-	IonVdb *ionvdb = getIonVdb();
-	PsmPartition ionwm = getIonwm();
-	IonCXref *contact, *contactFound = NULL;
-	IonCXref arg;
-	IonContact contactBuf;
-	Object contactObj;
-	PsmAddress elt = 0, contactAddr;
-	int result = 0, i, stop;
-	unsigned int difference;
-	time_t startTime;
-
-	if (priority < 0 || priority > 2)
-	{
-		// arguments error
-		result = -1;
-	}
-	else if (refillSize == 0)
-	{
-		result = 0;
-	}
-	else
-	{
-		memset(&arg, 0, sizeof(arg));
-		arg.regionNbr = regionNbr;
-		arg.fromNode = fromNode;
-		arg.toNode = toNode;
-		stop = 0;
-
-		// search the contact
-		for(oK(sm_rbt_search(ionwm, ionvdb->contactIndex, rfx_order_contacts,
-						&arg, &elt)); elt && !stop; elt = sm_rbt_next(ionwm, elt))
-		{
-			contactAddr = sm_rbt_data(ionwm, elt);
-			contact = (IonCXref *) psp(ionwm, contactAddr);
-
-			if(contact != NULL && contact->regionNbr == regionNbr && contact->fromNode == fromNode && contact->toNode == toNode)
-			{
-				startTime = contact->fromTime - reference_time;
-				// difference in absolute value
-				difference = absolute(startTime - fromTime);
-
-				if(difference <= tolerance)
-				{
-					contactFound = contact;
-					stop = 1;
-				}
-				else if(startTime > fromTime + tolerance)
-				{
-					stop = 1;
-				}
-			}
-			else
-			{
-				stop = 1;
-			}
-
-		}
-
-		if (contactFound == NULL)
-		{
-			// contact not found
-			result = -2;
-		}
-		else
-		{
-			result = 0;
-			contactObj = sdr_list_data(sdr, contactFound->contactElt);
-
-			sdr_stage(sdr, (char *) &contactBuf, contactObj, sizeof(IonContact));
-
-			for (i = priority; i >= 0; i--)
-			{
-				contactBuf.mtv[i] += refillSize;
-			}
-
-			sdr_write(sdr, contactObj, (char *) &contactBuf, sizeof(IonContact));
-		}
-	}
-
-	return result;
-
-}
 
 /******************************************************************************
  *
@@ -1023,85 +854,107 @@ static int refill_mtv_into_ion(uint32_t regionNbr, uvast fromNode, uvast toNode,
  *  -------- | --------------- | -----------------------------------------------
  *  11/12/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int update_mtv_before_reforwarding(Bundle *bundle, ExtensionBlock *cgrrExtBlk, CGRRouteBlock *cgrrBlk, time_t reference_time, uint32_t regionNbr)
+static int update_mtv_before_reforwarding(ION_UniboCGR* instance, ExtensionBlock *cgrrExtBlk, CGRRouteBlock *cgrrBlk)
 {
-	int result = -1;
-	uvast size;
-	int temp;
+    Sdr sdr = getIonsdr();
+    IonVdb *ionvdb = getIonVdb();
+    PsmPartition ionwm = getIonwm();
+	uvast evc;
 	CGRRoute *lastRoute = NULL;
-	CGRRHop *currentHop;
-	int i;
-	unsigned int timeTolerance;
-	int priority;
+    IonContact contactBuf;
+    
+    if (instance->ionBundle->ancillaryData.flags & BP_MINIMUM_LATENCY) {
+        // critical bundle -- nothing to do
+        return 0;
+    }
+    
+    int okCgrrEvc = cgrr_getUsedEvc(instance->ionBundle, cgrrExtBlk, &evc);
+    if (okCgrrEvc > 1) {
+        // cannot update mtv for this bundle (i.e. stored EVC not found in CGRR ext. block)
+        return 0;
+    }
+    if (okCgrrEvc == 1) {
+        // bundle is a new fragment -- we can safely restore just the current payload length (and must not recompute the EVC)
+        evc = instance->ionBundle->payload.length;
+    }
+    if (okCgrrEvc < 0) {
+        // some bad error occurred
+        return -1;
+    }
+    
+    // ok we have evc now
 
-	temp = -1;
+    // now get the last route from CGRRouteBlock
+    if(cgrrBlk->recRoutesLength == 0) {
+        lastRoute = &(cgrrBlk->originalRoute);
+    } else {
+        lastRoute = &(cgrrBlk->recomputedRoutes[cgrrBlk->recRoutesLength - 1]);
+    }
 
-	if(!(bundle->ancillaryData.flags & BP_MINIMUM_LATENCY))
-	{
-		// bundle isn't critical
-		temp = cgrr_getUsedEvc(bundle, cgrrExtBlk, &size);
-	}
-	if (temp >= 0 && temp != 2)
-	{
-			if (temp == 1)
-			{
-				size = bundle->payload.length;
-			}
+    const unsigned int time_tolerance = UNIBO_CGR_FEATURE_MSR_TIME_TOLERANCE;
+    // here we know it is enabled -- just get time tolerance
+    UniboCGR_feature_ModerateSourceRouting_check(instance->uniboCgr);
+    // for each contact in route refill the mtv in both Unibo-CGR and ION
+    for (unsigned int i = 0; i < lastRoute->hopCount; i++) {
+        CGRRHop* hop = &lastRoute->hopList[i];
+        for (time_t start_time = hop->fromTime - time_tolerance; start_time <= hop->fromTime + time_tolerance; start_time++) {
+            UniboCGR_Contact cgrrHopUniboCgrContact;
+            if (UniboCGR_NoError != UniboCGR_find_contact(instance->uniboCgr,
+                                                          UniboCGR_ContactType_Scheduled,
+                                                          hop->fromNode,
+                                                          hop->toNode,
+                                                          start_time,
+                                                          &cgrrHopUniboCgrContact)) {
+                // try with start_time + 1
+                continue;
+            }
 
-			if (size == 0)
-			{
-				return 0;
-			}
+            IonCXref ionContactLocal;
+            IonCXref* ionContact = NULL;
+            Object contactObj;
+            if (convert_contact_from_cgr_to_ion(instance, cgrrHopUniboCgrContact, &ionContactLocal) >= 0) {
+                PsmAddress ionContactTreeNode = sm_rbt_search(ionwm, ionvdb->contactIndex, rfx_order_contacts, &ionContactLocal, 0);
+                ionContact = convert_PsmAddress_to_IonCXref(ionwm, sm_rbt_data(ionwm, ionContactTreeNode));
+                if (ionContact) {
+                    contactObj = sdr_list_data(sdr, ionContact->contactElt);
+                    sdr_stage(sdr, (char *) &contactBuf, contactObj, sizeof(IonContact));
+                }
+            }
+            
+            // contact found -- now refill mtv in both Unibo-CGR and ION
+            if (instance->ionBundle->priority >= 0) { // always true
+                double mtv_bulk = UniboCGR_Contact_get_mtv_bulk(cgrrHopUniboCgrContact);
+                mtv_bulk += (double) evc;
+                UniboCGR_Contact_set_mtv_bulk(cgrrHopUniboCgrContact, mtv_bulk);
+                if (ionContact) {
+                    contactBuf.mtv[0] = mtv_bulk;
+                }
+            }
+            if (instance->ionBundle->priority >= 1) {
+                double mtv_normal = UniboCGR_Contact_get_mtv_normal(cgrrHopUniboCgrContact);
+                mtv_normal += (double) evc;
+                UniboCGR_Contact_set_mtv_normal(cgrrHopUniboCgrContact, mtv_normal);
+                if (ionContact) {
+                    contactBuf.mtv[1] = mtv_normal;
+                }
+            }
+            if (instance->ionBundle->priority >= 2) {
+                double mtv_expedited = UniboCGR_Contact_get_mtv_expedited(cgrrHopUniboCgrContact);
+                mtv_expedited += (double) evc;
+                UniboCGR_Contact_set_mtv_expedited(cgrrHopUniboCgrContact, mtv_expedited);
+                if (ionContact) {
+                    contactBuf.mtv[2] = mtv_expedited;
+                }
+            }
+            
+            if (ionContact) {
+                sdr_write(sdr, contactObj, (char *) &contactBuf, sizeof(IonContact));
+            }
+        }
+    }
 
-			// now get the last route from CGRRouteBlock
-
-			if(cgrrBlk->recRoutesLength == 0)
-			{
-				lastRoute = &(cgrrBlk->originalRoute);
-			}
-			else
-			{
-				lastRoute = &(cgrrBlk->recomputedRoutes[cgrrBlk->recRoutesLength - 1]);
-			}
-
-			result = -1;
-
-#if (MSR == 1)
-			timeTolerance = MSR_TIME_TOLERANCE;
-#else
-			timeTolerance = 0;
-#endif
-
-			priority = bundle->priority;
-
-			if(lastRoute != NULL && lastRoute->hopCount > 0)
-			{
-				result = 0;
-
-				for(i = 0; i < lastRoute->hopCount; i++)
-				{
-					currentHop = &(lastRoute->hopList[i]);
-
-					// refill MTV into Unibo-CGR's contact graph
-					refill_mtv((unsigned long) regionNbr, (unsigned long long) currentHop->fromNode,
-							(unsigned long long) currentHop->toNode,
-							currentHop->fromTime, timeTolerance, (unsigned int) size,
-							priority);
-
-					// refill MTV into ION's contact graph
-					refill_mtv_into_ion(regionNbr, currentHop->fromNode, currentHop->toNode,
-							currentHop->fromTime, timeTolerance, size,
-							priority, reference_time);
-				}
-			}
-	}
-
-	return result;
+	return 0;
 }
-
-#endif
-
-#if (WISE_NODE || MSR)
 
 /******************************************************************************
  *
@@ -1135,14 +988,12 @@ static int update_mtv_before_reforwarding(Bundle *bundle, ExtensionBlock *cgrrEx
  *  -------- | --------------- | -----------------------------------------------
  *  23/04/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int get_cgrr_ext_block(Bundle *bundle, time_t reference_time, ExtensionBlock *extBlk, CGRRouteBlock **resultBlk)
+static int get_cgrr_ext_block(Bundle *bundle, ExtensionBlock *extBlk, CGRRouteBlock **resultBlk)
 {
 	Sdr sdr = getIonsdr();
-	int result = 0, i, j;
 	Object extBlockElt;
 	Address extBlkAddr;
 	CGRRouteBlock* cgrrBlk;
-	CGRRoute *route;
 
 	OBJ_POINTER(ExtensionBlock, blk);
 
@@ -1150,63 +1001,65 @@ static int get_cgrr_ext_block(Bundle *bundle, time_t reference_time, ExtensionBl
 
 	if (!(extBlockElt = findExtensionBlock(bundle, CGRRBlk, 0)))
 	{
-		result = -1;
+		return -1;
 	}
-	else
-	{
+    /* Step 2 - Get deserialized version of CGRR extension block*/
 
-		/* Step 2 - Get deserialized version of CGRR extension block*/
+    extBlkAddr = sdr_list_data(sdr, extBlockElt);
 
-		extBlkAddr = sdr_list_data(sdr, extBlockElt);
+    GET_OBJ_POINTER(sdr, ExtensionBlock, blk, extBlkAddr);
 
-		GET_OBJ_POINTER(sdr, ExtensionBlock, blk, extBlkAddr);
+    cgrrBlk = (CGRRouteBlock*) MTAKE(sizeof(CGRRouteBlock));
 
-		cgrrBlk = (CGRRouteBlock*) MTAKE(sizeof(CGRRouteBlock));
-
-		if (cgrrBlk == NULL)
-		{
-			result = -2;
-		}
-		else
-		{
-			if (cgrr_getCGRRFromExtensionBlock(blk, cgrrBlk) < 0)
-			{
-				result = -2;
-				MRELEASE(cgrrBlk);
-			}
-			else
-			{
-				result = 0;
-				*resultBlk = cgrrBlk;
-				memcpy(extBlk, blk, sizeof(ExtensionBlock));
-
-			//	printCGRRouteBlock(cgrrBlk);
-
-				route = &(cgrrBlk->originalRoute);
-
-				for(i = 0; i < route->hopCount; i++)
-				{
-					route->hopList[i].fromTime -= reference_time;
-				}
-
-				for(j = 0; j < cgrrBlk->recRoutesLength; j++)
-				{
-					route = &(cgrrBlk->recomputedRoutes[j]);
-
-					for(i = 0; i < route->hopCount; i++)
-					{
-						route->hopList[i].fromTime -= reference_time;
-					}
-				}
-			}
-		}
-	}
-
-
-	return result;
+    if (cgrrBlk == NULL)
+    {
+        return -2;
+    }
+    if (cgrr_getCGRRFromExtensionBlock(blk, cgrrBlk) < 0)
+    {
+        MRELEASE(cgrrBlk);
+        return -2;
+    }
+    
+    *resultBlk = cgrrBlk;
+    memcpy(extBlk, blk, sizeof(ExtensionBlock));
+	return 0;
 }
 
-#endif
+static int reduceCGRR(ION_UniboCGR* instance) {
+    int ok = updateLastCgrrRoute(instance->ionBundle);
+    if(ok == -2 || ok == -1)
+    {
+        return ok;
+    }
+    if(ok == -3)
+    {
+        // some error
+        return -1;
+    }
+    
+    return 0;
+}
+
+static int update_CGRR_evc(ION_UniboCGR* instance) {
+    Sdr sdr = getIonsdr();
+    Object extBlockElt;
+
+    OBJ_POINTER(ExtensionBlock, blk);
+
+    if ((extBlockElt = findExtensionBlock(instance->ionBundle, CGRRBlk, 0)))
+    {
+        Address extBlockAddr = sdr_list_data(sdr, extBlockElt);
+
+        GET_OBJ_POINTER(sdr, ExtensionBlock, blk, extBlockAddr);
+
+        uint64_t evc = UniboCGR_Bundle_get_estimated_volume_consumption(instance->uniboCgrBundle);
+        if (cgrr_setUsedEvc(instance->ionBundle, blk, (uvast) evc) < 0) {
+            return -1;
+        }
+    }
+    return 0;
+}
 
 /******************************************************************************
  *
@@ -1236,165 +1089,158 @@ static int get_cgrr_ext_block(Bundle *bundle, time_t reference_time, ExtensionBl
  *  -------- | --------------- | -----------------------------------------------
  *  25/09/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int CGRR_management(PsmPartition ionwm, Lyst bestRoutes, Bundle *bundle)
+static int CGRR_management(ION_UniboCGR* instance, Lyst bestRoutes)
 {
-#if(WISE_NODE)
-	LystElt lyst_elt;
-	CGRRoute cgrr_route;
-	CgrRoute *route;
-	Sdr sdr;
-	CurrentCallSAP *currSap;
-	Object extBlockElt;
-	Address extBlkAddr;
-#endif
-	int result = -3, temp;
+	int temp;
+    LystElt lyst_elt;
+    CGRRoute cgrr_route;
+    CgrRoute *route;
 
 	if (lyst_length(bestRoutes) == 0)
 	{
 		return -3;
 	}
 
-#if(MSR)
-	result = -1;
+    if(instance->ionBundle->ancillaryData.flags & BP_MINIMUM_LATENCY) {
+        // Critical bundle
+        return -1;
+    }
+    
+    if (UniboCGR_feature_ModerateSourceRouting_check(instance->uniboCgr)) {
+        if (UniboCGR_get_used_routing_algorithm(instance->uniboCgr) == UniboCGR_RoutingAlgorithm_MSR) {
+            // -1 on error, 0 success
+            if (reduceCGRR(instance) == 0) {
+                if (update_CGRR_evc(instance) < 0) {
+                    return -1;
+                }
+                return 0;
+            }
+            return -1;
+        } else {
+            // replace the MSR route in CGRR extension block
+            lyst_elt = lyst_first(bestRoutes);
+            if (lyst_elt) {
+                route = (CgrRoute *) lyst_data(lyst_elt);
+            } else {
+                return -1;
+            }
 
-    if(bundle->ancillaryData.flags & BP_MINIMUM_LATENCY) {
-    	// Critical bundle (MSR discouraged)
-    	return -1;
+            temp = getCGRRoute(route, &cgrr_route);
+
+            if(temp == -1 || temp == -2) {
+                return temp;
+            }
+            temp = storeMsrRoute(&cgrr_route, instance->ionBundle);
+
+            if(temp == -1 || temp == -2) {
+                return temp;
+            }
+            MRELEASE(cgrr_route.hopList);
+
+            if (update_CGRR_evc(instance) < 0) {
+                return -1;
+            }
+            return 0;
+        }
+    } else {
+#if UNIBO_CGR_FEATURE_MSR_WISE_NODE
+
+        for (lyst_elt = lyst_first(bestRoutes); lyst_elt; lyst_elt = lyst_next(lyst_elt))
+        {
+            route = (CgrRoute*) lyst_data(lyst_elt);
+
+            temp = getCGRRoute(route, &cgrr_route);
+
+            if(temp == -2) {
+                // system error
+                return -2;
+            }
+            else if(temp == 0 && cgrr_route.hopCount > 0)
+            {
+                temp = saveRouteToExtBlock(cgrr_route.hopCount, cgrr_route.hopList, instance->ionBundle);
+
+                if (temp == -2) {
+                    // CGRR not found -- it may happen?
+                    return -1;
+                } else if (temp == -1) {
+                    // System error
+                    return -2;
+                }
+
+                MRELEASE(cgrr_route.hopList);
+            }
+        }
+        
+        if (update_CGRR_evc(instance) < 0) {
+            return -1;
+        }
+        return 0;
+#else
+        return 0;
+#endif
+    }
+}
+
+/**
+ * \retval 0 success
+ * \retval -1 malformed route
+ * \retval -2 system error
+ */
+static int set_UniboCGR_msr_route(ION_UniboCGR* instance, CGRRouteBlock* cgrrBlk, uint32_t time_tolerance) {
+    CGRRoute *lastRoute;
+    UniboCGR_Error error;
+    if (cgrrBlk->recRoutesLength == 0) {
+        lastRoute = &(cgrrBlk->originalRoute);
+    } else {
+        lastRoute = &(cgrrBlk->recomputedRoutes[cgrrBlk->recRoutesLength - 1]);
     }
 
-	if(get_last_call_routing_algorithm() == msr)
-	{
-		// update the MSR route in CGRR extension block
+    uvast local_node = getOwnNodeNbr();
+    bool first_hop = true;
+    for (unsigned int i = 0; i < lastRoute->hopCount; i++) {
+        CGRRHop *hop = &lastRoute->hopList[i];
+        if (first_hop && hop->fromNode != local_node) continue; // skip hop
 
-		temp = updateLastCgrrRoute(bundle);
+        first_hop = false;
+        for (time_t start_time = hop->fromTime - time_tolerance;
+            start_time <= hop->fromTime + time_tolerance; start_time++) {
 
-		if(temp == -2)
-		{
-			// System error
-			result = -2;
-		}
-		else if(temp == -1 || temp == -3)
-		{
-			// some error
-			result = -1;
-		}
-		else
-		{
-			result = 0;
-		}
+            error = UniboCGR_add_moderate_source_routing_hop(instance->uniboCgr,
+                                                             instance->uniboCgrBundle,
+                                                             UniboCGR_ContactType_Scheduled,
+                                                             hop->fromNode,
+                                                             hop->toNode,
+                                                             start_time);
 
-	}
-#if(WISE_NODE)
-	else
-	{
-		// replace the MSR route in CGRR extension block
+            if (error == UniboCGR_NoError) break; // ok hop inserted
 
-		lyst_elt = lyst_first(bestRoutes);
-		if (lyst_elt)
-		{
-			route = (CgrRoute *) lyst_data(lyst_elt);
-		}
-		else
-		{
-			return -1;
-		}
-
-		temp = getCGRRoute(route, &cgrr_route);
-
-
-		if(temp == -1)
-		{
-			result = -1;
-		}
-
-		else if(temp == -2)
-		{
-			result = -2;
-		}
-		else
-		{
-			temp = storeMsrRoute(&cgrr_route, bundle);
-
-			if(temp == -2)
-			{
-				// System error
-				result = -2;
-			}
-			else if(temp == -1)
-			{
-				// some error
-				result = -1;
-			}
-			else
-			{
-				result = 0;
-			}
-
-
-			MRELEASE(cgrr_route.hopList);
-		}
-	}
+            if (error == UniboCGR_ErrorContactNotFound) {
+                UniboCGR_log_write(instance->uniboCgr, "contact %lu -> %lu (start %ld) not found!!!",
+                                   (long unsigned) hop->fromNode, (long unsigned)hop->toNode, start_time);
+                continue; // try again with start_time + 1
+            }
+            else {
+                return -1; // malformed route
+            }
+        }
+    }
+#if (UNIBO_CGR_FEATURE_MSR_WISE_NODE)
+    const uint32_t msr_lower_bound = 0;
+#else
+    const uint32_t msr_lower_bound = UNIBO_CGR_FEATURE_MSR_UNWISE_NODE_LOWER_BOUND;
 #endif
-#elif (WISE_NODE)
-	int stop = 0;
-	result = 0;
-	for (lyst_elt = lyst_first(bestRoutes); lyst_elt && !stop; lyst_elt = lyst_next(lyst_elt))
-	{
-		route = (CgrRoute*) lyst_data(lyst_elt);
-
-		temp = getCGRRoute(route, &cgrr_route);
-
-		if(temp == -2)
-		{
-			result = -2;
-			stop = 1;
-		}
-		else if(temp == 0 && cgrr_route.hopCount > 0)
-		{
-			temp = saveRouteToExtBlock(cgrr_route.hopCount, cgrr_route.hopList,
-					bundle);
-
-			if (temp == -2)
-			{
-				// some error
-				result = -1;
-				stop = 1;
-			}
-			else if (temp == -1)
-			{
-				// System error
-				result = -2;
-				stop = 1;
-			}
-
-			MRELEASE(cgrr_route.hopList);
-		}
-	}
-
-#endif
-
-#if (WISE_NODE)
-	if (result == 0)
-	{
-		sdr = getIonsdr();
-		currSap = get_current_call_sap(NULL);
-
-		OBJ_POINTER(ExtensionBlock, blk);
-
-		if ((extBlockElt = findExtensionBlock(bundle, CGRRBlk, 0)))
-		{
-			extBlkAddr = sdr_list_data(sdr, extBlockElt);
-
-			GET_OBJ_POINTER(sdr, ExtensionBlock, blk, extBlkAddr);
-
-			cgrr_setUsedEvc(bundle, blk, currSap->uniboCgrBundle->evc);
-		}
-	}
-#endif
-
-	return result;
-
+    error = UniboCGR_finalize_moderate_source_routing_route(instance->uniboCgr,
+                                                            instance->uniboCgrBundle,
+                                                            msr_lower_bound);
+    if (UniboCGR_check_error(error)) {
+        if (UniboCGR_check_fatal_error(error)) {
+            return -2;
+        }
+        return -1;
+    }
+    return 0;
 }
+
 #endif
 
 /******************************************************************************
@@ -1414,7 +1260,7 @@ static int CGRR_management(PsmPartition ionwm, Lyst bestRoutes, Bundle *bundle)
  *
  * \retval  0  Success case
  * \retval -1  Arguments error
- * \retval -2  MWITHDRAW error
+ * \retval -2  MTAKE error
  *
  * \param[in]    toNode             The destination ipn node for the bundle
  * \param[in]    current_time       The current time, in differential time from reference_time
@@ -1431,301 +1277,139 @@ static int CGRR_management(PsmPartition ionwm, Lyst bestRoutes, Bundle *bundle)
  *  -------- | --------------- | -----------------------------------------------
  *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *  24/03/20 | L. Persampieri  |  Added geoRouteString
+ *  23/10/22 | L. Persampieri  |  Major refactoring.
  *****************************************************************************/
-static int convert_bundle_from_ion_to_cgr(unsigned long long toNode, time_t current_time, time_t reference_time, Bundle *IonBundle, CgrBundle *CgrBundle)
+static int convert_bundle_from_ion_to_cgr(ION_UniboCGR* instance, uvast destination)
 {
-	int result = -1;
-	time_t offset;
-#if (CGRR && CGRREB && (WISE_NODE || MSR))
-	CGRRouteBlock *cgrrBlk;
-	ExtensionBlock cgrrExtBlk;
-#endif
-#if (CGR_AVOID_LOOP > 0)
-	GeoRoute geoRoute;
+	int temp;
+    (void) temp;
+    UniboCGR_Bundle_reset(instance->uniboCgrBundle);
+
+    // ION BPv7
+    UniboCGR_Bundle_set_bundle_protocol_version(instance->uniboCgrBundle, 7);
+
+    UniboCGR_Bundle_set_destination_node_id(instance->uniboCgrBundle, (uint64_t) destination);
+
+#if (CGRREB)
+    CGRRouteBlock *cgrrBlk = NULL;
+    ExtensionBlock cgrrExtBlk;
+    temp = get_cgrr_ext_block(instance->ionBundle, &cgrrExtBlk, &cgrrBlk);
+    if(temp == 0) {
+        update_mtv_before_reforwarding(instance, &cgrrExtBlk, cgrrBlk);
+        if (UniboCGR_feature_ModerateSourceRouting_check(instance->uniboCgr)) {
+            (void) set_UniboCGR_msr_route(instance, cgrrBlk, UNIBO_CGR_FEATURE_MSR_TIME_TOLERANCE);
+        }
+        releaseCgrrBlkMemory(cgrrBlk);
+    }
+    if (temp == -2) {
+        return -2;
+    }
 #endif
 
-	if (IonBundle != NULL && CgrBundle != NULL)
-	{
-        uint32_t regionNbr = 0;
-        oK(ionRegionOf(getOwnNodeNbr(), (uvast) toNode, &regionNbr));
-        CgrBundle->regionNbr = (unsigned long) regionNbr;
-
-		CgrBundle->terminus_node = toNode;
-
-#if (CGRR && CGRREB && (WISE_NODE || MSR))
-		CgrBundle->msrRoute = NULL;
-		result = get_cgrr_ext_block(IonBundle, reference_time, &cgrrExtBlk, &cgrrBlk);
-
-		if(result == 0)
-		{
-#if (WISE_NODE)
-			update_mtv_before_reforwarding(IonBundle, &cgrrExtBlk, cgrrBlk, reference_time, regionNbr);
-#endif
-#if (MSR)
-			result = set_msr_route(current_time, cgrrBlk, CgrBundle);
-#endif
-			releaseCgrrBlkMemory(cgrrBlk);
-		}
-#endif
-#if (CGR_AVOID_LOOP > 0)
-		if(result != -2)
-		{
-			result = get_rgr_ext_block(IonBundle, &geoRoute);
-			if(result == 0)
-			{
-				result = set_geo_route_list(geoRoute.nodes, CgrBundle);
-				MRELEASE(geoRoute.nodes);
-			}
-		}
-#endif
-		if (result != -2)
-		{
-			CLEAR_FLAGS(CgrBundle->flags); //reset previous mask
-
-            if(IonBundle->ancillaryData.flags & BP_MINIMUM_LATENCY)
-            {
-            	SET_CRITICAL(CgrBundle);
+#if RGREB
+    if (UniboCGR_feature_ReactiveAntiLoop_check(instance->uniboCgr)
+    || UniboCGR_feature_ProactiveAntiLoop_check(instance->uniboCgr)) {
+        GeoRoute geoRoute;
+        temp = get_rgr_ext_block(instance->ionBundle, &geoRoute);
+        if(temp == 0) {
+            temp = ion_set_geo_route_list(instance, &geoRoute);
+            MRELEASE(geoRoute.nodes);
+            if (temp < 0) {
+                return -1;
             }
+        }
+    }
 
-			if (!(IS_CRITICAL(CgrBundle)) && IonBundle->returnToSender)
-			{
-				SET_BACKWARD_PROPAGATION(CgrBundle);
-			}
-			if(!(IonBundle->bundleProcFlags & BDL_DOES_NOT_FRAGMENT))
-			{
-				SET_FRAGMENTABLE(CgrBundle);
-			}
+#endif
 
-			//TODO search probe field in ION's bundle...
+    if (UniboCGR_feature_logger_check(instance->uniboCgr)) {
+        char* source_node_id_string = NULL;
+        readEid(&instance->ionBundle->id.source, &source_node_id_string);
+        if (!source_node_id_string) {
+            return -2;
+        }
+        UniboCGR_Bundle_set_source_node_id(instance->uniboCgrBundle, source_node_id_string);
+        MRELEASE(source_node_id_string);
+        UniboCGR_Bundle_set_sequence_number(instance->uniboCgrBundle, instance->ionBundle->id.creationTime.count);
+        bool is_fragment = instance->ionBundle->bundleProcFlags & BDL_IS_FRAGMENT;
 
-			CgrBundle->ordinal = (unsigned int) IonBundle->ordinal;
+        if (is_fragment) {
+            UniboCGR_Bundle_set_fragment_offset(instance->uniboCgrBundle, instance->ionBundle->id.fragmentOffset);
+            UniboCGR_Bundle_set_fragment_length(instance->uniboCgrBundle, instance->ionBundle->payload.length);
+            UniboCGR_Bundle_set_total_application_data_unit_length(instance->uniboCgrBundle, instance->ionBundle->totalAduLength);
+        } else {
+            UniboCGR_Bundle_set_total_application_data_unit_length(instance->uniboCgrBundle, instance->ionBundle->payload.length);
+        }
+    }
+    // creation time and lifetime are required -- we need always them in order to calculate the "expiration time"
+    UniboCGR_Bundle_set_creation_time(instance->uniboCgrBundle, instance->ionBundle->id.creationTime.msec);
+    UniboCGR_Bundle_set_lifetime(instance->uniboCgrBundle, instance->ionBundle->timeToLive);
 
-			//size computation ported by ION 4.0.0
-			CgrBundle->size = NOMINAL_PRIMARY_BLKSIZE + IonBundle->extensionsLength
-					+ IonBundle->payload.length;
+    /* Bundle flags */
+    bool is_enabled_critical_flag = instance->ionBundle->ancillaryData.flags & BP_MINIMUM_LATENCY;
+    UniboCGR_Bundle_set_flag_critical(instance->uniboCgrBundle, is_enabled_critical_flag);
+    bool is_enabled_backward_propagation_flag = !is_enabled_critical_flag && instance->ionBundle->returnToSender;
+    UniboCGR_Bundle_set_flag_backward_propagation(instance->uniboCgrBundle, is_enabled_backward_propagation_flag);
+    bool is_enabled_do_not_fragment_flag = instance->ionBundle->bundleProcFlags & BDL_DOES_NOT_FRAGMENT;
+    UniboCGR_Bundle_set_flag_do_not_fragment(instance->uniboCgrBundle, is_enabled_do_not_fragment_flag);
 
-			CgrBundle->evc = computeBundleEVC(CgrBundle->size); // SABR 2.4.3
+    UniboCGR_Bundle_set_flag_probe(instance->uniboCgrBundle, false); // not found "probe flag" in ION
 
-			/* Need to convert from msec (since EPOCH 2000) to seconds since 1970 */
-			time_t creationTimeInSeconds = (time_t) ( IonBundle->id.creationTime.msec / 1000 ) + EPOCH_2000_SEC;
+    if (instance->ionBundle->priority == 0) {
+        UniboCGR_Bundle_set_priority_bulk(instance->uniboCgrBundle);
+    } else if (instance->ionBundle->priority == 1) {
+        UniboCGR_Bundle_set_priority_normal(instance->uniboCgrBundle);
+    } else {
+        UniboCGR_Bundle_set_priority_expedited(instance->uniboCgrBundle, (uint8_t) instance->ionBundle->ordinal);
+    }
 
-			/* Offset between bundle's creation time and (this) node's start time. */
-			offset =  creationTimeInSeconds - reference_time;
+    UniboCGR_Bundle_set_primary_block_length(instance->uniboCgrBundle, NOMINAL_PRIMARY_BLKSIZE);
+    UniboCGR_Bundle_set_total_ext_block_length(instance->uniboCgrBundle, instance->ionBundle->extensionsLength);
+    UniboCGR_Bundle_set_payload_length(instance->uniboCgrBundle, instance->ionBundle->payload.length);
 
-            /* Internally to Unibo-CGR the bundle's expiration time is relative to the node's start time.
-             * Here we make this conversion.                                                              */
-			CgrBundle->expiration_time = IonBundle->expirationTime - creationTimeInSeconds + offset;
+    UniboCGR_Bundle_set_previous_node_id(instance->uniboCgrBundle, instance->ionBundle->clDossier.senderNodeNbr);
 
-			CgrBundle->sender_node = IonBundle->clDossier.senderNodeNbr;
-			CgrBundle->priority_level = IonBundle->priority;
+    UniboCGR_Bundle_set_delivery_confidence(instance->uniboCgrBundle, instance->ionBundle->dlvConfidence);
 
-			CgrBundle->dlvConfidence = IonBundle->dlvConfidence;
-
-			if(IonBundle->bundleProcFlags & BDL_IS_FRAGMENT)
-			{
-				CgrBundle->id.fragment_length = IonBundle->payload.length;
-			}
-			else
-			{
-				CgrBundle->id.fragment_length = 0;
-			}
-
-			CgrBundle->id.source_node = IonBundle->id.source.ssp.ipn.nodeNbr;
-			CgrBundle->id.creation_timestamp = IonBundle->id.creationTime.msec;
-			CgrBundle->id.sequence_number = IonBundle->id.creationTime.count;
-			CgrBundle->id.fragment_offset = IonBundle->id.fragmentOffset;
-
-			print_log_bundle_id(CgrBundle->id.source_node,
-					CgrBundle->id.creation_timestamp, CgrBundle->id.sequence_number,
-					CgrBundle->id.fragment_length, CgrBundle->id.fragment_offset);
-
-			if(IonBundle->bundleProcFlags & BDL_IS_FRAGMENT)
-			{
-				// this bundle is a fragment. we print the payload of the original bundle.
-				writeLog("Payload length: %u.", IonBundle->totalAduLength);
-			}
-			else
-			{
-				writeLog("Payload length: %u.", IonBundle->payload.length);
-			}
-
-			result = 0;
-		}
-	}
-
-	return result;
+    return 0;
 }
 
-/******************************************************************************
- *
- * \par Function Name:
- *      convert_scalar_from_ion_to_cgr
- *
- * \brief  Convert a scalar type from ION to this CGR's implementation.
- *
- *
- * \par Date Written:
- *      19/02/20
- *
- * \return int
- *
- * \retval   0  Success case
- * \retval  -1  Arguments error
- *
- * \param[in]   *ion_scalar   The scalar type in ION.
- * \param[out]  *cgr_scalar   The scalar type in this CGR's implementation
- *
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-static int convert_scalar_from_ion_to_cgr(Scalar *ion_scalar, CgrScalar *cgr_scalar)
-{
-	int result = -1;
-
-	if (ion_scalar != NULL && cgr_scalar != NULL)
-	{
-		cgr_scalar->gigs = ion_scalar->gigs;
-		cgr_scalar->units = ion_scalar->units;
-		result = 0;
-	}
-
-	return result;
+static CgrRoute* getIonRoute(ION_UniboCGR* instance, PsmPartition ionwm) {
+    if (instance->first_route) {
+        return lyst_data(lyst_first(instance->routes));
+    } else {
+        return allocateIonRoute(ionwm);
+    }
 }
 
-/******************************************************************************
- *
- * \par Function Name:
- *      convert_scalar_from_cgr_to_ion
- *
- * \brief  Convert a scalar type from this CGR's implementation to ION.
- *
- *
- * \par Date Written:
- *      19/02/20
- *
- * \return int
- *
- * \retval   0  Success case
- * \retval  -1  Arguments error
- *
- * \param[in]   *cgr_scalar   The scalar type in this CGR's implementation.
- * \param[out]  *ion_scalar   The scalar type in ION.
- *
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-static int convert_scalar_from_cgr_to_ion(CgrScalar *cgr_scalar, Scalar *ion_scalar)
-{
-	int result = -1;
-
-	if (ion_scalar != NULL && cgr_scalar != NULL)
-	{
-		ion_scalar->gigs = cgr_scalar->gigs;
-		ion_scalar->units = cgr_scalar->units;
-		result = 0;
-	}
-
-	return result;
+static void setIonRouteUsed(ION_UniboCGR* instance, CgrRoute* IonRoute) {
+    if (!instance->first_route) {
+        lyst_insert_last(instance->routes, IonRoute);
+    } else {
+        instance->first_route = false;
+    }
 }
 
-/******************************************************************************
- *
- * \par Function Name:
- *      convert_hops_list_from_cgr_to_ion
- *
- * \brief  Convert a list of contacts from this CGR's implementation to ION.
- * 
- * \details  This function is thinked to convert the hops list of a Route
- *           and only for this scope.
- *
- *
- * \par Date Written:
- *      19/02/20
- *
- * \return  int
- * 
- * \retval  ">= 0"  Number of contacts converted
- * \retval     -1   CGR's contact NULL
- * \retval     -2   Memory allocation error
- * \retval     -3   Contact not found in the ION's contacts graph
- *
- * \param[in]   reference_time  The reference time used to convert POSIX time in differential time from it.
- * \param[in]   ionwm           The partition of the ION's contacts graph
- * \param[in]   *ionvdb         The ion's volatile database
- * \param[in]   CgrHops         The list of contacts of this CGR's implementation
- * \param[out]  IonHops         The list of contact in ION's format.
- *
- * \warning ionvdb doesn't have to be NULL
- * \warning CgrHops doesn't have to be NULL
- * \warning IonHops doesn't have to be 0
- *
- * \par	Notes:
- *                1.    All the contacts will be searched in the ION's contacts graph, and
- *                      then the contact found will be added in the list.
- *                2.    The ION's list mantains the same order of the CGR's list.
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-static int convert_hops_list_from_cgr_to_ion(time_t reference_time, PsmPartition ionwm, IonVdb *ionvdb, List CgrHops,
-		PsmAddress IonHops)
-{
-	ListElt *elt;
-	IonCXref IonContact, *IonTreeContact;
-	PsmAddress tree_node, citation, contactAddr;
-	int result = 0;
+static void setIonRouteNotUsed(ION_UniboCGR* instance, CgrRoute* IonRoute, PsmPartition ionwm) {
+    if (!instance->first_route) {
+        releaseIonRoute(IonRoute, ionwm);
+    }
+}
 
-	for (elt = CgrHops->first; elt != NULL && result >= 0; elt = elt->next)
-	{
-		if (convert_contact_from_cgr_to_ion((Contact*) elt->data, &IonContact, reference_time) == 0)
-		{
-			tree_node = sm_rbt_search(ionwm, ionvdb->contactIndex, rfx_order_contacts, &IonContact,
-					0);
-			if (tree_node != 0)
-			{
-				contactAddr = sm_rbt_data(ionwm, tree_node);
-				IonTreeContact = (IonCXref*) psp(ionwm, contactAddr);
-				if (IonTreeContact != NULL)
-				{
-					citation = sm_list_insert_last(ionwm, IonHops, contactAddr);
+static void resetIonRoutes(ION_UniboCGR* instance, PsmPartition ionwm) {
+    LystElt first = lyst_first(instance->routes);
+    CgrRoute* firstRoute = lyst_data(first);
+    // clear hops of first route
+    sm_list_clear(ionwm, firstRoute->hops, NULL, NULL);
+    // keep always the first route
+    LystElt elt = lyst_next(first);
+    while (elt) {
+        LystElt next = lyst_next(elt);
+        lyst_delete(elt);
+        elt = next;
+    }
 
-					if (citation == 0)
-					{
-						result = -2;
-					}
-					else
-					{
-						result++;
-					}
-				}
-				else
-				{
-					result = -3;
-				}
-			}
-			else
-			{
-				result = -3;
-			}
-		}
-		else
-		{
-			result = -1;
-		}
-	}
-
-	return result;
+    instance->first_route = true;
 }
 
 /******************************************************************************
@@ -1745,13 +1429,12 @@ static int convert_hops_list_from_cgr_to_ion(time_t reference_time, PsmPartition
  * \retval  -1  CGR's contact points to NULL
  * \retval  -2  Memory allocation error
  *
- * \param[in]    reference_time   The reference time used to convert POSIX time in differential time from it.
- * \param[in]     ionwm           The partition of the ION's contacts graph
- * \param[in]     *ionvdb         The ION's volatile database
- * \param[in]     *terminusNode   The node for which the routes have been computed
- * \param[in]     evc             Bundle's estimated volume consumption
- * \param[in]     cgrRoutes       The list of routes in CGR's format
- * \param[out]    IonRoutes       The list converted (only if return value is 0)
+ * \param[in]     instance
+ * \param[in]     ionwm
+ * \param[in]     ionvdb
+ * \param[in]     terminusNode   ION destination
+ * \param[in]     uniboCgrRoutest
+ * \param[out]    IonRoutes
  *
  *
  * \par Revision History:
@@ -1760,560 +1443,195 @@ static int convert_hops_list_from_cgr_to_ion(time_t reference_time, PsmPartition
  *  -------- | --------------- | -----------------------------------------------
  *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int convert_routes_from_cgr_to_ion(time_t reference_time, PsmPartition ionwm, IonVdb *ionvdb, IonNode *terminusNode,
-		long unsigned int evc, List cgrRoutes, Lyst IonRoutes)
-{
-	ListElt *elt;
-	PsmAddress hops;
-	CgrRoute *IonRoute = NULL;
-	Route *current;
-	int tmp;
-	CurrentCallSAP *currSap = get_current_call_sap(NULL);
-	CgrRoute *newRoute;
-	LystElt nextRouteElt;
+static int convert_routes_from_cgr_to_ion(ION_UniboCGR* instance, PsmPartition ionwm, IonVdb *ionvdb,
+                                          UniboCGR_route_list uniboCgrRouteList, Lyst IonRoutes) {
+    UniboCGR_Route uniboCgrRoute = NULL;
+    UniboCGR_Error okRoute = UniboCGR_get_first_route(instance->uniboCgr, uniboCgrRouteList, &uniboCgrRoute);
+    for (/* empty */; okRoute == UniboCGR_NoError; okRoute = UniboCGR_get_next_route(instance->uniboCgr, &uniboCgrRoute)) {
+        CgrRoute* IonRoute = getIonRoute(instance, ionwm);
+        if (!IonRoute) {
+            // fatal error
+            return -1;
+        }
 
-	int result = 0;
+        IonRoute->toNodeNbr = UniboCGR_Route_get_neighbor(uniboCgrRoute);
+        IonRoute->fromTime = UniboCGR_Route_get_best_case_transmission_time(instance->uniboCgr, uniboCgrRoute);
+        IonRoute->toTime = UniboCGR_Route_get_expiration_time(instance->uniboCgr, uniboCgrRoute);
+        IonRoute->arrivalTime = UniboCGR_Route_get_best_case_arrival_time(instance->uniboCgr, uniboCgrRoute);
+        IonRoute->maxVolumeAvbl = UniboCGR_Route_get_route_volume_limit(uniboCgrRoute);
+        IonRoute->bundleECCC = UniboCGR_Bundle_get_estimated_volume_consumption(instance->uniboCgrBundle);
+        IonRoute->eto = UniboCGR_Route_get_eto(instance->uniboCgr, uniboCgrRoute);
+        IonRoute->pbat = UniboCGR_Route_get_projected_bundle_arrival_time(instance->uniboCgr, uniboCgrRoute);
+        IonRoute->arrivalConfidence = UniboCGR_Route_get_arrival_confidence(uniboCgrRoute);
+        uint64_t overbooked = 0;
+        uint64_t committed = 0;
+        UniboCGR_Route_get_overbooking_management(uniboCgrRoute, &overbooked, &committed);
+        convert_uint64_to_scalar(overbooked, &IonRoute->overbooked);
+        convert_uint64_to_scalar(committed, &IonRoute->committed);
 
-	nextRouteElt = lyst_first(currSap->routes);
+        // now create hop list
 
-	for (elt = cgrRoutes->first; elt != NULL && result >= 0; elt = elt->next)
-	{
-		if (elt->data != NULL)
-		{
-			current = (Route*) elt->data;
+        UniboCGR_Contact uniboCgrContact = NULL;
+        UniboCGR_Error okContact = UniboCGR_get_first_hop(instance->uniboCgr, uniboCgrRoute, &uniboCgrContact);
+        bool skipRoute = false;
+        for (/* empty */; okContact == UniboCGR_NoError; okContact = UniboCGR_get_next_hop(instance->uniboCgr, &uniboCgrContact)) {
+            IonCXref ionContactLocal;
+            if (convert_contact_from_cgr_to_ion(instance, uniboCgrContact, &ionContactLocal) < 0) {
+                // that sounds like a "core" bug -- should never happen
+                setIonRouteNotUsed(instance, IonRoute, ionwm);
+                skipRoute = true;
+                break;
+            }
+            PsmAddress ionContactTreeNode = sm_rbt_search(ionwm, ionvdb->contactIndex, rfx_order_contacts, &ionContactLocal, 0);
 
-			if (nextRouteElt == NULL)
-			{
-				newRoute = MTAKE(sizeof(CgrRoute));
+            if (!ionContactTreeNode) {
+                // contact not found -- maybe it has been removed by RFX daemon -- it is not a fatal error but we must skip this route
+                setIonRouteNotUsed(instance, IonRoute, ionwm);
+                skipRoute = true;
+                break;
+            }
+            PsmAddress ionContactAddr = sm_rbt_data(ionwm, ionContactTreeNode);
+            if (!ionContactAddr) {
+                // contact not found -- maybe it has been removed by RFX daemon -- it is not a fatal error but we must skip this route
+                setIonRouteNotUsed(instance, IonRoute, ionwm);
+                skipRoute = true;
+                break;
+            }
+            // insert the contact into hop list
+            if (!sm_list_insert_last(ionwm, IonRoute->hops, ionContactAddr)) {
+                // fatal error
+                setIonRouteNotUsed(instance, IonRoute, ionwm);
+                return -1;
+            }
+        }
 
-				if(newRoute == NULL)
-				{
-					return -2;
-				}
+        if (UniboCGR_check_fatal_error(okContact)) {
+            return -1;
+        }
 
-				memset((char*) newRoute, 0, sizeof(CgrRoute));
+        if (skipRoute) {
+            continue;
+        }
 
-				newRoute->hops = sm_list_create(ionwm);
-				nextRouteElt = lyst_insert_last(currSap->routes, newRoute);
+        // ok route created
 
-				if (nextRouteElt == NULL || newRoute->hops == 0)
-				{
-					return -2;
-				}
+        printDebugIonRoute(ionwm, IonRoute);
 
-			}
-			IonRoute = lyst_data(nextRouteElt);
-			hops = IonRoute->hops;
-			nextRouteElt = lyst_next(nextRouteElt);
+        setIonRouteUsed(instance, IonRoute);
 
-			if (IonRoute != NULL && hops != 0)
-			{
-				sm_list_clear(ionwm, hops, NULL, NULL);
-				IonRoute->toNodeNbr = current->neighbor;
-				IonRoute->fromTime = current->fromTime + reference_time;
-				IonRoute->toTime = current->toTime + reference_time;
-				IonRoute->arrivalConfidence = current->arrivalConfidence;
-				IonRoute->arrivalTime = current->arrivalTime + reference_time;
-				IonRoute->maxVolumeAvbl = current->routeVolumeLimit;
-				IonRoute->bundleECCC = evc;
-				IonRoute->eto = current->eto + reference_time;
-				IonRoute->pbat = current->pbat + reference_time;
-				convert_scalar_from_cgr_to_ion(&(current->committed),
-						&(IonRoute->committed));
-				convert_scalar_from_cgr_to_ion(&(current->overbooked),
-						&(IonRoute->overbooked));
+        // insert the route into output list
+        if (!lyst_insert_last(IonRoutes, (void*) IonRoute)) {
+            // fatal error
+            return -1;
+        }
+    }
 
-				tmp = convert_hops_list_from_cgr_to_ion(reference_time, ionwm,
-						ionvdb, current->hops, hops);
-				if (tmp >= 0)
-				{
-					IonRoute->hops = hops;
-					printDebugIonRoute(ionwm, IonRoute);
-					if (lyst_insert_last(IonRoutes, (void*) IonRoute) == NULL)
-					{
-						result = -2;
-					}
-				}
-				else if (tmp == -3)
-				{
-					writeLog(
-							"(Interface) Skipped route to neighbor %llu, conversion failed.",
-							current->neighbor);
-				}
-				else
-				{
-					result = -2;
-				}
-			}
-			else
-			{
-				result = -2;
-			}
-		}
-		else
-		{
-			result = -1;
-		}
-	}
+    if (UniboCGR_check_fatal_error(okRoute)) {
+        return -1;
+    }
 
-	return result;
-}
-
-/******************************************************************************
- *
- * \par Function Name:
- *      convert_PsmAddress_to_IonCXref
- *
- * \brief  Convert a PsmAddress to ION's contact type
- *
- *
- * \par Date Written:
- *      19/02/20
- *
- * \return IonCXref*
- *
- * \retval  IonCXref*	The contact converted
- * \retval  NULL        If the address is a NULL pointer
- *
- * \param[in]  ionwm     The partition of the ION's contacts graph
- * \param[in]  address   The address of the contact in the partition
- *
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-static IonCXref* convert_PsmAddress_to_IonCXref(PsmPartition ionwm, PsmAddress address)
-{
-	IonCXref *contact = NULL;
-
-	if (address != 0)
-	{
-		contact = psp(ionwm, address);
-	}
-
-	return contact;
-}
-
-/******************************************************************************
- *
- * \par Function Name:
- *      convert_PsmAddress_to_IonRXref
- *
- * \brief Convert a PsmAddress to ION's range type
- *
- *
- * \par Date Written:
- *      19/02/20
- *
- * \return IonRXref*
- *
- * \retval  IonRXref*  The contact converted
- * \retval  NULL       If the address is a NULL pointer
- *
- * \param[in]   ionwm     The partition of the ION's ranges graph
- * \param[in]   address   The address of the range in the partition
- *
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-static IonRXref* convert_PsmAddress_to_IonRXref(PsmPartition ionwm, PsmAddress address)
-{
-	IonRXref *range = NULL;
-
-	if (address != 0)
-	{
-		range = psp(ionwm, address);
-	}
-
-	return range;
-}
-
-/******************************************************************************
- *
- * \par Function Name:
- *      add_contact
- *
- * \brief  Add a contact to the contacts graph of this CGR's implementation.
- *
- *
- * \par Date Written:
- *      19/02/20
- *
- * \return int
- *
- * \retval   1   Contact added
- * \retval   0   Contact's arguments error
- * \retval  -1   The contact overlaps with other contacts
- * \retval  -2   MWITHDRAW error
- * \retval  -3   ION's contact points to NULL
- *
- * \param[in]   *ContactInION     The contact in ION's format
- * \param[in]    reference_time   The reference time used to convert POSIX time in differential time from it.
- *
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-static int add_contact(IonCXref *ContactInION, time_t reference_time)
-{
-	Contact CgrContact;
-	int result;
-	double mtv[3];
-#if (GET_MTV_FROM_SDR)
-	Sdr sdr = getIonsdr();
-	Object contactObj;
-	IonContact contactBuf;
-#endif
-
-	result = convert_contact_from_ion_to_cgr(ContactInION, &CgrContact, reference_time);
-
-	if (result == 0)
-	{
-
-#if (GET_MTV_FROM_SDR)
-		// TODO CONSIDER TO MOVE MTVs INTO CONVERT CONTACT FUNCTION
-		sdr = getIonsdr();
-		contactObj = sdr_list_data(sdr, ContactInION->contactElt);
-		sdr_read(sdr, (char *) &contactBuf, contactObj, sizeof(IonContact));
-		mtv[0] = contactBuf.mtv[0];
-		mtv[1] = contactBuf.mtv[1];
-		mtv[2] = contactBuf.mtv[2];
-
-		// Try to add contact
-		// Use the MTV passed as argument
-		result = addContact(CgrContact.regionNbr, CgrContact.fromNode, CgrContact.toNode, CgrContact.fromTime,
-				CgrContact.toTime, CgrContact.xmitRate, CgrContact.confidence, COPY_MTV, mtv);
-
-		if(result >= 1)
-		{
-			// result == 2 : xmitRate revised, consider it as "new contact"
-			result = 1;
-		}
-#else
-		// Initialize to known value...
-		mtv[0] = 0;
-		mtv[1] = 0;
-		mtv[2] = 0;
-
-		// Try to add contact
-		// Compute MTV as [xmitRate * (toTime - fromTime)]
-		result = addContact(CgrContact.regionNbr, CgrContact.fromNode, CgrContact.toNode, CgrContact.fromTime,
-				CgrContact.toTime, CgrContact.xmitRate, CgrContact.confidence, DO_NOT_COPY_MTV, mtv);
-		if(result >= 1)
-		{
-			// result == 2 : xmitRate revised, consider it as "new contact"
-			result = 1;
-		}
-#endif
-
-	}
-	else
-	{
-		result = -3;
-	}
-
-	return result;
+    return 0;
 }
 
 /**
- *
- *
- * TODO consider to add a revise contact function, to change contact's confidence and xmitRate
- *
- *
+ * \param instance
+ * \param current_time
+ * \param ionwm
+ * \param ionvdb
+ * \return int
+ * \retval  0    success
+ * \retval "< 0" fatal error
  */
+static int update_region_contact_plan(ION_UniboCGR* instance, time_t current_time, PsmPartition ionwm, IonVdb *ionvdb) {
+    UniboCGR_Error error = UniboCGR_contact_plan_open(instance->uniboCgr, current_time);
 
-/******************************************************************************
- *
- * \par Function Name:
- *      add_new_contacts
- *
- * \brief  Add all new contacts of the ION's contacts graph to the
- *         contacts graph of thic CGR's implementation.
- *
- * \details Only for Registration and Scheduled contacts.
- *
- *
- * \par Date Written:
- *      19/02/20
- *
- * \return int
- *
- * \retval  ">= 0"  Number of contacts added to the contacts graph
- * \retval     -2   MWITHDRAW error
- *
- * \param[in]   ionwm          The ION's contacts graph partition
- * \param[in]   *ionvdb        The ION's volatile database
- * \param[in]   reference_time The reference time used to convert POSIX time in differential time from it.
- *
- * \warning ionvdb doesn't have to be NULL.
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-static int add_new_contacts(PsmPartition ionwm, IonVdb *ionvdb, time_t reference_time)
-{
-	int result = 0, totAdded = 0, stop = 0;
-	PsmAddress nodeAddr;
-	IonCXref *currentIonContact = NULL;
+    if (UniboCGR_check_error(error)) {
+        putErrmsg(UniboCGR_get_error_string(error), NULL);
+        return -1;
+    }
 
-	for (nodeAddr = sm_rbt_first(ionwm, ionvdb->contactIndex); nodeAddr != 0 && !stop; nodeAddr =
-			sm_rbt_next(ionwm, nodeAddr))
-	{
-		currentIonContact = convert_PsmAddress_to_IonCXref(ionwm, sm_rbt_data(ionwm, nodeAddr));
+    // destroy previous contact plan -- then reload the whole contact plan from ION VDB
 
-		if (currentIonContact->type == CtRegistration || currentIonContact->type == CtScheduled)
-		{
-			result = add_contact(currentIonContact, reference_time);
+    // note: we can do this only because ION stores MTVs into SDR (and we load MTV from SDR).
+    //       You are allowed to reset the contact plan before each update
+    //       only if you set to true the "copy MTV" flag when you call UniboCGR_contact_plan_add_contact().
+    UniboCGR_contact_plan_reset(instance->uniboCgr);
 
-			if (result == 1)
-			{
-				totAdded++;
-			}
-			else if (result == -2) //MWITHDRAW error
-			{
-				stop = 1;
-			}
-		}
-	}
+    PsmAddress contactNodeAddr;
+    uvast prevFromNode = 0;
+    uvast prevToNode = 0;
+    for (contactNodeAddr = sm_rbt_first(ionwm, ionvdb->contactIndex); contactNodeAddr; contactNodeAddr = sm_rbt_next(ionwm, contactNodeAddr)) {
+        IonCXref* ionContact = convert_PsmAddress_to_IonCXref(ionwm, sm_rbt_data(ionwm, contactNodeAddr));
+        if (convert_contact_from_ion_to_cgr(instance, ionContact, instance->uniboCgrContact) < 0) {
+            // unknown type
+            continue;
+        }
 
-	if (!stop)
-	{
-		result = totAdded;
-	}
+        Sdr sdr = getIonsdr();
+        IonContact contactBuf;
+        Object contactObj = sdr_list_data(sdr, ionContact->contactElt);
+        sdr_read(sdr, (char *) &contactBuf, contactObj, sizeof(IonContact));
+        UniboCGR_Contact_set_mtv_bulk(instance->uniboCgrContact, contactBuf.mtv[0]);
+        UniboCGR_Contact_set_mtv_normal(instance->uniboCgrContact, contactBuf.mtv[1]);
+        UniboCGR_Contact_set_mtv_expedited(instance->uniboCgrContact, contactBuf.mtv[2]);
 
-	return result;
-}
+        UniboCGR_Error uniboCgrContactError;
+        uniboCgrContactError = UniboCGR_contact_plan_add_contact(instance->uniboCgr, instance->uniboCgrContact, true);
+        if (UniboCGR_check_error(uniboCgrContactError)) {
+            if (UniboCGR_check_fatal_error(uniboCgrContactError)) {
+                // some bad error occurred -- need to close contact plan session and return a negative value
+                putErrmsg(UniboCGR_get_error_string(uniboCgrContactError), NULL);
+                UniboCGR_contact_plan_close(instance->uniboCgr);
+                return -1;
+            }
+            // skip this contact
+            continue;
+        }
 
-/******************************************************************************
- *
- * \par Function Name:
- *      remove_deleted_contacts
- *
- * \brief  Remove all the contacts that are not anymore
- *         in the ION's contacts graph from the contacts graph
- *         of this CGR's implementation.
- *
- *
- * \par Date Written:
- *      19/02/20
- *
- * \return int
- *
- * \retval  ">= 0"  Number of contacts deleted from the contacts graph
- *
- * \param[in]  ionwm          The ION's contacts graph partition
- * \param[in]  *ionvdb        The ION's volatile database
- * \param[in]  reference_time The reference time used to convert POSIX time in differential time from it.
- *
- * \warning ionvdb doesn't have to be NULL.
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-static int remove_deleted_contacts(PsmPartition ionwm, IonVdb *ionvdb, time_t reference_time)
-{
-	int result = 0;
-	Contact *CgrContact, *nextCgrContact;
-	RbtNode *node;
-	IonCXref IonContact;
+        // ok contact added
 
-	CgrContact = get_first_contact(&node);
-	while (CgrContact != NULL)
-	{
-		nextCgrContact = get_next_contact(&node);
-		convert_contact_from_cgr_to_ion(CgrContact, &IonContact, reference_time);
+        // check if we already inserted ranges from sender to receiver
+        // we can perform this check since ION contacts are ordered by node number
+        if (prevFromNode == ionContact->fromNode && prevToNode == ionContact->toNode) continue;
 
-		if (sm_rbt_search(ionwm, ionvdb->contactIndex, rfx_order_contacts, &IonContact, 0) == 0)
-		{
-			remove_contact_elt_from_graph(CgrContact);
-			result++;
-		}
-		CgrContact = nextCgrContact;
-	}
+        // new sender/receiver pair -- update "prev" references for next iteration
+        prevFromNode = ionContact->fromNode;
+        prevToNode = ionContact->toNode;
 
-	return result;
-}
-/******************************************************************************
- *
- * \par Function Name:
- *      add_range
- *
- * \brief  Add a range to the ranges graph of this CGR's implementation.
- *
- *
- * \par Date Written:
- *      19/02/20
- *
- * \return int
- *
- * \retval   1   Range added
- * \retval   0   Range's arguments error
- * \retval  -1   The range overlaps with other ranges
- * \retval  -2   MWITHDRAW error
- * \retval  -3   ION's range points to NULL
- *
- * \param[in]  *IonRange      The range in ION's format
- * \param[in]  reference_time The reference time used to convert POSIX time in differential time from it.
- *
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-static int add_range(IonRXref *IonRange, time_t reference_time)
-{
-	Range CgrRange;
-	int result;
+        // now insert all ranges from sender to receiver
 
-	result = convert_range_from_ion_to_cgr(IonRange, &CgrRange, reference_time);
+        PsmAddress rangeNodeAddr;
+        IonRXref IonRangeLocal;
+        memset(&IonRangeLocal, 0, sizeof(IonRXref));
+        IonRangeLocal.fromNode = ionContact->fromNode;
+        IonRangeLocal.toNode = ionContact->toNode;
 
-	if (result == 0)
-	{
-		result = addRange(CgrRange.fromNode, CgrRange.toNode, CgrRange.fromTime, CgrRange.toTime,
-				CgrRange.owlt);
-		if(result >= 1)
-		{
-			// result == 2 : owlt revised, consider it as "new range"
-			result = 1;
-		}
-	}
-	else
-	{
-		result = -3;
-	}
+        oK(sm_rbt_search(ionwm, ionvdb->rangeIndex, rfx_order_ranges, &IonRangeLocal, &rangeNodeAddr));
+        for ( /* empty */ ; rangeNodeAddr; rangeNodeAddr = sm_rbt_next(ionwm, rangeNodeAddr)) {
+            IonRXref *IonRange = convert_PsmAddress_to_IonRXref(ionwm, sm_rbt_data(ionwm, rangeNodeAddr));
 
-	return result;
-}
+            if (IonRange->fromNode != IonRangeLocal.fromNode) break; // processed all ranges between sender and receiver
+            if (IonRange->toNode != IonRangeLocal.toNode)     break; // processed all ranges between sender and receiver
 
-/******************************************************************************
- *
- * \par Function Name:
- *      add_new_rangess
- *
- * \brief  Add all new ranges of the ION's ranges graph to the
- *         ranges graph of thic CGR's implementation.
- *
- *
- * \par Date Written:
- *      19/02/20
- *
- * \return int
- * 
- * \retval  ">= 0"   Number of ranges added to the ranges graph
- * \retval     -2    MWITHDRAW error
- *
- * \param[in]  ionwm          The ION's ranges graph partition
- * \param[in]  *ionvdb        The ION's volatile database
- * \param[in]  reference_time The reference time used to convert POSIX time in differential time from it.
- *
- * \warning ionvdb doesn't have to be NULL.
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-static int add_new_ranges(PsmPartition ionwm, IonVdb *ionvdb, time_t reference_time)
-{
-	int result = 0, totAdded = 0, stop = 0;
-	PsmAddress nodeAddr;
-	IonRXref *currentIonRange = NULL;
-
-	for (nodeAddr = sm_rbt_first(ionwm, ionvdb->rangeIndex); nodeAddr != 0 && !stop; nodeAddr =
-			sm_rbt_next(ionwm, nodeAddr))
-	{
-		currentIonRange = convert_PsmAddress_to_IonRXref(ionwm, sm_rbt_data(ionwm, nodeAddr));
-		result = add_range(currentIonRange, reference_time);
-
-		if (result >= 0)
-		{
-			totAdded++;
-		}
-		else if (result == -2) //MWITHDRAW error
-		{
-			stop = 1;
-		}
-	}
-
-	if (!stop)
-	{
-		result = totAdded;
-	}
-
-	return result;
-}
-
-/******************************************************************************
- *
- * \par Function Name:
- *      remove_deleted_contacts
- *
- * \brief  Remove all the ranges that are not anymore
- *         in the ION's ranges graph from the ranges graph
- *         of this CGR's implementation.
- *
- *
- * \par Date Written:
- *      19/02/20
- *
- * \return int
- *
- * \retval  ">= 0"  Number of ranges deleted from the ranges graph
- *
- * \param[in]   ionwm          The ION's ranges graph partition
- * \param[in]   *ionvdb        The ION's volatile database
- * \param[in]   reference_time The reference time used to convert POSIX time in differential time from it.
- *
- * \warning ionvdb doesn't have to be NULL.
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-static int remove_deleted_ranges(PsmPartition ionwm, IonVdb *ionvdb, time_t reference_time)
-{
-	int result = 0;
-	Range *CgrRange, *nextCgrRange;
-	RbtNode *node;
-	IonRXref IonRange;
-
-	CgrRange = get_first_range(&node);
-	while (CgrRange != NULL)
-	{
-		nextCgrRange = get_next_range(&node);
-		convert_range_from_cgr_to_ion(CgrRange, &IonRange, reference_time);
-
-		if (sm_rbt_search(ionwm, ionvdb->rangeIndex, rfx_order_ranges, &IonRange, 0) == 0)
-		{
-			remove_range_elt_from_graph(CgrRange);
-			result++;
-		}
-		CgrRange = nextCgrRange;
-	}
-
-	return result;
+            convert_range_from_ion_to_cgr(instance, IonRange, instance->uniboCgrRange);
+            UniboCGR_Error uniboCgrRangeError;
+            uniboCgrRangeError = UniboCGR_contact_plan_add_range(instance->uniboCgr, instance->uniboCgrRange);
+            if (UniboCGR_check_error(uniboCgrRangeError)) {
+                if (UniboCGR_check_fatal_error(uniboCgrRangeError)) {
+                    // some bad error occurred -- need to close contact plan session and return a negative value
+                    putErrmsg(UniboCGR_get_error_string(uniboCgrRangeError), NULL);
+                    UniboCGR_contact_plan_close(instance->uniboCgr);
+                    return -1;
+                }
+                // skip this range
+                continue;
+            }
+            // ok range added
+        }
+    }
+    // contact plan update done -- close contact plan session and return success (0)
+    UniboCGR_contact_plan_close(instance->uniboCgr);
+    return 0;
 }
 
 /******************************************************************************
@@ -2332,7 +1650,7 @@ static int remove_deleted_ranges(PsmPartition ionwm, IonVdb *ionvdb, time_t refe
  *
  * \retval   0  Contact plan has been changed and updated
  * \retval  -1  Contact plan isn't changed
- * \retval  -2  MWITHDRAW error
+ * \retval  -2  MTAKE error
  *
  * \param[in]   ionwm           The ION's contact plan partition
  * \param[in]   *ionvdb         The ION's volatile database
@@ -2347,68 +1665,22 @@ static int remove_deleted_ranges(PsmPartition ionwm, IonVdb *ionvdb, time_t refe
  *  -------- | --------------- | -----------------------------------------------
  *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int update_contact_plan(PsmPartition ionwm, IonVdb *ionvdb, time_t reference_time)
-{
-	int result = -1;
-	int result_contacts, result_ranges;
-	ContactPlanSAP cpSap = get_contact_plan_sap(NULL);
+static int update_contact_plan(ION_UniboCGR_SAP* sap, time_t current_time, PsmPartition ionwm, IonVdb *ionvdb) {
+    if (ionvdb->lastEditTime.tv_sec == sap->contact_plan_edit_time.tv_sec
+    && ionvdb->lastEditTime.tv_usec == sap->contact_plan_edit_time.tv_usec) {
+        // nothing to do
+        return 0;
+    }
+    sap->contact_plan_edit_time = ionvdb->lastEditTime;
 
-	if (ionvdb->lastEditTime.tv_sec > cpSap.contactPlanEditTime.tv_sec
-			|| (ionvdb->lastEditTime.tv_sec == cpSap.contactPlanEditTime.tv_sec
-					&& ionvdb->lastEditTime.tv_usec > cpSap.contactPlanEditTime.tv_usec))
-	{
+    if (update_region_contact_plan(sap->home_cgr, current_time, ionwm, ionvdb) < 0) {
+        return -1;
+    }
+    if (update_region_contact_plan(sap->outer_cgr, current_time, ionwm, ionvdb) < 0) {
+        return -1;
+    }
 
-		writeLog("#### Contact plan modified ####");
-
-		// TODO consider to remove all contacts and ranges and then copy the ION's RBTs
-		// TODO maybe it is more efficient
-		// TODO (so discard all routes and nodes here)
-
-		result_contacts = remove_deleted_contacts(ionwm, ionvdb, reference_time);
-		result_ranges = remove_deleted_ranges(ionwm, ionvdb, reference_time);
-#if (LOG == 1)
-		if (result_contacts > 0)
-		{
-			writeLog("Deleted %d contacts.", result_contacts);
-		}
-		if (result_ranges > 0)
-		{
-			writeLog("Deleted %d ranges.", result_ranges);
-		}
-#endif
-		result_contacts = add_new_contacts(ionwm, ionvdb, reference_time);
-		result_ranges = add_new_ranges(ionwm, ionvdb, reference_time);
-#if (LOG == 1)
-		if (result_contacts > 0)
-		{
-			writeLog("Added %d contacts.", result_contacts);
-		}
-		if (result_ranges > 0)
-		{
-			writeLog("Added %d ranges.", result_ranges);
-		}
-#endif
-		if (result_contacts == -2 || result_ranges == -2) //MWITHDRAW error
-		{
-			result = -2;
-		}
-		else
-		{
-			result = 0;
-		}
-
-		cpSap.contactPlanEditTime.tv_sec = ionvdb->lastEditTime.tv_sec;
-		cpSap.contactPlanEditTime.tv_usec = ionvdb->lastEditTime.tv_usec;
-
-		set_time_contact_plan_updated(ionvdb->lastEditTime.tv_sec, ionvdb->lastEditTime.tv_usec);
-
-		writeLog("###############################");
-		printCurrentState();
-
-	}
-
-	return result;
-
+	return 0;
 }
 
 /******************************************************************************
@@ -2426,16 +1698,10 @@ static int update_contact_plan(PsmPartition ionwm, IonVdb *ionvdb, time_t refere
  * \return int
  *
  * \retval   0   Success case: List converted
- * \retval  -2   MWITHDRAW error
+ * \retval  -1   Fatal error
  *
+ * \param[in,out]  *instance       Contains the uniboCgrExcludedNeighborsList -- where the excluded neighbor is appended.
  * \param[in]      excludedNodes   The list of the excluded neighbors
- * \param[in,out]  *sap            The CurrentCallSAP used by the interface. Here it is used
- *                                 to save the excluded neighbors into the sap->excludedNeighbors list.
- *                                 The excluded neighbors list must be previously allocated by the caller.
- *
- * \warning excludedNodes doesn't have to be NULL
- * \warning excludedNeighbors has to be previously initialized
- * \warning sap must be correctly initialized.
  *
  * \par Notes:
  *           1. This function, first, clear the previous excludedNeighbors list
@@ -2446,46 +1712,54 @@ static int update_contact_plan(PsmPartition ionwm, IonVdb *ionvdb, time_t refere
  *  -------- | --------------- | -----------------------------------------------
  *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int exclude_neighbors(Lyst excludedNodes, CurrentCallSAP *sap)
+static int exclude_neighbors(ION_UniboCGR *instance, Lyst excludedNodes)
 {
-	LystElt elt;
-	uaddr node;
-	unsigned long long *nodeToUniboCGR;
-	int result = 0, error = 0;
+    UniboCGR_reset_excluded_neighbors_list(instance->uniboCgrExcludedNeighbors);
 
-	free_list_elts(sap->excludedNeighbors); //clear the previous list
-
-	for (elt = lyst_first(excludedNodes); elt && !error; elt = lyst_next(elt))
+    LystElt elt;
+	for (elt = lyst_first(excludedNodes); elt; elt = lyst_next(elt))
 	{
-		//	node = (NodeId *) lyst_data(elt);
-		node = (uaddr) lyst_data(elt);
+		uvast node = (uaddr) lyst_data(elt);
 		if (node)
 		{
-			nodeToUniboCGR = MWITHDRAW(sizeof(unsigned long long));
-			if (nodeToUniboCGR != NULL)
-			{
-				*nodeToUniboCGR = node;
-				if (list_insert_last(sap->excludedNeighbors, nodeToUniboCGR) == NULL)
-				{
-					error = 1;
-					MDEPOSIT(nodeToUniboCGR);
-				}
-			}
-			else
-			{
-				error = 1;
-			}
+            UniboCGR_Error error = UniboCGR_add_excluded_neighbor(instance->uniboCgrExcludedNeighbors, (uint64_t) node);
+
+            if (UniboCGR_check_error(error)) {
+                return -1;
+            }
 		}
 
 	}
 
-	if(error)
-	{
-		result = -2;
-	}
+	return 0;
+}
 
+static ION_UniboCGR* select_UniboCGR_instance(ION_UniboCGR_SAP* sap, uvast destination) {
+    uint32_t regionNbr = 0;
+    oK(ionRegionOf(getOwnNodeNbr(), destination, &regionNbr));
+    int regionIdx = ionPickRegion(regionNbr);
 
-	return result;
+    if (regionIdx == 0) {
+        return sap->home_cgr;
+    } else if (regionIdx == 1) {
+        return sap->outer_cgr;
+    }
+
+    return NULL;
+}
+
+/**
+ * \brief Updates "home" and "outer" region numbers for Unibo-CGR instances
+ * \retval 0 success
+ */
+static int update_region_number(ION_UniboCGR_SAP* sap) {
+    Sdr		sdr = getIonsdr();
+    Object		iondbObj = getIonDbObject();
+    IonDB		iondb;
+    sdr_read(sdr, (char *) &iondb, iondbObj, sizeof(IonDB));
+    sap->home_cgr->regionNbr = iondb.regions[0].regionNbr;
+    sap->outer_cgr->regionNbr = iondb.regions[1].regionNbr;
+    return 0;
 }
 
 /******************************************************************************
@@ -2502,16 +1776,16 @@ static int exclude_neighbors(Lyst excludedNodes, CurrentCallSAP *sap)
  *
  * \return int
  *
- * \retval  ">= 0"   Number of routes computed by Unibo-CGR to reach destination
- * \retval     -1    System error
+ * \retval   0       Success (the number of routes found coincides with the length of ionBestRoutes list)
+ * \retval  "< 0"    System error
  *
  * \param[in]     *terminusNode     The destination node for the bundle
  * \param[in]     *bundle           The ION's bundle that has to be forwarded
  * \param[in]     excludedNodes     Nodes to which bundle must not be forwarded
  * \param[in]     time              The current time
- * \param[in]     sap               The service access point for this session
+ * \param[in]     isap              The service access point for this session
  * \param[in]     *trace            CGR calculation tracing control
- * \param[out]    IonRoutes         The lyst of best routes found
+ * \param[out]    ionBestRoutes     The lyst of best routes found
  *
  *
  * \par Revision History:
@@ -2520,218 +1794,102 @@ static int exclude_neighbors(Lyst excludedNodes, CurrentCallSAP *sap)
  *  -------- | --------------- | -----------------------------------------------
  *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *  01/08/20 | L. Persampieri  |  Changed return values.
+ *  22/10/22 | L. Persampieri  |  Major refactoring.
  *****************************************************************************/
-int	cgr_identify_best_routes(IonNode *terminusNode, Bundle *bundle, Lyst excludedNodes, time_t time, CgrSAP sap,
-		CgrTrace *trace, Lyst IonRoutes)
+int	cgr_identify_best_routes(IonNode *terminusNode, Bundle *bundle, Lyst excludedNodes, time_t time, CgrSAP isap,
+		CgrTrace *trace, Lyst ionBestRoutes)
 {
+    (void) trace; // unused
 	PsmPartition	ionwm = getIonwm();
 	IonVdb		*ionvdb = getIonVdb();
 	CgrVdb		*cgrvdb = cgr_get_vdb();
-	int		result = -5;
-	List		cgrRoutes = NULL;
-	CurrentCallSAP *currentCallSap;
-	InterfaceUniboCgrSAP *int_ucgr_sap = sap;
-#if (LOG || TIME_ANALYSIS_ENABLED)
-	UniboCgrSAP uniboCgrSAP = get_unibo_cgr_sap(NULL);
-#endif
-#if TIME_ANALYSIS_ENABLED
-	CgrBundleID id;
-#endif
+	ION_UniboCGR_SAP *sap = (ION_UniboCGR_SAP*) isap;
 
-	record_total_interface_start_time();
+    debug_printf("Entry point interface.");
 
-	debug_printf("Entry point interface.");
+    // maybe region number changed since last routing call
+    if (update_region_number(sap) < 0) {
+        // fatal error
+        return -1;
+    }
 
-	if (int_ucgr_sap != NULL && int_ucgr_sap->initialized && bundle != NULL && terminusNode != NULL && ionwm != NULL && ionvdb != NULL && cgrvdb != NULL)
-	{
-		start_call_log(time - int_ucgr_sap->reference_time, uniboCgrSAP.count_bundles);
+    // update contact plan for all Unibo-CGR instances
 
-		currentCallSap = get_current_call_sap(NULL);
-		// INPUT CONVERSION: check if the contact plan has been changed, in affermative case update it
-		result = update_contact_plan(ionwm, ionvdb, int_ucgr_sap->reference_time);
-		if (result != -2)
-		{
-			result = create_ion_node_routing_object(terminusNode, ionwm, cgrvdb);
-			if (result == 0)
-			{
-				// INPUT CONVERSION: learn the bundle's characteristics and store them into the CGR's bundle struct
-				result = convert_bundle_from_ion_to_cgr(terminusNode->nodeNbr, time - int_ucgr_sap->reference_time, int_ucgr_sap->reference_time, bundle, currentCallSap->uniboCgrBundle);
-				if (result == 0)
-				{
-					result = exclude_neighbors(excludedNodes, currentCallSap);
-					if (result >= 0)
-					{
-						currentCallSap->ionBundle = bundle;
-						debug_printf("Go to CGR.");
-						// Call Unibo-CGR
-						result = getBestRoutes(time - int_ucgr_sap->reference_time, currentCallSap->uniboCgrBundle, currentCallSap->excludedNeighbors,
-								&cgrRoutes);
+    if (update_contact_plan(sap, time, ionwm, ionvdb) < 0) {
+        // fatal error
+        return -1;
+    }
 
-						if (result > 0 && cgrRoutes != NULL)
-						{
-							// OUTPUT CONVERSION: convert the best routes into ION's CgrRoute and
-							// put them into ION's Lyst
-							result = convert_routes_from_cgr_to_ion(int_ucgr_sap->reference_time, ionwm, ionvdb, terminusNode,
-									currentCallSap->uniboCgrBundle->evc, cgrRoutes, IonRoutes);
-							// ION's contacts MTVs are decreased by ipnfw
+    // extrapolate a single Unibo-CGR instance (by means of local node & destination common region)
+    ION_UniboCGR* instance = select_UniboCGR_instance(sap, terminusNode->nodeNbr);
+    if (!instance) {
+        // unknown region
+        // is conceptually the same as a routing failure (no routes found to reach destination)
+        debug_printf("Unibo-CGR instance not found for destination " UVAST_FIELDSPEC ".", terminusNode->nodeNbr);
+        return 0;
+    }
 
-							if (result == -1)
-							{
-								result = -8;
-							}
-#if(CGRR && CGRREB)
-							if(result == 0 && CGRR_management(ionwm, IonRoutes, bundle) == -2)
-							{
-								result = -2;
-							}
-#endif
-						}
-					}
-				}
-				else
-				{
-					result = -7;
-				}
+    UniboCGR_routing_open(instance->uniboCgr, time);
 
-#if TIME_ANALYSIS_ENABLED
-				memcpy(&id, &(currentCallSap->uniboCgrBundle->id), sizeof(CgrBundleID));
-#endif
-				reset_bundle(currentCallSap->uniboCgrBundle);
-				currentCallSap->ionBundle = NULL;
-			}
-			else
-			{
-				result = -6;
-			}
-		}
-	}
+    /* delete previous run routes.
+     * ipnfw uses routes in a read-only mode and does not take ownership ((ION)CgrRoute(s) - object - lifetime is in our hands),
+     * so, it is actually safe to deallocate routes here.
+     *
+     * Unibo-CGR developers need to check if this is still true every time
+     * a new ION version is released. */
+    resetIonRoutes(instance, ionwm);
 
-	/* cgr_identify_best_routes() internal error codes:
-	 * -2   MWITHDRAW error
-	 * -3   Phase one arguments error
-	 * -4   CGR arguments error
-	 * -5   callCGR arguments error
-	 * -6   Can't create IonNode's routing object
-	 * -7   Bundle's conversion error
-	 * -8   NULL pointer during conversion to ION's contact
-	 *
-	 * Note: (-1, >= 0) are not errors
-	 */
-	debug_printf("internal result -> %d\n", result);
+    if (create_ion_node_routing_object(terminusNode, ionwm, cgrvdb) < 0) {
+        UniboCGR_log_write(instance->uniboCgr, "Fatal error - cannot create ION Node Routing Object.");
+        UniboCGR_routing_close(instance->uniboCgr);
+        return -1;
+    }
 
-#if (LOG == 1)
-	if (result < -1)
-	{
-		writeLog("Fatal error (cgr_identify_best_routes() internal error code): %d.", result);
-	}
-	end_call_log();
-	// Log interactivity...
-	log_fflush();
+    instance->ionBundle = bundle;
+    if (convert_bundle_from_ion_to_cgr(instance, terminusNode->nodeNbr) < 0) {
+        UniboCGR_log_write(instance->uniboCgr, "Fatal error - cannot perform conversion from ION Bundle to Unibo-CGR Bundle.");
+        UniboCGR_routing_close(instance->uniboCgr);
+        return -1;
+    }
+    if (exclude_neighbors(instance, excludedNodes) < 0) {
+        UniboCGR_log_write(instance->uniboCgr, "Fatal error - cannot initialize excluded neighbors list.");
+        UniboCGR_routing_close(instance->uniboCgr);
+        return -1;
+    }
+
+    // call Unibo-CGR routing algorithm to find best routes
+    UniboCGR_route_list uniboCgrBestRoutes = NULL;
+    UniboCGR_Error error = UniboCGR_routing(instance->uniboCgr,
+                                            instance->uniboCgrBundle,
+                                            instance->uniboCgrExcludedNeighbors,
+                                            &uniboCgrBestRoutes);
+
+    if (UniboCGR_check_error(error)) {
+        UniboCGR_routing_close(instance->uniboCgr);
+        if (UniboCGR_check_fatal_error(error)) {
+            UniboCGR_log_write(instance->uniboCgr, "%s", UniboCGR_get_error_string(error));
+            return -1;
+        }
+        // route not found
+        return 0;
+    }
+    if (convert_routes_from_cgr_to_ion(instance, ionwm, ionvdb, uniboCgrBestRoutes, ionBestRoutes) < 0) {
+        UniboCGR_log_write(instance->uniboCgr, "Fatal error - cannot convert Unibo-CGR routes into ION routes.");
+        UniboCGR_routing_close(instance->uniboCgr);
+        return -1;
+    }
+#if (CGRREB)
+    if(CGRR_management(instance, ionBestRoutes) < 0) {
+        UniboCGR_log_write(instance->uniboCgr, "Fatal error - CGRR_management() failed.");
+        UniboCGR_routing_close(instance->uniboCgr);
+        return -1;
+    }
 #endif
 
-	/****** RESULT HANDLING ******/
+    UniboCGR_routing_close(instance->uniboCgr);
+    UniboCGR_log_flush(instance->uniboCgr);
 
-	if(result == -1)
-	{
-		// Unibo-CGR says that there aren't route to reach destination
-		result = 0;
-	}
-	else if(result >= 0)
-	{
-		// We return to ION the number of routes computed by phase one to reach destination
-		// Note: the routes used to send the bundle are a subset of these computed routes,
-		//       here we get the number of ALL computed routes.
-		result = (int) get_computed_routes_number((unsigned long long) terminusNode->nodeNbr);
-	}
-	else
-	{
-		// Negative result
-		// System error
-		result = -1;
-	}
-
-	debug_printf("result to ION -> %d\n", result);
-
-	record_total_interface_stop_time();
-	print_time_results(time - int_ucgr_sap->reference_time, uniboCgrSAP.count_bundles, &id);
-
-	return result;
-}
-
-/******************************************************************************
- *
- * \par Function Name:
- *      computeApplicableBacklog
- *
- * \brief  Compute the applicable backlog (SABR 3.2.6.2 b) ) and the total backlog for a neighbor.
- *
- *
- * \par Date Written:
- *      19/02/20
- *
- * \return int
- *
- * \retval   0   Applicable and total backlog computed
- * \retval  -1   Arguments error
- * \retval  -2   Plan not found
- *
- * \param[in]   neighbor                   The neighbor for which we want to compute
- *                                         the applicable and total backlog.
- * \param[in]   priority                   The bundle's cardinal priority
- * \param[in]   ordinal                    The bundle's ordinal priority (used with expedited cardinal priority)
- * \param[out]  *CgrApplicableBacklog      The applicable backlog computed
- * \param[out]  *CgrTotalBacklog           The total backlog computed
- *
- * \par Notes:
- *          1. This function talks with the CL queue, that should be done during
- *             phase two to get a more accurate applicable (and total) backlog
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-int computeApplicableBacklog(unsigned long long neighbor, int priority, unsigned int ordinal, CgrScalar *CgrApplicableBacklog,
-		CgrScalar *CgrTotalBacklog)
-{
-	int result = -1;
-	Sdr sdr;
-	char eid[SDRSTRING_BUFSZ];
-	VPlan *vplan;
-	PsmAddress vplanElt;
-	Object planObj;
-	BpPlan plan;
-	Scalar IonApplicableBacklog, IonTotalBacklog;
-	CurrentCallSAP *sap = get_current_call_sap(NULL);
-
-	if (CgrApplicableBacklog != NULL && CgrTotalBacklog != NULL && sap->ionBundle != NULL)
-	{
-		isprintf(eid, sizeof eid, "ipn:" UVAST_FIELDSPEC ".0", neighbor);
-		sdr = getIonsdr();
-		findPlan(eid, &vplan, &vplanElt);
-		if (vplanElt != 0)
-		{
-
-			planObj = sdr_list_data(sdr, vplan->planElt);
-			sdr_read(sdr, (char*) &plan, planObj, sizeof(BpPlan));
-			if (!plan.blocked)
-			{
-				computePriorClaims(&plan, sap->ionBundle, &IonApplicableBacklog, &IonTotalBacklog);
-
-				convert_scalar_from_ion_to_cgr(&IonApplicableBacklog, CgrApplicableBacklog);
-				convert_scalar_from_ion_to_cgr(&IonTotalBacklog, CgrTotalBacklog);
-
-				result = 0;
-			}
-		}
-		else
-		{
-			result = -2;
-		}
-	}
-
-	return result;
+	return 0;
 }
 
 /******************************************************************************
@@ -2756,24 +1914,79 @@ int computeApplicableBacklog(unsigned long long neighbor, int priority, unsigned
  *  -------- | --------------- | -----------------------------------------------
  *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void cgr_stop_SAP(CgrSAP sap)
+void cgr_stop_SAP(CgrSAP isap)
 {
-	InterfaceUniboCgrSAP *ucgr_sap;
+    if (!isap) return;
 
-	if(sap == NULL)
-	{
-		return;
-	}
+    ION_UniboCGR_SAP* sap = (ION_UniboCGR_SAP*) isap;
 
-	ucgr_sap = sap;
+    ION_UniboCGR_destroy(sap->home_cgr);
+    ION_UniboCGR_destroy(sap->outer_cgr);
+    memset(sap, 0, sizeof(ION_UniboCGR_SAP));
+    MRELEASE(sap);
+}
 
-	destroy_cgr((getCtime()) - ucgr_sap->reference_time);
+static int enable_UniboCGR_default_features(UniboCGR uniboCgr, const char* log_directory) {
+    UniboCGR_Error error;
+    // suppress unused warning with (void)
+    (void) error;
+    (void) uniboCgr;
+    (void) log_directory;
 
-	destroy_current_call_sap();
-	memset(ucgr_sap, 0, sizeof(InterfaceUniboCgrSAP));
-	MDEPOSIT(ucgr_sap);
+    UniboCGR_feature_open(uniboCgr, getCtime());
 
-	return;
+#if UNIBO_CGR_FEATURE_LOG
+    error = UniboCGR_feature_logger_enable(uniboCgr, log_directory);
+    if (UniboCGR_check_error(error)) {
+        UniboCGR_feature_close(uniboCgr);
+        putErrmsg("Cannot enable Unibo-CGR logger feature", NULL);
+        return -1;
+    }
+#endif
+#if UNIBO_CGR_FEATURE_ONE_ROUTE_PER_NEIGHBOR
+    uint32_t limitNeighbors = UNIBO_CGR_FEATURE_ONE_ROUTE_PER_NEIGHBOR_LIMIT;
+    error = UniboCGR_feature_OneRoutePerNeighbor_enable(uniboCgr, limitNeighbors);
+    if (UniboCGR_check_error(error)) {
+        UniboCGR_feature_close(uniboCgr);
+        putErrmsg("Cannot enable Unibo-CGR one-route-per-neighbor feature", NULL);
+        return -1;
+    }
+#endif
+#if UNIBO_CGR_FEATURE_QUEUE_DELAY
+    error = UniboCGR_feature_QueueDelay_enable(uniboCgr);
+    if (UniboCGR_check_error(error)) {
+        UniboCGR_feature_close(uniboCgr);
+        putErrmsg("Cannot enable Unibo-CGR queue-delay feature", NULL);
+        return -1;
+    }
+#endif
+#if UNIBO_CGR_FEATURE_REACTIVE_ANTI_LOOP
+    error = UniboCGR_feature_ReactiveAntiLoop_enable(uniboCgr);
+    if (UniboCGR_check_error(error)) {
+        UniboCGR_feature_close(uniboCgr);
+        putErrmsg("Cannot enable Unibo-CGR reactive-anti-loop feature", NULL);
+        return -1;
+    }
+#endif
+#if UNIBO_CGR_FEATURE_PROACTIVE_ANTI_LOOP
+    error = UniboCGR_feature_ProactiveAntiLoop_enable(uniboCgr);
+    if (UniboCGR_check_error(error)) {
+        UniboCGR_feature_close(uniboCgr);
+        putErrmsg("Cannot enable Unibo-CGR proactive-anti-loop feature", NULL);
+        return -1;
+    }
+#endif
+#if UNIBO_CGR_FEATURE_MODERATE_SOURCE_ROUTING
+    error = UniboCGR_feature_ModerateSourceRouting_enable(uniboCgr);
+    if (UniboCGR_check_error(error)) {
+        UniboCGR_feature_close(uniboCgr);
+        putErrmsg("Cannot enable Unibo-CGR moderate-source-routing feature", NULL);
+        return -1;
+    }
+#endif
+
+    UniboCGR_feature_close(uniboCgr);
+    return 0;
 }
 
 /******************************************************************************
@@ -2789,12 +2002,8 @@ void cgr_stop_SAP(CgrSAP sap)
  *
  * \return int
  *
- * \retval   1   Success case: CGR initialized
- * \retval  -1   Error case: ownNode can't be 0
- * \retval  -2   MWITHDRAW error
- * \retval  -3   Error case: log directory can't be opened
- * \retval  -4   Error case: log file can't be opened
- * \retval  -5   Arguments error
+ * \retval   0   Success case: CGR initialized
+ * \retval  -1   Some error occurred during initialization
  *
  * \param[in]		ownNode	The node from which CGR will compute all routes
  * \param[in]		time	The reference time (time 0 for the CGR session)
@@ -2807,75 +2016,90 @@ void cgr_stop_SAP(CgrSAP sap)
  *  -------- | --------------- | -----------------------------------------------
  *  19/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-int	cgr_start_SAP(uvast ownNode, time_t time, CgrSAP *sap)
+int	cgr_start_SAP(const uvast ownNode, const time_t time, CgrSAP *isap)
 {
+    (void) time;
 	Sdr		sdr = getIonsdr();
-	int		result = 1;
 	PsmPartition	ionwm;
 	IonVdb		*ionvdb;
-	InterfaceUniboCgrSAP * ucgr_sap;
 
-	if (ownNode == 0 || sap == NULL || sdr == NULL)
+	if (isap == NULL || sdr == NULL)
 	{
 		putErrmsg("Cannot initialize Unibo-CGR.", NULL);
-		return -5;
+		return -1;
 	}
 
-	*sap = MWITHDRAW(sizeof(InterfaceUniboCgrSAP));
+    ionwm = getIonwm();
+    ionvdb = getIonVdb();
+    CHKERR(sdr_begin_xn(sdr));
 
-	if(*sap == NULL)
-	{
-		putErrmsg("Cannot initialize Unibo-CGR.", NULL);
-		return -2;
-	}
 
-	ucgr_sap = *sap;
+    ION_UniboCGR_SAP* sap = MTAKE(sizeof(ION_UniboCGR_SAP));
+    if (!sap) {
+        *isap = NULL;
+        sdr_exit_xn(sdr);
+        return -1;
+    }
+    *isap = sap;
 
-	ionwm = getIonwm();
-	ionvdb = getIonVdb();
-	CHKERR(sdr_begin_xn(sdr));
+    // initialize Unibo-CGR library
+    UniboCGR_setup_memory_allocator(allocFromIonMemory, releaseToIonMemory);
 
-	result = initialize_cgr(0, ownNode);
+#if UNIBO_CGR_RELATIVE_TIME
+    const time_t reference_time =  time;
+#else
+    const time_t reference_time = 0;
+#endif
+    const time_t current_time = getCtime();
 
-	if (result == 1) {
-		writeLog("Reference time (Unix time): %ld s.", (long int) time);
+    sap->home_cgr = ION_UniboCGR_create(ownNode, reference_time, current_time, ionwm);
+    if (!sap->home_cgr) {
+        putErrmsg("Cannot start Unibo-CGR for home region", NULL);
+        cgr_stop_SAP(*isap);
+        *isap = NULL;
+        sdr_exit_xn(sdr);
+        return -1;
+    }
+    sap->outer_cgr = ION_UniboCGR_create(ownNode, reference_time, current_time, ionwm);
+    if (!sap->outer_cgr) {
+        putErrmsg("Cannot start Unibo-CGR for outer region", NULL);
+        cgr_stop_SAP(*isap);
+        *isap = NULL;
+        sdr_exit_xn(sdr);
+        return -1;
+    }
+    if (update_region_number(sap) < 0) {
+        cgr_stop_SAP(*isap);
+        *isap = NULL;
+        sdr_exit_xn(sdr);
+        return -1;
+    }
 
-		if(initialize_cgr_sap(time, ucgr_sap) != 1) {
-			result = -2;
-		}
-		else if(initialize_current_call_sap() != 1) {
-			result = -2;
-		}
-		else if (update_contact_plan(ionwm, ionvdb, ucgr_sap->reference_time) == -2) {
-			writeLog("Cannot update contact plan");
-			//printf("Cannot update contact plan in Unibo-CGR");
-			result = -2;
-		}
-		else {
-			result = 1;
-		}
-	}
+    if (enable_UniboCGR_default_features(sap->home_cgr->uniboCgr, "cgr_log_home") < 0) {
+        putErrmsg("Cannot enable Unibo-CGR features for home region", NULL);
+        cgr_stop_SAP(*isap);
+        *isap = NULL;
+        sdr_exit_xn(sdr);
+        return -1;
+    }
+    if (enable_UniboCGR_default_features(sap->outer_cgr->uniboCgr, "cgr_log_outer") < 0) {
+        putErrmsg("Cannot enable Unibo-CGR features for outer region", NULL);
+        cgr_stop_SAP(*isap);
+        *isap = NULL;
+        sdr_exit_xn(sdr);
+        return -1;
+    }
 
-	if(result != 1) {
-		// init error
-		putErrmsg("Can't initialize Unibo-CGR.", NULL);
-		MDEPOSIT(*sap);
-		*sap = NULL;
-	}
+    if (update_contact_plan(sap, current_time, ionwm, ionvdb) < 0) {
+        putErrmsg("Cannot load Unibo-CGR contact plan", NULL);
+        cgr_stop_SAP(*isap);
+        sdr_exit_xn(sdr);
+        return -1;
+    }
 
 	sdr_exit_xn(sdr);
-	return result;
+    // success
+	return 0;
 }
 
-#else
-#include <stdlib.h>
-#include "../../core/cgr/cgr_phases.h"
-#include "../../core/library_from_ion/scalar/scalar.h"
-
-int computeApplicableBacklog(unsigned long long neighbor, int priority, unsigned int ordinal, CgrScalar *CgrApplicableBacklog,
-		CgrScalar *CgrTotalBacklog) {
-	loadCgrScalar(CgrApplicableBacklog, 0);
-	loadCgrScalar(CgrTotalBacklog, 0);
-	return 0;		
-}
 #endif

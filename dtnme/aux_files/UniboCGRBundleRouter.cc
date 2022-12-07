@@ -80,16 +80,17 @@ UniboCGRBundleRouter::UniboCGRBundleRouter(const char* classname,
     BundleDaemon::instance()->set_rtr_shutdown(
             unibo_cgr_router_shutdown, (void *) 0);
     //Giacomo:: getting necessary info & call initialize
+    planManager = ContactPlanManager::instance();
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    EndpointID local_eid_ipn = BundleDaemon::instance()->local_eid_ipn();//copy the local EID ipn
+    EndpointID local_eid_ipn = BundleDaemon::instance()->local_eid_ipn();
     std::string ipnName = local_eid_ipn.str();
     std::string delimiter1 = ":";
     std::string delimiter2 = ".";
     std::string s = ipnName.substr(ipnName.find(delimiter1) + 1, ipnName.find(delimiter2) - 1);
     std::stringstream convert;
-    long ownNode; //uint_64
-    convert << s;//this line and the next convert a string into a number
+    long ownNode;
+    convert << s;
     convert >> ownNode;
     initialize_contact_graph_routing(ownNode, tv.tv_sec, this);
 
@@ -106,6 +107,7 @@ UniboCGRBundleRouter::UniboCGRBundleRouter()
     BundleDaemon::instance()->set_rtr_shutdown(
     		unibo_cgr_router_shutdown, (void *) 0);
    //Giacomo:: getting necessary info & call initialize
+    planManager = ContactPlanManager::instance();
    struct timeval tv;
    gettimeofday(&tv, NULL);
    EndpointID eid = BundleDaemon::instance()->local_eid_ipn();
@@ -828,7 +830,7 @@ UniboCGRBundleRouter::route_bundle(Bundle* bundle, bool skip_check_next_hop)
     	res = bundle->dest().str();
     	if(result_cgr==-8)
     	{
-    		writeLog("Warning: bundle is using DTN name instead of IPN!");
+    		//writeLog("Warning: bundle is using DTN name instead of IPN!");
     	}
     }
     std::vector<std::string> result;
@@ -925,7 +927,7 @@ UniboCGRBundleRouter::check_next_hop(const LinkRef& next_hop)
 
 	//Flag signalling whether the ContactPlanManager is used or not
 	//The remote eid must have an ipn name
-	planManager = get_CPManager();
+
 	bool CPM_on = planManager->is_ipn(remote_eid_);
 
 	if(CPM_on) {

@@ -36,6 +36,12 @@
 #include "../library/list/list_type.h"
 #include "../library/commonDefines.h"
 #include "../routes/routes.h"
+#include "../contact_plan/contacts/contacts.h"
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
 typedef enum
 {
@@ -44,15 +50,23 @@ typedef enum
 
 typedef struct
 {
-	unsigned long long source_node;
-	unsigned long long creation_timestamp;
-	unsigned int sequence_number;
-	unsigned int fragment_length;
-	unsigned int fragment_offset;
+	char source_node[256];
+	uint64_t creation_timestamp;
+	uint64_t sequence_number;
+    uint64_t fragment_length;
+    uint64_t fragment_offset;
 } CgrBundleID;
 
 typedef struct
 {
+    /**
+     * \brief Bundle Protocol Version (6,7).
+     */
+    uint64_t bp_version;
+    /**
+     * \brief Bundle's lifetime as declared in Primary Block.
+     */
+    uint64_t lifetime;
 	/**
 	 * \brief Bundle's ID
 	 */
@@ -62,15 +76,11 @@ typedef struct
 	 *
 	 * \details Previous hop.
 	 */
-	unsigned long long sender_node;
-	/**
-	 * \brief Region in which the destination resides.
-	 */
-	unsigned long regionNbr;
+	uint64_t sender_node;
 	/**
 	 * \brief Ipn node number of the destination node for the bundle.
 	 */
-	unsigned long long terminus_node;
+	uint64_t terminus_node;
 	/**
 	 * \brief Bulk, Normal or Expedited.
 	 */
@@ -88,14 +98,15 @@ typedef struct
 	 * \brief From 0 to 255, only for Expedited priority_level.
 	 */
 	unsigned int ordinal;
-	/**
-	 * \brief Sum of payload + header.
-	 */
-	long unsigned int size;
+
+	uint64_t primary_block_length;
+    uint64_t extension_blocks_length;
+    uint64_t payload_block_length;
+    uint64_t total_adu_length;
 	/**
 	 *  \brief Estimated volume consumption SABR 2.4.3.
 	 */
-	long unsigned int evc;
+	uint64_t evc;
 	/**
 	 * \brief The time when the bundle's lifetime expires (deadline).
 	 */
@@ -117,12 +128,8 @@ typedef struct
 	 * \brief The MSR route get from CGRR extension block.
 	 */
 	Route *msrRoute;
+    Contact *last_msr_route_contact;
 } CgrBundle;
-
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 
 #define CRITICAL               (1) /* (00000001) */
 #define PROBE                  (2) /* (00000010) */
@@ -146,35 +153,26 @@ extern "C"
 #define IS_FRAGMENTABLE(bundle) (((bundle)->flags) & FRAGMENTABLE)
 #define RETURN_TO_SENDER(bundle) (((bundle)->flags) & BACKWARD_PROPAGATION)
 
-extern int add_ipn_node_to_list(List nodes, unsigned long long ipnNode);
-extern int search_ipn_node(List nodes, unsigned long long target);
-extern int set_failed_neighbors_list(CgrBundle *bundle, unsigned long long ownNode);
+extern int add_ipn_node_to_list(List nodes, uint64_t ipnNode);
+extern int search_ipn_node(List nodes, uint64_t target);
+extern int set_failed_neighbors_list(CgrBundle *bundle, uint64_t ownNode);
 extern int set_geo_route_list(char *geoRouteString, CgrBundle *bundle);
 extern int check_bundle(CgrBundle *bundle);
-extern long unsigned int computeBundleEVC(long unsigned int size);
+extern uint64_t computeBundleEVC(uint64_t size);
 extern void bundle_destroy(CgrBundle *bundle);
 extern CgrBundle* bundle_create();
 extern void reset_bundle(CgrBundle *bundle);
 extern int initialize_bundle(int backward_propagation, int critical, float dlvConfidence,
-		time_t expiration_time, Priority priority, unsigned int ordinal, int probe, int fragmentable, long unsigned int size,
-		unsigned long long sender_node, unsigned long long terminus_node, CgrBundle *bundle);
+		time_t expiration_time, Priority priority, unsigned int ordinal, int probe, int fragmentable, uint64_t size,
+		uint64_t sender_node, uint64_t terminus_node, CgrBundle *bundle);
 
-#if (LOG == 1)
 /**
  * \brief Print the bundle's ID in the main log file.
  *
- * \hideinitializer
  */
-#define print_log_bundle_id(source, timestamp, seq_number, fragm_length, fragm_offset) \
-	writeLog("Bundle ID { source: %llu, creation timestamp (msec): %llu, sequence number: %u, fragm. length: %u, fragm. offset: %u }.", \
-(source), (timestamp), (seq_number), (fragm_length), (fragm_offset))
+extern void print_log_bundle_id(UniboCGRSAP* uniboCgrSap, CgrBundle* bundle);
 
-extern void print_bundle(FILE *file_call, CgrBundle *bundle, List excludedNodes,
-		time_t currentTime);
-#else
-#define print_log_bundle_id(source, timestamp, seq_number, fragm_length, fragm_offset) do {  } while(0)
-#define print_bundle(file_call,bundle,excludedNodes, current_time) do { } while(0)
-#endif
+extern void print_bundle(UniboCGRSAP* uniboCgrSap, FILE *file_call, CgrBundle *bundle, List excludedNodes, time_t currentTime);
 
 #ifdef __cplusplus
 }

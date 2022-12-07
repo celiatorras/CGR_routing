@@ -39,6 +39,7 @@
 #include <sys/types.h>
 #include <stdarg.h>
 
+#include "../../UniboCGRSAP.h"
 #include "../list/list_type.h"
 #include "../commonDefines.h"
 
@@ -47,36 +48,59 @@ extern "C"
 {
 #endif
 
-#if (LOG == 1)
-extern int cleanLogDir();
-extern FILE* openBundleFile(unsigned int num);
-extern void closeBundleFile(FILE **file_call);
-extern int openLogFile();
-extern void closeLogFile();
-extern int createLogDir();
-extern void writeLog(const char *format, ...);
-extern void writeLogFlush(const char *format, ...);
-extern void setLogTime(time_t time);
-extern void printCurrentState();
+extern bool LogSAP_is_enabled(UniboCGRSAP *uniboCgrSap);
+
+#define writeLog(uniboCgrSap, f_, ...) \
+do {                                   \
+    if (LogSAP_is_enabled(uniboCgrSap)) {  \
+        LogSAP_writeLog((uniboCgrSap), (f_), ##__VA_ARGS__); \
+    }                                 \
+} while(0)
+
+#define vwriteLog(uniboCgrSap, f_, args) \
+do {                                   \
+    if (LogSAP_is_enabled(uniboCgrSap)) {  \
+        LogSAP_vwriteLog((uniboCgrSap), (f_), (args)); \
+    }                                 \
+} while(0)
+
+#define writeLogFlush(uniboCgrSap, f_, ...) \
+do {                                   \
+    if (LogSAP_is_enabled(uniboCgrSap)) {  \
+        LogSAP_writeLogFlush((uniboCgrSap), (f_), ##__VA_ARGS__); \
+    }                                 \
+} while(0)
+
+#define vwriteLogFlush(uniboCgrSap, f_, args) \
+do {                                   \
+    if (LogSAP_is_enabled(uniboCgrSap)) {  \
+        LogSAP_vwriteLogFlush((uniboCgrSap), (f_), (args)); \
+    }                                 \
+} while(0)
+
+#define log_fflush(uniboCgrSap) \
+do {                                   \
+    if (LogSAP_is_enabled(uniboCgrSap)) { \
+        LogSAP_log_fflush(uniboCgrSap); \
+    }  \
+} while(0)
+
+extern int LogSAP_open(UniboCGRSAP *uniboCgrSap);
+extern void LogSAP_close(UniboCGRSAP *uniboCgrSap);
+extern int LogSAP_enable(UniboCGRSAP *uniboCgrSap, const char* dir_path);
+extern void LogSAP_disable(UniboCGRSAP *uniboCgrSap);
+
+extern FILE* openBundleFile(UniboCGRSAP *uniboCgrSap);
+extern void closeBundleFile(FILE** file_call);
+extern void LogSAP_writeLog(UniboCGRSAP *uniboCgrSap, const char *format, ...);
+extern void LogSAP_vwriteLog(UniboCGRSAP* uniboCgrSap, const char* format, va_list args);
+extern void LogSAP_writeLogFlush(UniboCGRSAP *uniboCgrSap, const char *format, ...);
+extern void LogSAP_vwriteLogFlush(UniboCGRSAP* uniboCgrSap, const char *format, va_list args);
+extern void LogSAP_setLogTime(UniboCGRSAP *uniboCgrSap, time_t time);
+extern void LogSAP_log_contact_plan(UniboCGRSAP *uniboCgrSap);
 extern int print_string(FILE *file, char *string);
 extern int print_ull_list(FILE *file, List list, char *brief, char *separator);
-extern void log_fflush();
-
-#else
-
-//empty defines for some functions
-
-#define closeBundleFile(file_call) do { } while(0)
-#define closeLogFile() do { } while(0)
-#define writeLog(f_, ...) do { } while(0)
-#define writeLogFlush(f_, ...) do {  } while(0)
-#define setLogTime(time) do { } while(0)
-#define printCurrentState() do { } while(0)
-#define print_string(file, string) do { } while(0)
-#define print_ull_list(file,list,brief,separator) do { } while(0)
-#define log_fflush() do {  } while(0)
-
-#endif
+extern void LogSAP_log_fflush(UniboCGRSAP *uniboCgrSap);
 
 #if (DEBUG_CGR == 1 && LOG == 1)
 /**
@@ -84,16 +108,16 @@ extern void log_fflush();
  *
  * \hideinitializer
  */
-#define debugLog(f_, ...) writeLog((f_), ##__VA_ARGS__)
+#define debugLog(uniboCgrSap, f_, ...) writeLog((uniboCgrSap), (f_), ##__VA_ARGS__)
 /**
  * \brief Print a log in the main log file and flush the stream, compiled only with DEBUG_CGR and LOG enabled.
  *
  * \hideinitializer
  */
-#define debugLogFlush(f_, ...) writeLogFlush((f_), ##__VA_ARGS__)
+#define debugLogFlush(uniboCgrSap, f_, ...) writeLogFlush((uniboCgrSap), (f_), ##__VA_ARGS__)
 #else
-#define debugLog(f_, ...) do {  } while(0)
-#define debugLogFlush(f_, ...) do {  } while(0)
+#define debugLog(uniboCgrSap, f_, ...) do {  } while(0)
+#define debugLogFlush(uniboCgrSap, f_, ...) do {  } while(0)
 #endif
 
 #ifdef __cplusplus

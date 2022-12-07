@@ -1,10 +1,10 @@
 routing/UniboCGRBundleRouter.cc
+routing/Unibo-CGR/core/UniboCGR.c
 routing/Unibo-CGR/core/bundles/bundles.c
 routing/Unibo-CGR/core/cgr/cgr.c
 routing/Unibo-CGR/core/cgr/phase_one.c
 routing/Unibo-CGR/core/cgr/phase_two.c
 routing/Unibo-CGR/core/cgr/phase_three.c
-routing/Unibo-CGR/core/contact_plan/contactPlan.c
 routing/Unibo-CGR/core/contact_plan/ranges/ranges.c
 routing/Unibo-CGR/core/contact_plan/nodes/nodes.c
 routing/Unibo-CGR/core/contact_plan/contacts/contacts.c

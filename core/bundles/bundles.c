@@ -37,6 +37,7 @@
 #include "../cgr/cgr_phases.h"
 #include "../library/list/list.h"
 #include "../msr/msr_utils.h"
+#include "../library/log/log.h"
 
 /******************************************************************************
  *
@@ -67,10 +68,10 @@
  *  -------- | --------------- | -----------------------------------------------
  *  16/03/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-int add_ipn_node_to_list(List nodes, unsigned long long ipnNode)
+int add_ipn_node_to_list(List nodes, uint64_t ipnNode)
 {
 	int result = 0;
-	unsigned long long *new_element;
+	uint64_t *new_element;
 
 	if (nodes == NULL)
 	{
@@ -78,7 +79,7 @@ int add_ipn_node_to_list(List nodes, unsigned long long ipnNode)
 	}
 	else
 	{
-		new_element = (unsigned long long*) MWITHDRAW(sizeof(unsigned long long));
+		new_element = (uint64_t*) MWITHDRAW(sizeof(uint64_t));
 
 		if (new_element != NULL)
 		{
@@ -118,7 +119,7 @@ int add_ipn_node_to_list(List nodes, unsigned long long ipnNode)
  * \param[in]       nodes       The nodes list
  * \param[in]       target      The ipn node that we want to search in the nodes list
  *
- * \warning The nodes list must be a list of unsigned long long element
+ * \warning The nodes list must be a list of uint64_t element
  *
  * \par Notes:
  *           1. Function used to manage the CgrBundle's geoRoute and failedNeighbors lists
@@ -130,11 +131,11 @@ int add_ipn_node_to_list(List nodes, unsigned long long ipnNode)
  *  -------- | --------------- | -----------------------------------------------
  *  16/03/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-int search_ipn_node(List nodes, unsigned long long target)
+int search_ipn_node(List nodes, uint64_t target)
 {
 	ListElt *elt;
 	int result = -2;
-	unsigned long long *current;
+	uint64_t *current;
 
 	if (nodes != NULL)
 	{
@@ -143,7 +144,7 @@ int search_ipn_node(List nodes, unsigned long long target)
 		{
 			if (elt->data != NULL)
 			{
-				current = (unsigned long long*) elt->data;
+				current = (uint64_t*) elt->data;
 
 				if (*current == target)
 				{
@@ -195,11 +196,11 @@ int search_ipn_node(List nodes, unsigned long long target)
  *  -------- | --------------- | -----------------------------------------------
  *  29/03/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-int set_failed_neighbors_list(CgrBundle *bundle, unsigned long long ownNode)
+int set_failed_neighbors_list(CgrBundle *bundle, uint64_t ownNode)
 {
 	ListElt *elt;
 	int result = -1, stop, checkNext;
-	unsigned long long *current;
+	uint64_t *current;
 
 	if (bundle != NULL && bundle->failedNeighbors != NULL && bundle->geoRoute != NULL
 			&& ownNode != 0)
@@ -212,7 +213,7 @@ int set_failed_neighbors_list(CgrBundle *bundle, unsigned long long ownNode)
 		{
 			if (elt->data != NULL)
 			{
-				current = (unsigned long long*) elt->data;
+				current = (uint64_t*) elt->data;
 
 				if (checkNext == 1)
 				{
@@ -278,7 +279,7 @@ int set_geo_route_list(char *geoRouteString, CgrBundle *bundle)
 {
 	int result = -1, end = 0;
 	char *temp = NULL;
-	unsigned long long ipn_node, *new_elt, prev = 0;
+	uint64_t ipn_node, *new_elt, prev = 0;
 
 	if (bundle != NULL && bundle->geoRoute != NULL)
 	{
@@ -298,7 +299,7 @@ int set_geo_route_list(char *geoRouteString, CgrBundle *bundle)
 					ipn_node = strtoull(geoRouteString, &temp, 0);
 					if (temp != geoRouteString && ipn_node != prev)
 					{
-						new_elt = MWITHDRAW(sizeof(unsigned long long));
+						new_elt = MWITHDRAW(sizeof(uint64_t));
 						if (new_elt != NULL)
 						{
 							*new_elt = ipn_node;
@@ -349,6 +350,7 @@ int set_geo_route_list(char *geoRouteString, CgrBundle *bundle)
  * \retval    -1   Bundle: NULL
  * \retval    -2   Bundle's fields are not valid
  * \retval    -3   Bundle's failedNeighbors/geoRoute: NULL
+ * \retval    -4   Unknown BP version
  *
  * \param[in]       *bundle   The CgrBundle for which we want to check the validity of the fields
  *
@@ -374,18 +376,17 @@ int check_bundle(CgrBundle *bundle)
 	{
 		result = -2;
 	}
-#if (CGR_AVOID_LOOP > 0)
 	else if (bundle->geoRoute == NULL)
 	{
 		result = -3;
 	}
-#endif
-#if (CGR_AVOID_LOOP == 1 || CGR_AVOID_LOOP == 3)
 	else if (bundle->failedNeighbors == NULL)
 	{
 		result = -3;
 	}
-#endif
+    else if (bundle->bp_version != 6 && bundle->bp_version != 7) {
+        result = -4;
+    }
 
 	return result;
 
@@ -402,7 +403,7 @@ int check_bundle(CgrBundle *bundle)
  * \par Date Written:
  * 		06/02/20
  *
- * \return long unsigned int
+ * \return uint64_t
  *
  * \retval ">= 0"    The estimated volume consumption
  *
@@ -419,11 +420,11 @@ int check_bundle(CgrBundle *bundle)
  *  -------- | --------------- | -----------------------------------------------
  *  06/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-long unsigned int computeBundleEVC(long unsigned int size)
+uint64_t computeBundleEVC(uint64_t size)
 {
-	long unsigned int evc, estimated_convergence_layer_overhead;
+	uint64_t evc, estimated_convergence_layer_overhead;
 
-	estimated_convergence_layer_overhead = (long unsigned int) (((double) size * PERC_CONVERGENCE_LAYER_OVERHEAD) / 100);
+	estimated_convergence_layer_overhead = (uint64_t) (((double) size * PERC_CONVERGENCE_LAYER_OVERHEAD) / 100);
 
 	if (estimated_convergence_layer_overhead < MIN_CONVERGENCE_LAYER_OVERHEAD)
 	{
@@ -466,8 +467,6 @@ void bundle_destroy(CgrBundle *bundle)
 		memset(bundle, 0, sizeof(CgrBundle));
 		MDEPOSIT(bundle);
 	}
-
-	return;
 }
 
 /******************************************************************************
@@ -502,11 +501,13 @@ CgrBundle* bundle_create()
 		memset(bundle,0,sizeof(CgrBundle)); //initialize to known value
 		bundle->geoRoute = list_create(bundle, NULL, NULL, MDEPOSIT_wrapper);
 		bundle->failedNeighbors = list_create(bundle, NULL, NULL, MDEPOSIT_wrapper);
+        bundle->msrRoute = create_msr_route();
 
-		if (bundle->failedNeighbors == NULL || bundle->geoRoute == NULL)
+		if (bundle->failedNeighbors == NULL || bundle->geoRoute == NULL || bundle->msrRoute == NULL)
 		{
 			MDEPOSIT(bundle->geoRoute);
 			MDEPOSIT(bundle->failedNeighbors);
+            delete_msr_route(bundle->msrRoute);
 			MDEPOSIT(bundle);
 			bundle = NULL;
 		}
@@ -538,103 +539,19 @@ CgrBundle* bundle_create()
  *****************************************************************************/
 void reset_bundle(CgrBundle *bundle)
 {
-	bundle->dlvConfidence = 0.0F;
-	bundle->evc = 0;
-	bundle->expiration_time = 0;
-	bundle->ordinal = 0;
-	bundle->priority_level = Bulk;
-	bundle->sender_node = 0;
-	bundle->size = 0;
-	bundle->terminus_node = 0;
-	bundle->regionNbr = 0;
-	CLEAR_FLAGS(bundle->flags);
-	memset(&(bundle->id), 0, sizeof(CgrBundleID));
-	free_list_elts(bundle->geoRoute);
-	free_list_elts(bundle->failedNeighbors);
-	delete_msr_route(bundle->msrRoute);
-	bundle->msrRoute = NULL;
+    List geo_route = bundle->geoRoute;
+    free_list_elts(geo_route);
+    List failed_neighbors = bundle->failedNeighbors;
+    free_list_elts(failed_neighbors);
+    reset_msr_route(bundle->msrRoute);
+    Route* msr_route = bundle->msrRoute;
+    memset(bundle, 0, sizeof(CgrBundle));
+    bundle->geoRoute = geo_route;
+    bundle->failedNeighbors = failed_neighbors;
+    bundle->msrRoute = msr_route;
+    bundle->priority_level = Bulk;
 }
 
-/******************************************************************************
- *
- * \par Function Name:
- *      initialize_bundle
- *
- * \brief Initialize the bundle's fields and check the validity
- *
- *
- * \par Date Written:
- *      31/03/20
- *
- * \return int
- *
- * \retval     0   Success case: all fields OK
- * \retval    -1   Bundle: NULL
- * \retval    -2   Bundle's fields are not valid
- * \retval    -3   Bundle's failedNeighbors/geoRoute: NULL
- *
- * \param[in,out]  *bundle                The bundle for which we want to set all the fields
- * \param[in]      backward_propagation   boolean: 0 if the sender_node has to be into the excludedNeighbors list, 1 otherwise.
- * \param[in]      critical               boolean: 1 the bundle is critical -> it will be send to all "viable" neighbors,
- *                                        0 otherwise -> it will be send to only one neighbor (best route).
- * \param[in]      dlvConfidence          The previous delivery confidence of the bundle (from 0.0 to 1.0)
- * \param[in]      expiration_time        The deadline
- * \param[in]      priority               The priority of the bundle: Bulk, Normal or Expedited
- * \param[in]      ordinal                Only for expedited priority, from 0 to 255
- * \param[in]      probe                  boolean: 0 if it's a probe bundle, 1 otherwise
- * \param[in]      fragmentable           boolean: 1 if this bundle is fragmentable, 0 otherwise
- * \param[in]      size                   The sum of payload + header
- * \param[in]      sender_node            The node that directly sent to us this bundle
- * \param[in]      terminus_node          The node to which this bundle has to be forwarded
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  31/03/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-int initialize_bundle(int backward_propagation, int critical, float dlvConfidence,
-		time_t expiration_time, Priority priority, unsigned int ordinal, int probe, int fragmentable, long unsigned int size,
-		unsigned long long sender_node, unsigned long long terminus_node, CgrBundle *bundle)
-{
-	int result = -1;
-
-	if (bundle != NULL)
-	{
-		CLEAR_FLAGS(bundle->flags);
-		if(backward_propagation != 0)
-		{
-			SET_BACKWARD_PROPAGATION(bundle);
-		}
-		if(critical != 0)
-		{
-			SET_CRITICAL(bundle);
-		}
-		if(probe != 0)
-		{
-			SET_PROBE(bundle);
-		}
-		if(fragmentable != 0)
-		{
-			SET_FRAGMENTABLE(bundle);
-		}
-
-		bundle->dlvConfidence = dlvConfidence;
-		bundle->expiration_time = expiration_time;
-		bundle->priority_level = priority;
-		bundle->ordinal = ordinal;
-		bundle->size = size;
-		bundle->evc = computeBundleEVC(size);
-		bundle->sender_node = sender_node;
-		bundle->terminus_node = terminus_node;
-
-		result = check_bundle(bundle);
-	}
-
-	return result;
-}
-
-#if (LOG == 1)
 /******************************************************************************
  *
  * \par Function Name:
@@ -660,7 +577,7 @@ int initialize_bundle(int backward_propagation, int critical, float dlvConfidenc
  *  -------- | --------------- | -----------------------------------------------
  *  15/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void print_bundle(FILE *file_call, CgrBundle *bundle, List excludedNodes, time_t currentTime)
+void print_bundle(UniboCGRSAP* uniboCgrSap, FILE *file_call, CgrBundle *bundle, List excludedNodes, time_t currentTime)
 {
 	char *priority;
 
@@ -681,24 +598,24 @@ void print_bundle(FILE *file_call, CgrBundle *bundle, List excludedNodes, time_t
 		fprintf(file_call,
 				"\ncurrent time: %ld\n\n------------------------------------------- BUNDLE -------------------------------------------\n",
 				(long int) currentTime);
-		fprintf(file_call, "\n%-15s %-15s %-15s %-15s %-15s %s\n%-15llu %-15llu %-15lu %-15ld %-15lu %.2f\n",
-				"Destination", "SenderNode", "Size", "Deadline", "Bundle EVC", "DlvConfidence",
-				bundle->terminus_node, bundle->sender_node, bundle->size, bundle->expiration_time,
+		fprintf(file_call, "\n%-15s %-15s %-15s %-15s %-15s %s\n%-15" PRIu64 " %-15" PRIu64 " %-15" PRIu64 " %-15ld %-15" PRIu64 " %.2f\n",
+				"Destination", "SenderNode", "Payload", "Deadline", "Bundle EVC", "DlvConfidence",
+				bundle->terminus_node, bundle->sender_node, bundle->payload_block_length, (long int) bundle->expiration_time,
 				bundle->evc, bundle->dlvConfidence);
 		fprintf(file_call, "%-15s %-15s %-15s %-15s %-15s %s\n%-15s %-15u %-15s %-15s %-15s %s\n",
-				"PriorityLevel", "Ordinal", "Critical", "ReturnToSender", "Probe", "Fragmentable",
+				"PriorityLevel", "Ordinal", "Critical", "ReturnToSender", "Probe", "DoNotFragment",
 				priority, bundle->ordinal, (IS_CRITICAL(bundle) != 0) ? "yes" : "no",
 				(RETURN_TO_SENDER(bundle) != 0) ? "yes" : "no", (IS_PROBE(bundle) != 0) ? "yes" : "no",
-				(IS_FRAGMENTABLE(bundle) != 0 ? "yes" : "no"));
+				(IS_FRAGMENTABLE(bundle) != 0 ? "no" : "yes"));
 
 		print_ull_list(file_call, excludedNodes, "\nExcluded neighbors: ", ", ");
 
-#if (CGR_AVOID_LOOP == 1 || CGR_AVOID_LOOP == 3)
-		print_ull_list(file_call, bundle->failedNeighbors, "\nFailed neighbors: ", ", ");
-#endif
-#if (CGR_AVOID_LOOP == 2 || CGR_AVOID_LOOP == 3)
-		print_ull_list(file_call, bundle->geoRoute, "\nGeo route: ", " -> ");
-#endif
+        if (UniboCGRSAP_check_reactive_anti_loop(uniboCgrSap)) {
+            print_ull_list(file_call, bundle->failedNeighbors, "\nFailed neighbors: ", ", ");
+        }
+        if (UniboCGRSAP_check_proactive_anti_loop(uniboCgrSap)) {
+            print_ull_list(file_call, bundle->geoRoute, "\nGeo route: ", " -> ");
+        }
 
 		fprintf(file_call,
 				"\n----------------------------------------------------------------------------------------------\n");
@@ -708,4 +625,27 @@ void print_bundle(FILE *file_call, CgrBundle *bundle, List excludedNodes, time_t
 	}
 
 }
-#endif
+void print_log_bundle_id(UniboCGRSAP* uniboCgrSap, CgrBundle* bundle) {
+    if (!LogSAP_is_enabled(uniboCgrSap)) return;
+
+    const uint64_t bp_version = bundle->bp_version;
+
+    char* time_unit;
+    if (bp_version == 7) {
+        time_unit = "msec";
+    } else {
+        time_unit = "sec";
+    }
+    char* source_node;
+    if (bundle->id.source_node[0] == '\0') {
+        source_node = "dtn:none";
+    } else {
+        source_node = bundle->id.source_node;
+    }
+
+    writeLog(uniboCgrSap, "Bundle - Source node ID: %s", source_node);
+    writeLog(uniboCgrSap, "Bundle - Creation time (%s): %" PRIu64, time_unit, bundle->id.creation_timestamp);
+    writeLog(uniboCgrSap, "Bundle - Sequence number: %" PRIu64, bundle->id.sequence_number);
+    writeLog(uniboCgrSap, "Bundle - Fragment offset: %" PRIu64, bundle->id.fragment_offset);
+    writeLog(uniboCgrSap, "Bundle - Fragment length: %" PRIu64, bundle->id.fragment_length);
+}

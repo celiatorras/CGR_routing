@@ -35,6 +35,7 @@
 #ifndef SOURCES_CGR_PHASES_H_
 #define SOURCES_CGR_PHASES_H_
 
+#include "../UniboCGRSAP.h"
 #include "../bundles/bundles.h"
 #include "../contact_plan/nodes/nodes.h"
 #include <sys/time.h>
@@ -74,11 +75,6 @@ extern "C"
  */
 #define	MAX_SPEED_MPH	(450000)
 
-#if (CGR_AVOID_LOOP > 0)
-#undef NO_LOOP
-#undef POSSIBLE_LOOP
-#undef CLOSING_LOOP
-#undef FAILED_NEIGHBOR
 /**
  * \brief   Used to flag candidate routes that the anti-loop mechanism consider as "No loop routes".
  *
@@ -117,7 +113,6 @@ extern "C"
  *             it's come back to the local node.
  */
 #define FAILED_NEIGHBOR 4
-#endif
 
 
 /******************************************************/
@@ -165,41 +160,33 @@ extern "C"
 /******************************************************/
 
 /***************************** PHASE ONE *****************************/
-extern int initialize_phase_one(unsigned long long localNode);
-extern void reset_phase_one();
-extern void destroy_phase_one();
-extern int computeRoutes(unsigned long regionNbr, Node *terminusNode, List subsetComputedRoutes, long unsigned int missingNeighbors);
+extern int PhaseOneSAP_open(UniboCGRSAP* uniboCgrSap);
+extern void PhaseOneSAP_close(UniboCGRSAP* uniboCgrSap);
+extern void reset_phase_one(UniboCGRSAP* uniboCgrSap);
+extern int computeRoutes(UniboCGRSAP* uniboCgrSap, Node *terminusNode, List subsetComputedRoutes, uint32_t missingNeighbors);
 /*********************************************************************/
 
 /***************************** PHASE TWO *****************************/
-extern int initialize_phase_two();
-extern void destroy_phase_two();
-extern void reset_phase_two();
-extern int checkRoute(time_t current_time, unsigned long long localNode, CgrBundle *bundle, List excludedNeighbors, Route *route);
-extern int getCandidateRoutes(Node *terminusNode, CgrBundle *bundle, List excludedNeighbors, List computedRoutes,
-		List *subsetComputedRoutes, long unsigned int *missingNeighbors, List *candidateRoutes);
-extern int computeApplicableBacklog(unsigned long long neighbor, int priority, unsigned int ordinal, CgrScalar *applicableBacklog,
-		CgrScalar *totalBacklog);
+extern int PhaseTwoSAP_open(UniboCGRSAP* uniboCgrSap);
+extern void PhaseTwoSAP_close(UniboCGRSAP* uniboCgrSap);
+extern void reset_phase_two(UniboCGRSAP* uniboCgrSap);
+extern int checkRoute(UniboCGRSAP* uniboCgrSap, CgrBundle *bundle, List excludedNeighbors, Route *route);
+extern int getCandidateRoutes(UniboCGRSAP* uniboCgrSap, Node *terminusNode, CgrBundle *bundle, List excludedNeighbors, List computedRoutes,
+                              List *subsetComputedRoutes, uint32_t *missingNeighbors, List *candidateRoutes);
 /*********************************************************************/
 
 /**************************** PHASE THREE ****************************/
-extern int chooseBestRoutes(CgrBundle *bundle, List candidateRoutes);
+extern int PhaseThreeSAP_open(UniboCGRSAP* uniboCgrSap);
+extern void PhaseThreeSAP_close(UniboCGRSAP* uniboCgrSap);
+/* ... declare cost function "setter" between here ... */
+extern void PhaseThreeSAP_set_cost_function_default(UniboCGRSAP* uniboCgrSap);
+/* ... and here ... */
+extern int chooseBestRoutes(UniboCGRSAP* uniboCgrSap, CgrBundle *bundle, List candidateRoutes);
 /*********************************************************************/
 
-/**************************** SHARED *****************************/
-extern time_t get_current_time();
-extern unsigned long long get_local_node();
-/*****************************************************************/
-
-#if (LOG == 1)
 extern void print_phase_one_routes(FILE *file, List computedRoutes);
-extern void print_phase_two_routes(FILE *file, List candidateRoutes);
+extern void print_phase_two_routes(UniboCGRSAP* uniboCgrSap, FILE *file, List candidateRoutes);
 extern void print_phase_three_routes(FILE *file, List bestRoutes);
-#else
-#define print_phase_one_routes(file, computedRoutes) do { } while(0)
-#define print_phase_two_routes(file, candidateRoutes) do { } while(0)
-#define print_phase_three_routes(file, bestRoutes) do { } while(0)
-#endif
 
 /******************CHECK MACROS ERROR******************/
 
@@ -207,11 +194,8 @@ extern void print_phase_three_routes(FILE *file, List bestRoutes);
  * \cond
  */
 #if (NEGLECT_CONFIDENCE != 0 && NEGLECT_CONFIDENCE != 1)
-fatal error
-// Intentional compilation error
-// NEGLECT_CONFIDENCE must be 0 or 1.
+#error NEGLECT_CONFIDENCE must be 0 or 1.
 #endif
-
 
 /**
  * \endcond

@@ -37,6 +37,7 @@
 /*		Private definitions of shared-memory rbt structures.	*/
 
 #include "rbt.h"
+#include "../../UniboCGRSAP.h"
 
 #include <stdlib.h>
 
@@ -1640,7 +1641,6 @@ int	treeBroken(Rbt* rbt)
 }
 #endif
 
-#if (LOG == 1)
 /******************************************************************************
  *
  * \par Function Name:
@@ -1683,4 +1683,3 @@ int printTreeInOrder(Rbt *rbt, FILE *file, print_tree_node print_function)
 
 	return result;
 }
-#endif

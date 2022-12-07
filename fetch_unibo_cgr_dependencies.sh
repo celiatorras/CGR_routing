@@ -95,7 +95,7 @@ function fetch_gitlab_file() {
 function fetch_unibo_dtnme_file() {
     local REMOTE_FILE="$1"
     local PROJECT_ID="30169226"
-    local BRANCH="developCaini"
+    local BRANCH="developPersampieri"
 
     fetch_gitlab_file "$PROJECT_ID" "$BRANCH" "$REMOTE_FILE"
 }

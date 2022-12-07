@@ -32,21 +32,14 @@
 #define SOURCES_CONTACTS_PLAN_RANGES_RANGES_H_
 
 #include <sys/time.h>
+
+#include "../../UniboCGRSAP.h"
 #include "../../library/commonDefines.h"
 #include "../../library_from_ion/rbt/rbt_type.h"
 
-#ifndef REVISABLE_RANGE
-/**
- * \brief Set to 1 if you want to permits that range's owlt can be changed.
- *        Set to 0 otherwise.
- *
- * \details You should consider the owlt as contact plan changes.
- *
- * \par Notes:
- *          1. I suggest you to set this macro to 1 if you copy ranges from
- *             another contact plan by an interface.
- */
-#define REVISABLE_RANGE 1
+#ifdef __cplusplus
+extern "C"
+{
 #endif
 
 typedef struct
@@ -62,58 +55,43 @@ typedef struct
 	/**
 	 * \brief Sender ipn node
 	 */
-	unsigned long long fromNode;
+	uint64_t fromNode;
 	/**
 	 * \brief Receiver ipn node
 	 */
-	unsigned long long toNode;
+	uint64_t toNode;
 	/**
 	 * \brief One-Way-Light-Time
 	 */
-	unsigned int owlt;
+	uint64_t owlt;
 } Range;
-
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 
 extern int compare_ranges(void *first, void *second);
 extern void free_range(void*);
 
-extern int create_RangesGraph();
+extern int RangeSAP_open(UniboCGRSAP* uniboCgrSap);
+extern void RangeSAP_close(UniboCGRSAP* uniboCgrSap);
+extern void reset_RangesGraph(UniboCGRSAP* uniboCgrSap);
 
-extern void removeExpiredRanges();
+extern void removeExpiredRanges(UniboCGRSAP* uniboCgrSap);
 
-extern int add_range_to_graph(unsigned long long fromNode, unsigned long long toNode,
-		time_t fromTime, time_t toTime, unsigned int owlt);
-extern void remove_range_from_graph(time_t *fromTime, unsigned long long fromNode,
-		unsigned long long toNode);
-extern void remove_range_elt_from_graph(Range *range);
+extern int add_range_to_graph(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime, time_t toTime, uint64_t owlt);
+extern void remove_range_from_graph(UniboCGRSAP* uniboCgrSap, time_t fromTime, uint64_t fromNode, uint64_t toNode);
+extern void remove_range_elt_from_graph(UniboCGRSAP* uniboCgrSap, Range *range);
 
-extern Range* get_range(unsigned long long fromNode, unsigned long long toNode, time_t fromTime,
-		RbtNode **node);
-extern Range* get_first_range(RbtNode **node);
-extern Range* get_first_range_from_node(unsigned long long fromNodeNbr, RbtNode **node);
-extern Range* get_first_range_from_node_to_node(unsigned long long fromNodeNbr,
-		unsigned long long toNodeNbr, RbtNode **node);
+extern Range* get_range(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime, RbtNode **node);
+extern Range* get_first_range(UniboCGRSAP* uniboCgrSap, RbtNode **node);
+extern Range* get_first_range_from_node(UniboCGRSAP* uniboCgrSap, uint64_t fromNodeNbr, RbtNode **node);
+extern Range* get_first_range_from_node_to_node(UniboCGRSAP* uniboCgrSap, uint64_t fromNodeNbr, uint64_t toNodeNbr, RbtNode **node);
 extern Range* get_next_range(RbtNode **node);
 extern Range* get_prev_range(RbtNode **node);
-extern int get_applicable_range(unsigned long long fromNode, unsigned long long toNode,
-		time_t targetTime, unsigned int *owltResult);
+extern int get_applicable_range(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t targetTime, uint64_t *owltResult);
 
-extern void reset_RangesGraph();
-extern void destroy_RangesGraph();
+extern int revise_range_start_time(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime, time_t newFromTime);
+extern int revise_range_end_time(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime, time_t newEndTime);
+extern int revise_owlt(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime, uint64_t owlt);
 
-#if (REVISABLE_RANGE)
-extern int revise_owlt(unsigned long long fromNode, unsigned long long toNode, time_t fromTime, unsigned int owlt);
-#endif
-
-#if (LOG == 1)
-extern int printRangesGraph(FILE *file, time_t currentTime);
-#else
-#define printRangesGraph(file, current_time) do {  } while(0)
-#endif
+extern int printRangesGraph(UniboCGRSAP* uniboCgrSap, FILE *file);
 
 #ifdef __cplusplus
 }

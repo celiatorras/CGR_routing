@@ -37,26 +37,6 @@
 #include "../../library_from_ion/rbt/rbt.h"
 #include "../../routes/routes.h"
 
-#ifndef ADD_AND_REVISE_CONTACT
-/**
- * \brief Boolean: set to 1 if you want to permits that the contact's xmit rate and confidence
- *                 can be changed when you are trying to insert into the contact graph a contact
- *                 that already exists.
- *
- *
- * \par Notes:
- *          1. You can find this macro helpful when you copy the contacts graph from
- *             an interface (so you just convert the contact) for a BP implementation.
- *          2. If you read the contacts graph from a file with an instruction (i.e. "add contact")
- *             maybe you prefer to disable this macro and instead add a "change contact" instruction.
- *          3. Just to avoid disambiguity: you can revise a contact only if you're adding
- *             a contact with the same {fromNode, toNode, fromTime}.
- *
- * \hideinitializer
- */
-#define ADD_AND_REVISE_CONTACT 1
-#endif
-
 /**
  * \brief Get the absolute value of "a"
  *
@@ -76,7 +56,7 @@ static ContactNote* create_contact_note();
  * \brief This struct is used to keep in one place all the data used by
  *        the contact graph library.
  */
-typedef struct {
+struct ContactSAP {
 	/**
 	 * \brief The contact graph.
 	 */
@@ -86,49 +66,12 @@ typedef struct {
 	 */
 	time_t timeContactToRemove;
 
-} ContactGraphSAP;
-
-
-/******************************************************************************
- *
- * \par Function Name:
- *      get_contact_graph_sap
- *
- * \brief  Get the ContactGraphSAP struct.
- *
- *
- * \par Date Written:
- *      02/07/20
- *
- * \return ContactGraphSAP*
- *
- * \retval  ContactGraphSAP*  The reference to ContactGraphSAP struct.
- *
- * \param[in]  *newSap  Set to NULL if you just want a reference to the ContactGraphSAP.
- *                      Otherwise if you set this != NULL the ContactGraphSAP will be
- *                      overwritten with the new value.
- *
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  02/07/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-static ContactGraphSAP *get_contact_graph_sap(ContactGraphSAP *newSap) {
-	static ContactGraphSAP sap;
-
-	if(newSap != NULL) {
-		sap = *newSap;
-	}
-
-	return &sap;
-}
+};
 
 /******************************************************************************
  *
  * \par Function Name:
- *      create_ContactsGraph
+ *      ContactSAP_open
  *
  * \brief  Allocate memory for the contacts graph structure (rbt)
  *
@@ -138,7 +81,7 @@ static ContactGraphSAP *get_contact_graph_sap(ContactGraphSAP *newSap) {
  *
  * \return int
  *
- * \retval   1   Success case: contacts graph created
+ * \retval   0   Success case: contacts graph created
  * \retval  -2   Error case: contacts graph cannot be created due to MWITHDRAW error
  *
  *
@@ -147,28 +90,24 @@ static ContactGraphSAP *get_contact_graph_sap(ContactGraphSAP *newSap) {
  *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
  *  -------- | --------------- | -----------------------------------------------
  *  13/01/20 | L. Persampieri  |  Initial Implementation and documentation.
+ *  21/10/22 | L. Persampieri  |  Renamed function
  *****************************************************************************/
-int create_ContactsGraph()
+int ContactSAP_open(UniboCGRSAP* uniboCgrSap)
 {
-	int result = 1;
-	ContactGraphSAP *sap = get_contact_graph_sap(NULL);
+	if (UniboCGRSAP_get_ContactSAP(uniboCgrSap)) return 0;
 
-	if (sap->contacts == NULL)
-	{
-		sap->contacts = rbt_create(free_contact, compare_contacts);
+    ContactSAP* sap = MWITHDRAW(sizeof(ContactSAP));
+    if (!sap) { return -2; }
+    UniboCGRSAP_set_ContactSAP(uniboCgrSap, sap);
+    memset(sap, 0, sizeof(ContactSAP));
+    sap->timeContactToRemove = MAX_POSIX_TIME;
+    sap->contacts = rbt_create(free_contact, compare_contacts);
+    if (!sap->contacts) {
+        ContactSAP_close(uniboCgrSap);
+        return -2;
+    }
 
-		if (sap->contacts != NULL)
-		{
-			result = 1;
-			sap->timeContactToRemove = MAX_POSIX_TIME;
-		}
-		else
-		{
-			result = -2;
-		}
-	}
-
-	return result;
+    return 0;
 }
 
 /******************************************************************************
@@ -194,13 +133,13 @@ int create_ContactsGraph()
  *  -------- | --------------- | -----------------------------------------------
  *  13/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void discardAllRoutesFromContactsGraph()
+void discardAllRoutesFromContactsGraph(UniboCGRSAP* uniboCgrSap)
 {
 	Contact *current;
 	RbtNode *node;
 	delete_function delete_fn;
 
-	for (current = get_first_contact(&node); current != NULL; current = get_next_contact(&node))
+	for (current = get_first_contact(uniboCgrSap, &node); current != NULL; current = get_next_contact(&node))
 	{
 		delete_fn = current->citations->delete_data_elt;
 		current->citations->delete_data_elt = NULL;
@@ -208,8 +147,6 @@ void discardAllRoutesFromContactsGraph()
 		current->citations->delete_data_elt = delete_fn;
 
 	}
-
-	return;
 }
 
 /******************************************************************************
@@ -224,8 +161,6 @@ void discardAllRoutesFromContactsGraph()
  *
  * \return void
  *
- * \param[in]  time  The time used to know who are the expired contacts.
- *
  * \par Notes:
  *              1. For every expired contact we will call the deleteFn, actually that means:
  *                 all routes where the expired contact appears will be deleted.
@@ -237,13 +172,16 @@ void discardAllRoutesFromContactsGraph()
  *  -------- | --------------- | -----------------------------------------------
  *  13/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void removeExpiredContacts(time_t time)
+void removeExpiredContacts(UniboCGRSAP* uniboCgrSap)
 {
 	time_t min = MAX_POSIX_TIME;
 	Contact *contact;
+    const time_t time = UniboCGRSAP_get_current_time(uniboCgrSap);
 	RbtNode *node, *next;
+#if DEBUG_CGR
 	unsigned int tot = 0;
-	ContactGraphSAP *sap = get_contact_graph_sap(NULL);
+#endif
+	ContactSAP *sap = UniboCGRSAP_get_ContactSAP(uniboCgrSap);
 
 
 	if (time >= sap->timeContactToRemove)
@@ -260,7 +198,9 @@ void removeExpiredContacts(time_t time)
 				if (contact->toTime <= time)
 				{
 					rbt_delete(sap->contacts, contact);
+#if DEBUG_CGR
 					tot++;
+#endif
 				}
 				else if (contact->toTime < min)
 				{
@@ -318,13 +258,7 @@ int compare_contacts(void *first, void *second)
 		a = (Contact*) first;
 		b = (Contact*) second;
 
-		if (a->regionNbr < b->regionNbr) {
-		    result = -1;
-		}
-		else if (a->regionNbr > b->regionNbr) {
-		    result = 1;
-		}
-		else if (a->fromNode < b->fromNode)
+		if (a->fromNode < b->fromNode)
 		{
 			result = -1;
 		}
@@ -357,7 +291,96 @@ int compare_contacts(void *first, void *second)
 	return result;
 }
 
-#if (REVISABLE_CONFIDENCE)
+/**
+ * \brief modify contact start time and update MTVs (accordingly to new start time -- keep booking information)
+ * \retval 0 success
+ * \retval -1 contact not found
+ * \retval -2 arguments error
+ * \retval -3 cannot insert overlapping contacts
+ */
+int revise_contact_start_time(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime, time_t newFromTime) {
+    RbtNode* contact_node;
+    Contact *contact = get_contact(uniboCgrSap, fromNode, toNode, fromTime, &contact_node);
+    if (contact == NULL) {
+        return -1; // contact not found
+    }
+    if (newFromTime > contact->toTime) {
+        return -2;
+    }
+
+    // note that since we are changing start time we may overlap
+    // only with a contact the compares lower than the current contact.
+    // so we need only to check if the previous contact has the same sender
+    // and receiver and if its end time is greater than the new start time.
+
+    RbtNode* prev_contact_node = rbt_prev(contact_node);
+    if (!prev_contact_node || !prev_contact_node->data) {
+        // ok no overlapping
+    } else {
+        Contact* prev_contact = prev_contact_node->data;
+
+        if (prev_contact->fromNode == contact->fromNode
+        && prev_contact->toNode == contact->toNode
+        && prev_contact->toTime > newFromTime) {
+            // will overlap
+            return -3;
+        }
+    }
+
+    const double max_new_mtv = (contact->toTime - newFromTime)*contact->xmitRate;
+    for (int i = 0; i < 3; i++) {
+        // reset MTVs to max values
+        contact->mtv[i] = max_new_mtv;
+    }
+    contact->fromTime = newFromTime;
+    return 0;
+}
+/**
+ * \brief modify contact end time and update MTVs (accordingly to new end time -- keep booking information)
+ * \retval 0 success
+ * \retval -1 contact not found
+ * \retval -2 arguments error
+ * \retval -3 cannot insert overlapping contacts
+ */
+int revise_contact_end_time(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime, time_t newEndTime) {
+    RbtNode* contact_node;
+    Contact *contact = get_contact(uniboCgrSap, fromNode, toNode, fromTime, &contact_node);
+    if (contact == NULL) {
+        return -1; // contact not found
+    }
+    if (newEndTime < contact->fromTime) {
+        return -2;
+    }
+
+    // note that since we are changing end time we may overlap
+    // only with a contact the compares greater than the current contact.
+    // so we need only to check if the next contact has the same sender
+    // and receiver and if its start time is lower than the new end time.
+
+    RbtNode* next_contact_node = rbt_next(contact_node);
+    if (!next_contact_node || !next_contact_node->data) {
+        // ok no overlapping
+    } else {
+        Contact* next_contact = next_contact_node->data;
+
+        if (next_contact->fromNode == contact->fromNode
+            && next_contact->toNode == contact->toNode
+            && next_contact->fromTime < newEndTime) {
+            // will overlap
+            return -3;
+        }
+    }
+
+    const double max_new_mtv = (newEndTime - contact->fromTime)*contact->xmitRate;
+    for (int i = 0; i < 3; i++) {
+        // reset MTVs to max values
+        contact->mtv[i] = max_new_mtv;
+    }
+    contact->toTime = newEndTime;
+    return 0;
+}
+
+
 /******************************************************************************
  *
  * \par Function Name:
@@ -386,7 +409,7 @@ int compare_contacts(void *first, void *second)
  *  -------- | --------------- | -----------------------------------------------
  *  13/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-int revise_confidence(unsigned long regionNbr, unsigned long long fromNode, unsigned long long toNode, time_t fromTime, float newConfidence)
+int revise_confidence(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime, float newConfidence)
 {
 	int result = -2;
 	Contact *contact = NULL;
@@ -394,7 +417,7 @@ int revise_confidence(unsigned long regionNbr, unsigned long long fromNode, unsi
 	if (fromNode != 0 && toNode != 0 && fromTime >= 0 && newConfidence >= 0.0
 			&& newConfidence <= 1.0)
 	{
-		contact = get_contact(regionNbr, fromNode, toNode, fromTime, NULL);
+		contact = get_contact(uniboCgrSap, fromNode, toNode, fromTime, NULL);
 		result = -1;
 		if(contact != NULL)
 		{
@@ -405,84 +428,7 @@ int revise_confidence(unsigned long regionNbr, unsigned long long fromNode, unsi
 
 	return result;
 }
-#endif
 
-#if (REVISABLE_CONTACT)
-/******************************************************************************
- *
- * \par Function Name:
- *      revise_contact
- *
- * \brief  Revise the contact's confidence and transmit rate (and MTVs)
- *
- *
- * \par Date Written:
- *      13/01/20
- *
- * \return int
- *
- * \retval   0  Contact revised
- * \retval  -1  Contact not found
- * \retval  -2  Arguments error
- *
- * \param[in]	   fromNode     The contact's sender node
- * \param[in]        toNode     The contact's receiver node
- * \param[in]      fromTime     The contact's start time
- * \param[in] newConfidence     The revised confidence
- * \param[in]      xmitRate     The revised transmit rate
- * \param[in]       copyMTV     Set to 1 if you want to copy MTVs.
- *                              Set to 0 otherwise
- * \param[in]           mtv     An array of 3 elements. The MTVs copied if copyMTV is setted to 1.
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  13/01/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-int revise_contact(unsigned long regionNbr, unsigned long long fromNode, unsigned long long toNode, time_t fromTime, float newConfidence, unsigned long int xmitRate, int copyMTV, double mtv[])
-{
-	int result = -2;
-	Contact *contact = NULL;
-	int i;
-
-	if (fromNode != 0 && toNode != 0 && fromTime >= 0 && newConfidence >= 0.0
-			&& newConfidence <= 1.0)
-	{
-		contact = get_contact(regionNbr, fromNode, toNode, fromTime, NULL);
-		result = -1;
-		if(contact != NULL)
-		{
-			contact->confidence = newConfidence;
-			contact->xmitRate = xmitRate;
-			if(copyMTV != 0)
-			{
-				for(i = 0; i < 3; i++)
-				{
-					contact->mtv[i] = mtv[i];
-				}
-			}
-			/* TODO ION DOESN'T DO THIS, but MTVs now aren't accurate
-			else
-			{
-				double prevMaxVolume = (double) (contact->xmitRate * ((long unsigned int) (contact->toTime - contact->fromTime)));
-				volume = (double) (xmitRate * ((long unsigned int) (toTime - fromTime)));
-				for(i = 0; i < 3; i++)
-				{
-					double prevUsedVolume = prevMaxVolume - contact->mtv[i];
-					contact->mtv[i] = volume - prevUsedVolume;
-				}
-			}
-			*/
-			result = 0;
-		}
-	}
-
-	return result;
-}
-#endif
-
-#if (REVISABLE_XMIT_RATE)
 /******************************************************************************
  *
  * \par Function Name:
@@ -514,45 +460,29 @@ int revise_contact(unsigned long regionNbr, unsigned long long fromNode, unsigne
  *  -------- | --------------- | -----------------------------------------------
  *  13/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-int revise_xmit_rate(unsigned long regionNbr, unsigned long long fromNode, unsigned long long toNode, time_t fromTime, unsigned long int xmitRate, int copyMTV, double mtv[])
+int revise_xmit_rate(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime, uint64_t xmitRate)
 {
 	int result = -2;
 	Contact *contact = NULL;
-	int i;
 
 	if (fromNode != 0 && toNode != 0 && fromTime >= 0)
 	{
-		contact = get_contact(regionNbr, fromNode, toNode, fromTime, NULL);
+		contact = get_contact(uniboCgrSap, fromNode, toNode, fromTime, NULL);
 		result = -1;
 		if(contact != NULL)
 		{
 			contact->xmitRate = xmitRate;
-			if(copyMTV != 0)
-			{
-				for(i = 0; i < 3; i++)
-				{
-					contact->mtv[i] = mtv[i];
-				}
-			}
-			/* TODO ION DOESN'T DO THIS, but MTVs now aren't accurate
-			else
-			{
-				double prevMaxVolume = (double) (contact->xmitRate * ((long unsigned int) (contact->toTime - contact->fromTime)));
-				volume = (double) (xmitRate * ((long unsigned int) (toTime - fromTime)));
-				for(i = 0; i < 3; i++)
-				{
-					double prevUsedVolume = prevMaxVolume - contact->mtv[i];
-					contact->mtv[i] = volume - prevUsedVolume;
-				}
-			}
-			*/
+            const double max_new_mtv = (contact->toTime - contact->fromTime)*xmitRate;
+            for (int i = 0; i < 3; i++) {
+                // reset MTVs to max values
+                contact->mtv[i] = max_new_mtv;
+            }
 			result = 0;
 		}
 	}
 
 	return result;
 }
-#endif
 
 /******************************************************************************
  *
@@ -584,7 +514,7 @@ int revise_xmit_rate(unsigned long regionNbr, unsigned long long fromNode, unsig
  *  -------- | --------------- |  -----------------------------------------------
  *  23/04/20 | L. Persampieri  |   Initial Implementation and documentation.
  *****************************************************************************/
-Contact * get_contact_with_time_tolerance(unsigned long regionNbr, unsigned long long fromNode, unsigned long long toNode, time_t fromTime, unsigned int tolerance)
+Contact * get_contact_with_time_tolerance(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime, unsigned int tolerance)
 {
 	Contact *result = NULL;
 	Contact *current;
@@ -592,10 +522,10 @@ Contact * get_contact_with_time_tolerance(unsigned long regionNbr, unsigned long
 	int stop = 0;
 	time_t difference;
 
-	for(current = get_first_contact_from_node_to_node(regionNbr, fromNode, toNode, &node);
+	for(current = get_first_contact_from_node_to_node(uniboCgrSap, fromNode, toNode, &node);
 			current != NULL && !stop; current = get_next_contact(&node))
 	{
-		if(current->regionNbr == regionNbr && current->fromNode == fromNode && current->toNode == toNode)
+		if(current->fromNode == fromNode && current->toNode == toNode)
 		{
 			// difference in absolute value
 			difference = absolute(current->fromTime - fromTime);
@@ -615,75 +545,6 @@ Contact * get_contact_with_time_tolerance(unsigned long regionNbr, unsigned long
 		{
 			// not found
 			stop = 1;
-		}
-	}
-
-	return result;
-}
-
-/******************************************************************************
- *
- * \par Function Name:
- *      refill_mtv
- *
- * \brief Refill contact's MTV of some size passed as argument.
- *
- * \details contact->fromTime can be included in
- *          fromTime - tolerance <= contact->fromTime <= fromTime + tolerance
- *
- * \par Date Written:
- * 		11/12/20
- *
- * \return int
- *
- * \retval  0   Contact MTVs updated
- * \retval -1   Arguments error
- * \retval -2   Contact not found
- *
- * \param[in]      fromNode     The sender node of the contact
- * \param[in]      toNode       The receiver node of the contact
- * \param[in]      fromTime     The start time of the contact
- * \param[in]      tolerance    Time tolerance
- * \param[in]      refillSize   The size to add into MTV
- * \param[in]      priority     The upper-bound priority. The refillSize will be added
- *                              into all MTV that refers to (all) less or equal priority.
- *
- * \par Revision History:
- *
- *  DD/MM/YY | AUTHOR          |   DESCRIPTION
- *  -------- | --------------- |  -----------------------------------------------
- *  11/12/20 | L. Persampieri  |   Initial Implementation and documentation.
- *****************************************************************************/
-int refill_mtv(unsigned long regionNbr, unsigned long long fromNode, unsigned long long toNode, time_t fromTime, unsigned int tolerance, unsigned int refillSize, int priority)
-{
-	Contact *contact;
-	int result = 0, i;
-
-	if (priority < 0 || priority > 2)
-	{
-		// arguments error
-		result = -1;
-	}
-	else if (refillSize == 0)
-	{
-		result = 0;
-	}
-	else
-	{
-		contact = get_contact_with_time_tolerance(regionNbr, fromNode, toNode, fromTime, tolerance);
-
-		if (contact == NULL)
-		{
-			// contact not found
-			result = -2;
-		}
-		else
-		{
-			result = 0;
-			for (i = priority; i >= 0; i--)
-			{
-				contact->mtv[i] += refillSize;
-			}
 		}
 	}
 
@@ -713,19 +574,8 @@ int refill_mtv(unsigned long regionNbr, unsigned long long fromNode, unsigned lo
  *****************************************************************************/
 static void erase_contact(Contact *contact)
 {
-	contact->citations = NULL;
-	contact->confidence = 0.0f;
-	contact->regionNbr = 0;
-	contact->fromNode = 0;
-	contact->toNode = 0;
-	contact->fromTime = 0;
-	contact->toTime = 0;
-	contact->type = TypeRegistration;
-	contact->xmitRate = 0;
-	contact->mtv[0] = 0.0;
-	contact->mtv[1] = 0.0;
-	contact->mtv[2] = 0.0;
-	contact->routingObject = NULL;
+    memset(contact, 0, sizeof(Contact));
+    contact->type = TypeScheduled;
 }
 
 /******************************************************************************
@@ -751,9 +601,9 @@ static void erase_contact(Contact *contact)
  *  -------- | --------------- | -----------------------------------------------
  *  13/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void reset_ContactsGraph()
+void reset_ContactsGraph(UniboCGRSAP* uniboCgrSap)
 {
-	ContactGraphSAP *sap = get_contact_graph_sap(NULL);
+	ContactSAP *sap = UniboCGRSAP_get_ContactSAP(uniboCgrSap);
 
 	rbt_clear(sap->contacts);
 	sap->timeContactToRemove = MAX_POSIX_TIME;
@@ -762,7 +612,7 @@ void reset_ContactsGraph()
 /******************************************************************************
  *
  * \par Function Name:
- *      destroy_ContactsGraph
+ *      ContactSAP_close
  *
  * \brief  Delete any contact that belongs to the graph, and the contacts graph itself.
  *
@@ -781,14 +631,19 @@ void reset_ContactsGraph()
  *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
  *  -------- | --------------- | -----------------------------------------------
  *  13/01/20 | L. Persampieri  |  Initial Implementation and documentation.
+ *  21/10/22 | L. Persampieri  |  Renamed function
  *****************************************************************************/
-void destroy_ContactsGraph()
+void ContactSAP_close(UniboCGRSAP* uniboCgrSap)
 {
-	ContactGraphSAP *sap = get_contact_graph_sap(NULL);
+    if (!UniboCGRSAP_get_ContactSAP(uniboCgrSap)) return;
+
+	ContactSAP *sap = UniboCGRSAP_get_ContactSAP(uniboCgrSap);
 
 	rbt_destroy(sap->contacts);
-	sap->contacts = NULL;
-	sap->timeContactToRemove = MAX_POSIX_TIME;
+
+    memset(sap, 0, sizeof(ContactSAP));
+    MDEPOSIT(sap);
+    UniboCGRSAP_set_ContactSAP(uniboCgrSap, NULL);
 }
 
 /******************************************************************************
@@ -818,19 +673,9 @@ static void erase_contact_note(ContactNote *note)
 
 	if (note != NULL)
 	{
-		note->arrivalTime = -1;
-		note->hopCount = 0;
-		note->predecessor = NULL;
-		note->suppressed = 0;
-		note->visited = 0;
-		note->owltSum = 0;
-		note->arrivalConfidence = 0.0F;
-		note->rangeFlag = 0;
-		note->owlt = 0;
-		note->nextContactInDijkstraQueue = NULL;
+        memset(note, 0, sizeof(ContactNote));
+        note->arrivalTime = -1;
 	}
-
-	return;
 }
 
 /******************************************************************************
@@ -986,17 +831,15 @@ void free_contact(void *data)
  *  -------- | --------------- | -----------------------------------------------
  *  13/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-Contact* create_contact(unsigned long regionNbr, unsigned long long fromNode, unsigned long long toNode, time_t fromTime,
-		time_t toTime, long unsigned int xmitRate, float confidence, CtType type)
+Contact* create_contact(uint64_t fromNode, uint64_t toNode, time_t fromTime,
+		time_t toTime, uint64_t xmitRate, float confidence, CtType type)
 {
 	Contact *contact = NULL;
 	double volume;
-
 	contact = (Contact*) MWITHDRAW(sizeof(Contact));
 
 	if (contact != NULL)
 	{
-	    contact->regionNbr = regionNbr;
 		contact->fromNode = fromNode;
 		contact->toNode = toNode;
 		contact->fromTime = fromTime;
@@ -1005,7 +848,7 @@ Contact* create_contact(unsigned long regionNbr, unsigned long long fromNode, un
 		contact->confidence = confidence;
 		contact->type = type;
 		/* NOTE: We assume that toTime - fromTime is greater or equal to 0 */
-		volume = (double) (xmitRate * ((long unsigned int) (toTime - fromTime)));
+		volume = (double) (xmitRate * ((uint64_t) (toTime - fromTime)));
 		contact->mtv[0] = volume;
 		contact->mtv[1] = volume;
 		contact->mtv[2] = volume;
@@ -1045,7 +888,6 @@ Contact* create_contact(unsigned long regionNbr, unsigned long long fromNode, un
  *
  * \return int
  *
- * \retval   2   Success case: Revised xmit rate (and MTVs)
  * \retval   1   Success case: contact added to the contacts graph
  * \retval   0   Arguments error case
  * \retval  -1   Overlapped contact (don't change it)
@@ -1074,15 +916,15 @@ Contact* create_contact(unsigned long regionNbr, unsigned long long fromNode, un
  *  -------- | --------------- | -----------------------------------------------
  *  13/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-int add_contact_to_graph(unsigned long regionNbr, unsigned long long fromNode, unsigned long long toNode, time_t fromTime,
-		time_t toTime, long unsigned int xmitRate, float confidence, int copyMTV, double mtv[])
+int add_contact_to_graph(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime,
+                         time_t toTime, uint64_t xmitRate, float confidence, int copyMTV, const double mtv[])
 {
-	int result = -1;
+	int result;
 	int overlapped;
 	Contact *contact, *temp;
 	RbtNode *elt = NULL;
 	CtType contactType;
-	ContactGraphSAP *sap;
+	ContactSAP *sap;
 
 	if (fromNode == 0 || toNode == 0 || toTime < 0 || (fromTime > toTime) || confidence < 0.0
 			|| confidence > 1.0)
@@ -1091,50 +933,20 @@ int add_contact_to_graph(unsigned long regionNbr, unsigned long long fromNode, u
 	}
 	else
 	{
-		sap = get_contact_graph_sap(NULL);
+		sap = UniboCGRSAP_get_ContactSAP(uniboCgrSap);
 
 		result = -1;
 			if (fromTime >= 0) /*Type: Scheduled	*/
 			{
-				temp = get_first_contact_from_node_to_node(regionNbr, fromNode, toNode, &elt);
+				temp = get_first_contact_from_node_to_node(uniboCgrSap, fromNode, toNode, &elt);
 				overlapped = 0;
 				while (temp != NULL)
 				{
-					if (temp->regionNbr == regionNbr && temp->fromNode == fromNode && temp->toNode == toNode)
+					if (temp->fromNode == fromNode && temp->toNode == toNode)
 					{
 						if(fromTime == temp->fromTime && toTime == temp->toTime)
 						{
 							// contact exists in contacts graph
-#if (REVISABLE_XMIT_RATE && ADD_AND_REVISE_CONTACT)
-							if(copyMTV != 0)
-							{
-								if(temp->xmitRate != xmitRate)
-								{
-									temp->xmitRate = xmitRate; //update xmitRate
-									result = 2;
-									// Maybe you want to consider it as a significant change to contact plan
-									// It could be interpreted as a new contact, your decision
-								}
-								//update MTVs
-								// TODO previous booking informations ???
-								temp->mtv[0] = mtv[0];
-								temp->mtv[1] = mtv[1];
-								temp->mtv[2] = mtv[2];
-							}
-							else if(temp->xmitRate != xmitRate) //otherwise don't change previous booking informations...
-							{
-								temp->xmitRate = xmitRate; //update xmitRate
-								//TODO previous booking informations ???
-								result = 2;
-								// Maybe you want to consider it as a significant change to contact plan
-								// It could be interpreted as a new contact, your decision
-							}
-#endif
-#if (REVISABLE_CONFIDENCE && ADD_AND_REVISE_CONTACT)
-							// don't consider confidence as rilevant changes to contact plan
-							// (don't discard routes for this)
-							temp->confidence = confidence;
-#endif
 							overlapped = 1;
 							temp = NULL;
 						}
@@ -1167,8 +979,11 @@ int add_contact_to_graph(unsigned long regionNbr, unsigned long long fromNode, u
 				if (overlapped == 0)
 				{
 					contactType = TypeScheduled;
-					contact = create_contact(regionNbr, fromNode, toNode, fromTime, toTime, xmitRate, confidence,
+					contact = create_contact(fromNode, toNode, fromTime, toTime, xmitRate, confidence,
 							contactType);
+                    if (!contact) {
+                        return -2;
+                    }
 
 					if(copyMTV != 0)
 					{
@@ -1193,64 +1008,6 @@ int add_contact_to_graph(unsigned long regionNbr, unsigned long long fromNode, u
 	}
 
 	return result;
-}
-
-/******************************************************************************
- *
- * \par Function Name:
- *      removeAllContacts
- *
- * \brief   Remove all contacts between fromNode and toNode from the contacts graph
- *
- *
- * \par Date Written:
- *      13/01/20
- *
- * \return  void
- *
- * \param[in]	fromNode   The fromNode of the contacts that we want to remove
- * \param[in]	toNode     The toNode of the contacts that we want to remove
- *
- * \par Notes:
- *              1. The free_contact will be called for every contact removed.
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  13/01/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-static void removeAllContacts(unsigned long regionNbr, unsigned long long fromNode, unsigned long long toNode)
-{
-	Contact *current;
-	RbtNode *node;
-	ContactGraphSAP *sap = get_contact_graph_sap(NULL);
-
-	current = get_first_contact_from_node_to_node(regionNbr, fromNode, toNode, &node);
-
-	while (current != NULL)
-	{
-		node = rbt_next(node);
-		rbt_delete(sap->contacts, current);
-		if (node != NULL)
-		{
-			current = (Contact*) node->data;
-		}
-		else
-		{
-			current = NULL;
-		}
-
-		if (current != NULL)
-		{
-			if (current->regionNbr != regionNbr || current->fromNode != fromNode || current->toNode != toNode)
-			{
-				current = NULL;
-			}
-		}
-	}
-
-	return;
 }
 
 /******************************************************************************
@@ -1281,16 +1038,14 @@ static void removeAllContacts(unsigned long regionNbr, unsigned long long fromNo
  *  -------- | --------------- | -----------------------------------------------
  *  13/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void remove_contact_elt_from_graph(Contact *elt)
+void remove_contact_elt_from_graph(UniboCGRSAP* uniboCgrSap, Contact *elt)
 {
-	ContactGraphSAP *sap = get_contact_graph_sap(NULL);
+	ContactSAP *sap = UniboCGRSAP_get_ContactSAP(uniboCgrSap);
 
 	if (elt != NULL)
 	{
 		rbt_delete(sap->contacts, elt);
 	}
-
-	return;
 }
 
 /******************************************************************************
@@ -1298,7 +1053,7 @@ void remove_contact_elt_from_graph(Contact *elt)
  * \par Function Name:
  *      remove_contact_from_graph
  *
- * \brief  Remove the contact that has the same {fromNode, toNode, *fromTime} fields
+ * \brief  Remove the contact that has the same {fromNode, toNode, fromTime} fields
  *
  *
  * \par Date Written:
@@ -1306,9 +1061,7 @@ void remove_contact_elt_from_graph(Contact *elt)
  *
  * \return  void
  *
- * \param[in]   *fromTime   If it's NULL we remove all contacts that match with
- *                         {fromNode, toNode}, otherwise we remove the contact
- *                         that matches with {fromNode, toNode, *fromTime}
+ * \param[in]   fromTime   Contact's start time
  * \param[in]	fromNode   The sender node of the contact to remove
  * \param[in]   toNode     The receiver node of the contact to remove
  *
@@ -1322,41 +1075,16 @@ void remove_contact_elt_from_graph(Contact *elt)
  *  -------- | --------------- | -----------------------------------------------
  *  13/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void remove_contact_from_graph(unsigned long regionNbr, time_t *fromTime, unsigned long long fromNode,
-		unsigned long long toNode)
+void remove_contact_from_graph(UniboCGRSAP* uniboCgrSap, time_t fromTime, uint64_t fromNode, uint64_t toNode)
 {
 	Contact arg;
-	int ok = 0;
-	ContactGraphSAP *sap = get_contact_graph_sap(NULL);
+	ContactSAP *sap = UniboCGRSAP_get_ContactSAP(uniboCgrSap);
 
-	if (fromTime != NULL)
-	{
-		erase_contact(&arg);
-		if (*fromTime == -1 && fromNode == toNode)
-		{
-			arg.fromTime = 0;
-			ok = 1;
-		}
-		else if (fromNode != toNode)
-		{
-			arg.fromTime = *fromTime;
-			ok = 1;
-		}
-
-		if (ok)
-		{
-		    arg.regionNbr = regionNbr;
-			arg.fromNode = fromNode;
-			arg.toNode = toNode;
-			rbt_delete(sap->contacts, &arg);
-		}
-	}
-	else
-	{
-		removeAllContacts(regionNbr, fromNode, toNode);
-	}
-
-	return;
+    erase_contact(&arg);
+    arg.fromNode = fromNode;
+    arg.toNode = toNode;
+    arg.fromTime = fromTime;
+    rbt_delete(sap->contacts, &arg);
 }
 
 /* ----------------------------------------------------
@@ -1396,18 +1124,17 @@ void remove_contact_from_graph(unsigned long regionNbr, time_t *fromTime, unsign
  *  -------- | --------------- | -----------------------------------------------
  *  13/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-Contact* get_contact(unsigned long regionNbr, unsigned long long fromNode, unsigned long long toNode, time_t fromTime,
-		RbtNode **node)
+Contact* get_contact(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime,
+                     RbtNode **node)
 {
 	Contact arg, *result;
 	RbtNode *elt;
-	ContactGraphSAP *sap = get_contact_graph_sap(NULL);
+	ContactSAP *sap = UniboCGRSAP_get_ContactSAP(uniboCgrSap);
 
 	result = NULL;
 	if (fromNode != 0 && toNode != 0 && fromTime >= 0)
 	{
 		erase_contact(&arg);
-		arg.regionNbr = regionNbr;
 		arg.fromNode = fromNode;
 		arg.toNode = toNode;
 		arg.fromTime = fromTime;
@@ -1458,11 +1185,11 @@ Contact* get_contact(unsigned long regionNbr, unsigned long long fromNode, unsig
  *  -------- | --------------- | -----------------------------------------------
  *  13/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-Contact* get_first_contact(RbtNode **node)
+Contact* get_first_contact(UniboCGRSAP* uniboCgrSap, RbtNode **node)
 {
 	Contact *result = NULL;
 	RbtNode *currentContact = NULL;
-	ContactGraphSAP *sap = get_contact_graph_sap(NULL);
+	ContactSAP *sap = UniboCGRSAP_get_ContactSAP(uniboCgrSap);
 
 	currentContact = rbt_first(sap->contacts);
 	if (currentContact != NULL)
@@ -1507,15 +1234,14 @@ Contact* get_first_contact(RbtNode **node)
  *  -------- | --------------- | -----------------------------------------------
  *  13/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-Contact* get_first_contact_from_node(unsigned long regionNbr, unsigned long long fromNode, RbtNode **node)
+Contact* get_first_contact_from_node(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, RbtNode **node)
 {
 	Contact arg;
 	Contact *result = NULL;
 	RbtNode *currentContact = NULL;
-	ContactGraphSAP *sap = get_contact_graph_sap(NULL);
+	ContactSAP *sap = UniboCGRSAP_get_ContactSAP(uniboCgrSap);
 
 	erase_contact(&arg);
-	arg.regionNbr = regionNbr;
 	arg.fromNode = fromNode;
 	arg.fromTime = -1;
 	rbt_search(sap->contacts, &arg, &currentContact);
@@ -1524,7 +1250,7 @@ Contact* get_first_contact_from_node(unsigned long regionNbr, unsigned long long
 	{
 		result = (Contact*) currentContact->data;
 
-		if (result->regionNbr != regionNbr || result->fromNode != fromNode)
+		if (result->fromNode != fromNode)
 		{
 			result = NULL;
 		}
@@ -1569,16 +1295,15 @@ Contact* get_first_contact_from_node(unsigned long regionNbr, unsigned long long
  *  -------- | --------------- | -----------------------------------------------
  *  13/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-Contact* get_first_contact_from_node_to_node(unsigned long regionNbr, unsigned long long fromNode, unsigned long long toNode,
-		RbtNode **node)
+Contact* get_first_contact_from_node_to_node(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode,
+                                             RbtNode **node)
 {
 	Contact arg;
 	Contact *result = NULL;
 	RbtNode *currentContact = NULL;
-	ContactGraphSAP *sap = get_contact_graph_sap(NULL);
+	ContactSAP *sap = UniboCGRSAP_get_ContactSAP(uniboCgrSap);
 
 	erase_contact(&arg);
-	arg.regionNbr = regionNbr;
 	arg.fromNode = fromNode;
 	arg.toNode = toNode;
 	arg.fromTime = -1;
@@ -1588,7 +1313,7 @@ Contact* get_first_contact_from_node_to_node(unsigned long regionNbr, unsigned l
 	{
 		result = (Contact*) currentContact->data;
 
-		if (result->regionNbr != regionNbr || result->fromNode != fromNode || result->toNode != toNode)
+		if (result->fromNode != fromNode || result->toNode != toNode)
 		{
 			result = NULL;
 		}
@@ -1707,47 +1432,6 @@ Contact* get_prev_contact(RbtNode **node)
 	return result;
 }
 
-List get_known_regions() {
-
-    RbtNode *node;
-
-    Contact * contact = get_first_contact(&node);
-    Contact * prevContact = contact;
-
-    List result = list_create(NULL, NULL, NULL, MDEPOSIT_wrapper);
-
-    if (result == NULL) {
-        return NULL;
-    }
-
-    while (contact != NULL) {
-
-        if ( (prevContact->regionNbr != contact->regionNbr)
-                || (result->length == 0) ) {
-
-            unsigned long *region = malloc(sizeof(unsigned long));
-            if (region == NULL) {
-                free_list(result);
-                return NULL;
-            }
-
-            *region = contact->regionNbr;
-            if ( list_insert_last(result, region) == NULL) {
-                free_list(result);
-                return NULL;
-            }
-        }
-
-        prevContact = contact;
-        contact = get_next_contact(&node);
-    }
-
-    return result;
-
-}
-
-#if (LOG == 1)
-
 /******************************************************************************
  *
  * \par Function Name:
@@ -1785,7 +1469,7 @@ static int printContact(FILE *file, void *data)
 	{
 		result = 0;
 		contact = (Contact*) data;
-		fprintf(file, "%-15lu %-15llu %-15llu %-15ld %-15ld %-15lu %-15.2f ", contact->regionNbr, contact->fromNode,
+		fprintf(file, "%-15" PRIu64 " %-15" PRIu64 " %-15ld %-15ld %-15" PRIu64 " %-15.2f ", contact->fromNode,
 				contact->toNode, (long int) contact->fromTime, (long int) contact->toTime,
 				contact->xmitRate, contact->confidence);
 		if (contact->citations != NULL)
@@ -1831,30 +1515,28 @@ static int printContact(FILE *file, void *data)
  *  -------- | --------------- | -----------------------------------------------
  *  13/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-int printContactsGraph(FILE *file, time_t currentTime)
+int printContactsGraph(UniboCGRSAP* uniboCgrSap, FILE *file)
 {
 	int result = 0;
-	ContactGraphSAP *sap = get_contact_graph_sap(NULL);
+	ContactSAP *sap = UniboCGRSAP_get_ContactSAP(uniboCgrSap);
 
 	if (file != NULL)
 	{
-		result = 1;
-
 		fprintf(file,
-				"\n----------------------------------------------------- CONTACTS GRAPH -----------------------------------------------------\n");
-		fprintf(file, "Time: %ld\n%-15s %-15s %-15s %-15s %-15s %-15s %-15s %s\n", (long int) currentTime,
-				"Region", "FromNode", "ToNode", "FromTime", "ToTime", "XmitRate", "Confidence", "Citations");
+				"\n------------------------------------------------- CONTACTS GRAPH -------------------------------------------------\n");
+		fprintf(file, "Time: %ld\n%-15s %-15s %-15s %-15s %-15s %-15s %s\n", (long int) UniboCGRSAP_get_current_time(uniboCgrSap),
+				"FromNode", "ToNode", "FromTime", "ToTime", "XmitRate", "Confidence", "Citations");
 		result = printTreeInOrder(sap->contacts, file, printContact);
 
 		if (result == 1)
 		{
 			fprintf(file,
-					"\n--------------------------------------------------------------------------------------------------------------------------\n");
+					"\n------------------------------------------------------------------------------------------------------------------\n");
 		}
 		else
 		{
 			fprintf(file,
-					"\n-------------------------------------------------- CONTACTS GRAPH ERROR --------------------------------------------------\n");
+					"\n---------------------------------------------- CONTACTS GRAPH ERROR ----------------------------------------------\n");
 		}
 	}
 	else
@@ -1864,5 +1546,3 @@ int printContactsGraph(FILE *file, time_t currentTime)
 
 	return result;
 }
-
-#endif

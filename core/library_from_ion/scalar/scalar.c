@@ -38,7 +38,7 @@
  *  -------- | --------------- | -----------------------------------------------
  *  30/01/20 | L. Persampieri  |  Ported function.
  *******************************************************************************/
-void loadCgrScalar(CgrScalar *s, long int i)
+void loadCgrScalar(CgrScalar *s, int64_t i)
 {
 	if (s != NULL)
 	{
@@ -80,7 +80,7 @@ void loadCgrScalar(CgrScalar *s, long int i)
  *  -------- | --------------- | -----------------------------------------------
  *  30/01/20 | L. Persampieri  |  Ported function.
  *******************************************************************************/
-void increaseCgrScalar(CgrScalar *s, long int i)
+void increaseCgrScalar(CgrScalar *s, int64_t i)
 {
 	if (s != NULL)
 	{
@@ -127,7 +127,7 @@ void increaseCgrScalar(CgrScalar *s, long int i)
  *  -------- | --------------- | -----------------------------------------------
  *  30/01/20 | L. Persampieri  |  Ported function.
  *******************************************************************************/
-void reduceCgrScalar(CgrScalar *s, long int i)
+void reduceCgrScalar(CgrScalar *s, int64_t i)
 {
 	if (s != NULL)
 	{
@@ -175,7 +175,7 @@ void reduceCgrScalar(CgrScalar *s, long int i)
  *  -------- | --------------- | -----------------------------------------------
  *  30/01/20 | L. Persampieri  |  Ported function.
  *******************************************************************************/
-void multiplyCgrScalar(CgrScalar *s, long int i)
+void multiplyCgrScalar(CgrScalar *s, int64_t i)
 {
 	double product;
 
@@ -215,7 +215,7 @@ void multiplyCgrScalar(CgrScalar *s, long int i)
  *  -------- | --------------- | -----------------------------------------------
  *  30/01/20 | L. Persampieri  |  Ported function.
  *******************************************************************************/
-void divideCgrScalar(CgrScalar *s, long int i)
+void divideCgrScalar(CgrScalar *s, int64_t i)
 {
 	double quotient;
 
@@ -268,7 +268,7 @@ void copyCgrScalar(CgrScalar *to, CgrScalar *from)
  * \par Function Name:
  *      addToCgrScalar
  *
- * \brief Add into a CgrScalat the quantity contained into another CgrScalar.
+ * \brief Add into a CgrScalar the quantity contained into another CgrScalar.
  *
  *
  * \par Date Written:

@@ -31,23 +31,10 @@
 set -euo pipefail
 
 function help_fun() {
-	echo "Usage: $0 [--no-config] <ion | dtnme> </path/to/Unibo-CGR/> </path/to/ION/ | /path/to/DTNME/>" 1>&2
+	echo "Usage: $0 <ion | dtnme> </path/to/Unibo-CGR/> </path/to/ION/ | /path/to/DTNME/>" 1>&2
 	echo "This script includes Unibo-CGR in either ION or DTNME." 1>&2
 	echo "Launch this script with the three parameters explicited in the Usage string." 1>&2
-	echo "The --no-config option keeps the Unibo-CGR config.h file unchanged."
 }
-
-NO_CONFIG="false"
-
-if test $# -eq 4 ; then
-	if test "$1" != "--no-config" ; then
-		help_fun
-		exit 1
-	fi
-	NO_CONFIG="true"
-	shift
-fi
-
 
 if test $# -ne 3
 then
@@ -127,6 +114,9 @@ function mv_unibo_cgr_to_ion() {
 	rm -rf "$ION_BPV7/cgr/Unibo-CGR"
 	cp -rpf "$UNIBO_CGR" "$ION_BPV7/cgr/Unibo-CGR"
 
+	echo "Moving auxiliary files for bpv7..."
+  "$AUX_BPV7/mv_unibo_cgr_ion_bpv7_aux_files.sh" "$AUX_BPV7" "$ION"
+
 	echo "Moving extensions for bpv7..."
 	"$EXT_BPV7/mv_unibo_cgr_ion_bpv7_extensions.sh" "$EXT_BPV7" "$ION"
 
@@ -138,12 +128,6 @@ function mv_unibo_cgr_to_ion() {
 	rm -rf "$ION_BPV7/cgr/Unibo-CGR/docs/.doxygen"
 #	rm -rf "$ION_BPV7/cgr/Unibo-CGR/ion_bpv7/aux_files"
 #	rm -rf "$ION_BPV7/cgr/Unibo-CGR/ion_bpv7/extensions"
-
-	if test "$NO_CONFIG" = "false" ; then
-		echo "Updating Unibo-CGR's config.h file for ION..."
-		update_config_file "$CONFIG_FILE_BPV6" CGR_BUILD_FOR_ION 1
-		update_config_file "$CONFIG_FILE_BPV7" CGR_BUILD_FOR_ION 1
-	fi
 
 	echo ""
 
@@ -167,7 +151,7 @@ function mv_unibo_cgr_to_ion() {
 		echo "Updating the configure script..."
 		cd "$ION" && autoreconf -fi && echo -e "\nNow you can compile and install in the usual way with configure/make/make install\n" \
 		&& echo "configure sintax from ION's root directory:" \
-		&& echo "./configure --enable-unibo-cgr CPPFLAGS='-DRGR=1 -DRGREB=1 -DCGRR=1 -DCGRREB=1'" \
+		&& echo "./configure --enable-unibo-cgr CPPFLAGS='-DRGREB=1 -DCGRREB=1'" \
 		&& echo "If you don't want RGR or CGRR just don't specify them in CPPFLAGS."
 	else
 		echo -e "\nPlease install missing packages and launch autoreconf -fi in $ION to update the configure script.\n" 1>&2
@@ -255,29 +239,16 @@ function mv_unibo_cgr_to_dtnme() {
 	rm -rf "$DTNME_ROUTING/Unibo-CGR/docs/.doxygen"
 #	rm -rf "$DTNME_ROUTING/Unibo-CGR/dtnme/aux_files"
 
-	if test "$NO_CONFIG" = "false" ; then
-		echo "Updating Unibo-CGR's config.h file for DTNME..."
-		update_config_file "$CONFIG_FILE" CGR_BUILD_FOR_ION 0
-		update_config_file "$CONFIG_FILE" CGR_AVOID_LOOP 0
-		update_config_file "$CONFIG_FILE" MSR 0
-		update_config_file "$CONFIG_FILE" CGRR 0
-		update_config_file "$CONFIG_FILE" RGR 0
-		update_config_file "$CONFIG_FILE" MSR_PRECONF 0
-		update_config_file "$CONFIG_FILE" UNIBO_CGR_SUGGESTED_SETTINGS 0
-#		enable logging by default in DTNME
-		update_config_file "$CONFIG_FILE" LOG 1
-	fi
-
 	echo
 
 }
 
 if test "$BP_IMPL_NAME" = "ion"
 then
-	mv_unibo_cgr_to_ion "$UNIBO_CGR_DIR" "$BP_IMPL_DIR" "$NO_CONFIG"
+	mv_unibo_cgr_to_ion "$UNIBO_CGR_DIR" "$BP_IMPL_DIR"
 elif test "$BP_IMPL_NAME" = "dtnme"
 then
-	mv_unibo_cgr_to_dtnme "$UNIBO_CGR_DIR" "$BP_IMPL_DIR" "$NO_CONFIG"
+	mv_unibo_cgr_to_dtnme "$UNIBO_CGR_DIR" "$BP_IMPL_DIR"
 else
 	help_fun
 	exit 1

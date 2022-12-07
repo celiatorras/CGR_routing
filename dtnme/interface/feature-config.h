@@ -1,7 +1,12 @@
-/** \file msr_utils.h
+/** \file feature-config.h
  *
- *  \brief  This file provides the declaration of some utility function to manage routes
- *          get from CGRR Extension Block and attach them to CgrBundle struct.
+ *  \brief  This file contains the most important macros to configure Unibo-CGR.
+ *
+ *
+ *  \details You can configure dynamic memory, logging, debugging and other features of Unibo-CGR
+ *           (i.e. SABR enhancements or Moderate Source Routing).
+ *           Unless otherwise specified features are enabled when the corresponding value is set
+ *           to 1 and disabled when set to 0.
  *
  *
  ** \copyright Copyright (c) 2020, Alma Mater Studiorum, University of Bologna, All rights reserved.
@@ -28,32 +33,43 @@
  *          Carlo Caini, carlo.caini@unibo.it
  */
 
-#ifndef CGR_UNIBO_MSR_MSR_UTILS_H_
-#define CGR_UNIBO_MSR_MSR_UTILS_H_
-
-#include <stdlib.h>
-#include <stdint.h>
-
-#include "../library/commonDefines.h"
-#include "../library/list/list.h"
-#include "../contact_plan/contacts/contacts.h"
-#include "../contact_plan/ranges/ranges.h"
-#include "../bundles/bundles.h"
-#include "../cgr/cgr_phases.h"
-#include "msr.h"
-#include "../routes/routes.h"
+#ifndef UNIBO_CGR_FEATURE_CONFIG_H
+#define UNIBO_CGR_FEATURE_CONFIG_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-extern int populate_msr_route(time_t current_time, Contact *finalContact, Route *resultRoute);
-extern Route* create_msr_route();
-extern void delete_msr_route(Route *route);
-extern void reset_msr_route(Route *route);
+/* Enable/disable usage of ContactPlanManager's reference time. Must be 0 in production code. */
+#ifndef UNIBO_CGR_RELATIVE_TIME
+#define UNIBO_CGR_RELATIVE_TIME 1
+#endif
+
+/*
+ * Print Unibo-CGR logs.
+ */
+#ifndef UNIBO_CGR_FEATURE_LOG
+#define UNIBO_CGR_FEATURE_LOG 1
+#endif
+
+/* Enable/disable One Route Per Neighbor algorithm. */
+#ifndef UNIBO_CGR_FEATURE_ONE_ROUTE_PER_NEIGHBOR
+#define UNIBO_CGR_FEATURE_ONE_ROUTE_PER_NEIGHBOR 0
+#endif
+
+/* Set a value (K) > 0 if you want to limit the one route per neighbor algorithm to K neighbors. */
+#ifndef UNIBO_CGR_FEATURE_ONE_ROUTE_PER_NEIGHBOR_LIMIT
+#define UNIBO_CGR_FEATURE_ONE_ROUTE_PER_NEIGHBOR_LIMIT 0
+#endif
+
+/* Enable/disable Queue Delay algorithm. (ETO on all hops) */
+#ifndef UNIBO_CGR_FEATURE_QUEUE_DELAY
+#define UNIBO_CGR_FEATURE_QUEUE_DELAY 0
+#endif
+
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* CGR_UNIBO_MSR_MSR_UTILS_H_ */
+#endif //UNIBO_CGR_FEATURE_CONFIG_H
