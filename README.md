@@ -79,16 +79,15 @@ You should have received a copy of the GNU General Public License along with Uni
 Auxiliary files maintain their original licences.
 
 #### Including Unibo-CGR and its dependencies in DTNME
-The new version of the Unibo-CGR interface for DTNME requires the use of the Contact Plan Manager (CPM) classes provided by the UNIBO-DTNME-CPM project. 
+The new version of the Unibo-CGR interface for DTNME depends on Contact Plan Manager (CPM) classes provided by the UNIBO-DTNME-CPM project. 
 The steps for automatic installation of both Unibo-CGR and Unibo-DTNME-CPM are the following
 - Download Unibo-CGR
-- use the script "fetch_unibo_cgr_dependencies.sh" in the Unibo-CGR directory; launch it without paramaters to print the help. This script will download the files of Unibo-DTNMECPM directly from Gitlab to your Unibo-CGR directory
+- use the script "fetch_unibo_cgr_dependencies.sh" in the Unibo-CGR directory; launch it without paramaters to print the help. This script will download the files of Unibo-DTNME-CPM directly from Gitlab to your Unibo-CGR directory
 - use the script "mv_unibo_cgr.sh"; launch it without paramaters to print the help. This script will copy both Unibo-DTNME-CPM and Unibo-CGR files to DTNME and it will also update the DTNME/servlib Makefile.
-- compile DTNME the usual way 
+- compile and install DTNME the usual way. If DTYNME had already compiled, it could be preferable to enter the "make" command instaed of the DTNME comilation script, to avoid the time consuming process of rebuilding all DTNME components from scratch.
 
 #### Including Unibo-CGR in ION
-Unibo-CGR is already included in recent ION versions. Thus ION users can normally skip this section and go directly to Additional information.
-To install Unibo-CGR on older ION versions or to overwrite an existent installation:
+Unibo-CGR is already included in recent ION versions. However, the user can experience compilation errors on optional extension blocks introduced by Unibo-CGR. It is therefore suggested to install Unibo-CGR files of this repositopry on ION. To this end:
 - download Unibo-CGR
 - use the script mv_unibo_cgr.sh; launch the script without parameters to print the help
 - see Additional information for compilation 
@@ -114,7 +113,7 @@ Unibo-CGR disabled: ./configure
 
 _Use in DTNME_
 
-Support to DTNME contacts and ranges is given by means of Unibo-DTNME-CPM (https://gitlab.com/ccaini/unibo-dtnme); the user is referred to its README for further necessary explanation about contact plan management. At present Unibo-DTNME-CPM (branch developCaini) supports DTNME v1.0.2_Beta.
+Support to DTNME contacts and ranges is given by means of Unibo-DTNME-CPM (https://gitlab.com/ccaini/unibo-dtnme); the user is referred to its README for further necessary explanation about contact plan management. At present Unibo-DTNME-CPM (branch developCaini) supports DTNME v1.2.0_Beta.
 
 _DTNME Limitations_
 
