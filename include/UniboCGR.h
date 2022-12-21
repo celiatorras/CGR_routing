@@ -51,6 +51,7 @@
 #include <inttypes.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <sys/time.h>
 
 #ifdef __cplusplus
