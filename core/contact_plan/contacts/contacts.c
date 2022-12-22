@@ -110,6 +110,23 @@ int ContactSAP_open(UniboCGRSAP* uniboCgrSap)
     return 0;
 }
 
+void ContactSAP_decrease_time(UniboCGRSAP* uniboCgrSap, time_t diff) {
+    Contact *current;
+    RbtNode *node;
+    ContactSAP* contactSap = UniboCGRSAP_get_ContactSAP(uniboCgrSap);
+    contactSap->timeContactToRemove = MAX_POSIX_TIME;
+    for (current = get_first_contact(uniboCgrSap, &node); current != NULL; current = get_next_contact(&node))
+    {
+        current->fromTime -= diff;
+        current->toTime -= diff;
+
+        if (current->toTime < contactSap->timeContactToRemove) {
+            contactSap->timeContactToRemove = current->toTime;
+        }
+    }
+}
+
+
 /******************************************************************************
  *
  * \par Function Name:
@@ -377,6 +394,11 @@ int revise_contact_end_time(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_
         contact->mtv[i] = max_new_mtv;
     }
     contact->toTime = newEndTime;
+
+    struct ContactSAP* contactSap = UniboCGRSAP_get_ContactSAP(uniboCgrSap);
+    if (contact->toTime < contactSap->timeContactToRemove) {
+        contactSap->timeContactToRemove = contact->toTime;
+    }
     return 0;
 }
 
