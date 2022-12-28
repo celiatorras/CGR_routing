@@ -1941,7 +1941,7 @@ extern UniboCGR_Error  UniboCGR_add_moderate_source_routing_hop(UniboCGR uniboCg
 
     // TODO qua manca tipo contatto
 
-    Contact* contact = get_contact(uniboCgrSap, sender, receiver, start_time, NULL);
+    Contact* contact = get_contact(uniboCgrSap, sender, receiver, start_time - uniboCgrSap->reference_time, NULL);
 
     if (!contact) return UniboCGR_ErrorContactNotFound;
 
