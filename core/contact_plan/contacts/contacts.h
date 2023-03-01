@@ -172,6 +172,8 @@ extern int ContactSAP_open(UniboCGRSAP* uniboCgrSap);
 extern void ContactSAP_close(UniboCGRSAP* uniboCgrSap);
 extern void reset_ContactsGraph(UniboCGRSAP* uniboCgrSap);
 
+extern void ContactSAP_decrease_time(UniboCGRSAP* uniboCgrSap, time_t diff);
+
 extern void removeExpiredContacts(UniboCGRSAP* uniboCgrSap);
 extern void remove_contact_from_graph(UniboCGRSAP* uniboCgrSap, time_t fromTime, uint64_t fromNode, uint64_t toNode);
 extern void remove_contact_elt_from_graph(UniboCGRSAP* uniboCgrSap, Contact *elt);

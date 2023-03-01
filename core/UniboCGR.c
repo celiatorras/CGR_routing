@@ -174,7 +174,7 @@ static void* default_malloc_wrapper(const char* file, int line, size_t size) {
 static void default_free_wrapper(const char* file, int line, void* addr) {
     (void) file;
     (void) line;
-    return free(addr);
+    free(addr);
 }
 static malloc_like get_malloc_like_memory_allocator(malloc_like* new_mtake) {
     static malloc_like mtake = default_malloc_wrapper;
@@ -649,6 +649,24 @@ UniboCGR_Error UniboCGR_feature_close(UniboCGR uniboCgr) {
     LogSAP_log_fflush(uniboCgrSap);
     return UniboCGR_NoError;
 }
+UniboCGR_Error UniboCGR_feature_change_reference_time(UniboCGR uniboCgr, time_t new_reference_time) {
+    if (!uniboCgr || new_reference_time < 0) return UniboCGR_ErrorInvalidArgument;
+    UniboCGRSAP* uniboCgrSap = (UniboCGRSAP *) uniboCgr;
+    const time_t diff = new_reference_time- uniboCgrSap->reference_time;
+    const time_t new_current_time = uniboCgrSap->current_time - diff;
+    if (new_current_time < 0) return UniboCGR_ErrorInvalidArgument;
+    UniboCGR_force_update(uniboCgr); // discard all routes
+    uniboCgrSap->current_time = new_current_time;
+    uniboCgrSap->reference_time = new_reference_time;
+    LogSAP_setLogTime(uniboCgrSap, uniboCgrSap->current_time);
+    ContactSAP_decrease_time(uniboCgrSap, diff);
+    RangeSAP_decrease_time(uniboCgrSap, diff);
+    LogSAP_log_contact_plan(uniboCgrSap);
+
+    writeLog(uniboCgrSap, "New reference time (Unix Time): %ld s.", (long int) new_reference_time);
+
+    return UniboCGR_NoError;
+}
 UniboCGR_Error UniboCGR_feature_logger_enable(UniboCGR uniboCgr, const char* log_dir) {
     if (!uniboCgr || !log_dir) return UniboCGR_ErrorInvalidArgument;
 
@@ -665,6 +683,7 @@ UniboCGR_Error UniboCGR_feature_logger_enable(UniboCGR uniboCgr, const char* log
                  UNIBO_CGR_VERSION_PATCH);
         writeLog(uniboCgrSap, "Local node number: %llu.", UniboCGRSAP_get_local_node(uniboCgrSap));
         writeLog(uniboCgrSap, "Reference time (Unix time): %" PRId64" s.", (int64_t) uniboCgrSap->reference_time);
+        LogSAP_log_contact_plan(uniboCgrSap);
         return UniboCGR_NoError;
     } else if (retval == -2) {
         return UniboCgr_ErrorSystem;
@@ -681,6 +700,7 @@ UniboCGR_Error UniboCGR_feature_logger_disable(UniboCGR uniboCgr) {
     UniboCGRSAP* uniboCgrSap = (UniboCGRSAP*) uniboCgr;
     CHECK_EQUAL_SESSION(UniboCGR_Session_feature);
     if (uniboCgrSap->feature_logger) {
+        LogSAP_log_fflush(uniboCgrSap);
         LogSAP_disable(uniboCgrSap);
         uniboCgrSap->feature_logger = false;
     }
@@ -1921,7 +1941,7 @@ extern UniboCGR_Error  UniboCGR_add_moderate_source_routing_hop(UniboCGR uniboCg
 
     // TODO qua manca tipo contatto
 
-    Contact* contact = get_contact(uniboCgrSap, sender, receiver, start_time, NULL);
+    Contact* contact = get_contact(uniboCgrSap, sender, receiver, start_time - uniboCgrSap->reference_time, NULL);
 
     if (!contact) return UniboCGR_ErrorContactNotFound;
 

@@ -413,6 +413,8 @@ extern UniboCGR_Error UniboCGR_routing_close(UniboCGR uniboCgr);
 extern UniboCGR_Error UniboCGR_feature_open(UniboCGR uniboCgr, time_t time);
 extern UniboCGR_Error UniboCGR_feature_close(UniboCGR uniboCgr);
 
+extern UniboCGR_Error UniboCGR_feature_change_reference_time(UniboCGR uniboCgr, time_t new_reference_time);
+
 extern UniboCGR_Error UniboCGR_feature_logger_enable(UniboCGR uniboCgr, const char* log_dir);
 extern UniboCGR_Error UniboCGR_feature_logger_disable(UniboCGR uniboCgr);
 

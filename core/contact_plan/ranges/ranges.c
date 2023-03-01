@@ -280,6 +280,22 @@ int RangeSAP_open(UniboCGRSAP* uniboCgrSap)
 	return 0;
 }
 
+void RangeSAP_decrease_time(UniboCGRSAP* uniboCgrSap, time_t diff) {
+    Range *current;
+    RbtNode *node;
+    RangeSAP* rangeSap = UniboCGRSAP_get_RangeSAP(uniboCgrSap);
+    rangeSap->timeRangeToRemove = MAX_POSIX_TIME;
+    for (current = get_first_range(uniboCgrSap, &node); current != NULL; current = get_next_range(&node))
+    {
+        current->fromTime -= diff;
+        current->toTime -= diff;
+
+        if (current->toTime < rangeSap->timeRangeToRemove) {
+            rangeSap->timeRangeToRemove = current->toTime;
+        }
+    }
+}
+
 /******************************************************************************
  *
  * \par Function Name:
@@ -422,6 +438,11 @@ int revise_range_end_time(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t 
         }
     }
     range->toTime = newEndTime;
+
+    struct RangeSAP* rangeSap = UniboCGRSAP_get_RangeSAP(uniboCgrSap);
+    if (range->toTime < rangeSap->timeRangeToRemove) {
+        rangeSap->timeRangeToRemove = range->toTime;
+    }
     return 0;
 }
 

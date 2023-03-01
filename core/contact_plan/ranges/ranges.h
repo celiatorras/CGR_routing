@@ -73,6 +73,8 @@ extern int RangeSAP_open(UniboCGRSAP* uniboCgrSap);
 extern void RangeSAP_close(UniboCGRSAP* uniboCgrSap);
 extern void reset_RangesGraph(UniboCGRSAP* uniboCgrSap);
 
+extern void RangeSAP_decrease_time(UniboCGRSAP* uniboCgrSap, time_t diff);
+
 extern void removeExpiredRanges(UniboCGRSAP* uniboCgrSap);
 
 extern int add_range_to_graph(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime, time_t toTime, uint64_t owlt);
