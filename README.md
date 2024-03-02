@@ -4,7 +4,8 @@ Modular implementation of CGR/SABR routing algorithm for DTN space networks. It 
 
 Although it is fully compliant with CCSDS standard on SABR, it also contains a series of experimental features that can be optionally enabled or disabled. A comprehensive description can be found in:
 
-C. Caini, G. M. De Cola, L. Persampieri, “Schedule-Aware Bundle Routing: Analysis and Enhancements”, accepted for publication on Wiley International Journal of Satellite Communications and Networking, Sept. 2020. https://doi.org/10.1002/sat.1384
+C. Caini, G. M. De Cola, L. Persampieri, “Schedule-Aware Bundle Routing: Analysis and Enhancements”, International Journal of Satellite Communications and Networking,
+vol. 39, no.3, pp. 237-243, May/June 2021. <https://doi.org/10.1002/sat.1384>
 
 Unibo-CGR has been designed in a modular way, to be independent of the specific bundle protocol implementation in use. It consists of a core module, written in C, and multiple interfaces, one for each BP implementation supported. At present, we have developed two interfaces to ION (one for bpv6 and another for bpv7, as in ION-3.7.2 and 4.0.1), and one for DTNME (DTNME, the NASA MSFC version).
 
