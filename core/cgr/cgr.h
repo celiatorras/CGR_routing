@@ -33,29 +33,16 @@
 
 #include <sys/time.h>
 
+#include "../UniboCGRSAP.h"
 #include "../library/commonDefines.h"
 #include "../library/list/list_type.h"
 #include "../bundles/bundles.h"
 #include "../routes/routes.h"
 
-typedef struct {
-	/**
-	 * \brief Purpose: count the calls to Unibo-CGR. (Currently used just for logging).
-	 */
-	unsigned int count_bundles;
-	/**
-	 * \brief The own ipn node.
-	 */
-	unsigned long long localNode;
-
-	/**
-	 * \brief The last time when the CGR discarded all routes.
-	 */
-	struct timeval cgrEditTime;
-
-
-
-} UniboCgrSAP;
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
 typedef enum {
 	unknown_algorithm = 0,
@@ -63,36 +50,23 @@ typedef enum {
 	msr = 2
 } RoutingAlgorithm;
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
+extern int getBestRoutes(UniboCGRSAP *uniboCgrSap, CgrBundle *bundle, List excludedNeighbors, List *routes);
+extern int UniboCgrCurrentCallSAP_open(UniboCGRSAP *uniboCgrSap);
+extern void UniboCgrCurrentCallSAP_close(UniboCGRSAP *uniboCgrSap);
+extern int64_t get_computed_routes_number(UniboCGRSAP *uniboCgrSap, uint64_t destination);
+extern RoutingAlgorithm get_last_call_routing_algorithm(UniboCGRSAP *uniboCgrSap);
 
-extern int getBestRoutes(time_t time, CgrBundle *bundle, List excludedNeighbors, List *routes);
-extern int initialize_cgr(time_t time, unsigned long long ownNode);
-extern void destroy_cgr(time_t time);
-extern UniboCgrSAP get_unibo_cgr_sap(UniboCgrSAP *newSap);
-extern long unsigned int get_computed_routes_number(unsigned long long destination);
-extern RoutingAlgorithm get_last_call_routing_algorithm();
-
-#if (LOG == 1)
 /**
  * \brief Set the time for the log of the current call and print the call number in the main log file.
  */
-#define start_call_log(time, count_bundles) do { \
-		setLogTime(time); \
-		writeLog("###### CGR: call n. %u ######", count_bundles); \
+#define start_call_log(sap, count_bundles) do { \
+		writeLog(sap, "###### CGR: call n. %" PRIu32 " ######", count_bundles); \
 } while(0)
 
 /**
  * \brief Print the sequence of characters that identify the end of the call.
  */
-#define end_call_log() writeLog("###############################")
-
-#else
-#define start_call_log(time, count_bundles) do {  } while(0)
-#define end_call_log() do {  } while(0)
-#endif
+#define end_call_log(sap) writeLog(sap, "###############################")
 
 #ifdef __cplusplus
 }

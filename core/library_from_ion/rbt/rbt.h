@@ -17,17 +17,17 @@
 #ifndef RBT_H_
 #define RBT_H_
 
-#ifndef RBT_DEBUG
-#define RBT_DEBUG	0
-#endif
+#include "rbt_type.h"
+#include "../../library/commonDefines.h"
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-#include "rbt_type.h"
-#include "../../library/commonDefines.h"
+#ifndef RBT_DEBUG
+#define RBT_DEBUG	0
+#endif
 
 extern Rbt* rbt_create(RbtDeleteFn deleteFn, RbtCompareFn compareFn);
 extern void rbt_clear(Rbt *rbt);
@@ -48,10 +48,8 @@ extern void* rbt_data(RbtNode *node);
 extern void* rbt_user_data(Rbt *rbt);
 extern unsigned long int rbt_length(Rbt *rbt);
 
-#if (LOG == 1)
 typedef int (*print_tree_node)(FILE*, void*);
 extern int printTreeInOrder(Rbt *rbt, FILE *file, print_tree_node print_function);
-#endif
 
 #ifdef __cplusplus
 }

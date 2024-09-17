@@ -31,13 +31,13 @@
 
 #include <dirent.h>
 #include "../../contact_plan/contacts/contacts.h"
-#include "../../contact_plan/nodes/nodes.h"
 #include "../../contact_plan/ranges/ranges.h"
-#include "../../library/list/list.h"
 
-#if (LOG == 1)
-
-typedef struct {
+struct LogSAP {
+    /**
+     * \brief enable/disable logger.
+     */
+    bool enabled;
 	/**
 	 * \brief The main log file.
 	 */
@@ -47,14 +47,9 @@ typedef struct {
 	 */
 	char log_dir[256];
 	/**
-	 * \brief Boolean: '1' if we already checked the existence of the
-	 * log directory, '0' otherwise.
-	 */
-	char log_dir_exists;
-	/**
 	 * \brief Length of the log_dir string. (strlen)
 	 */
-	int len_log_dir;
+	size_t len_log_dir;
 	/**
 	 * \brief The time used by the log files.
 	 */
@@ -67,41 +62,143 @@ typedef struct {
 	 * \brief The buffer used to print the logs in the main log file.
 	 */
 	char buffer[256]; //don't touch the size of the buffer
-} LogSAP;
+};
+
+static int createLogDir(LogSAP* sap, const char* dir_path);
+static int cleanLogDir(LogSAP* sap);
+static int openLogFile(LogSAP* sap);
+static void closeLogFile(LogSAP* sap);
 
 /******************************************************************************
  *
  * \par Function Name:
- * 		get_log_sap
+ *      LogSAP_open
  *
- * \brief Get a reference to LogSAP where are stored all data used to print some logs.
+ * \brief Initialize logger resource. Disabled at default.
  *
  *
  * \par Date Written:
- * 	    02/07/20
+ *      21/10/22
  *
- * \return LogSAP*
+ * \return int
  *
- * \retval  LogSAP*  The struct with log informations
+ * \retval  0 success
+ * \retval -2 syscall error
+ * \retval -3 cannot open log directory
+ * \retval -4 cannot open log file
  *
- * \param[in]   *newSap      If you just want a reference to the SAP set NULL here;
- *                           otherwise set a new LogSAP (the previous one will be overwritten).
+ * \par Revision History:
+ *
+ *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
+ *  -------- | --------------- | -----------------------------------------------
+ *  21/10/22 | L. Persampieri  |  Initial Implementation and documentation.
+ *****************************************************************************/
+int LogSAP_open(UniboCGRSAP *uniboCgrSap) {
+    if (UniboCGRSAP_get_LogSAP(uniboCgrSap)) return 0;
+
+    LogSAP* sap = MWITHDRAW(sizeof(LogSAP));
+    if (!sap) {
+        return -2;
+    }
+    memset(sap, 0, sizeof(LogSAP));
+    sap->lastFlushTime = -1;
+    sap->currentTime = -1;
+    UniboCGRSAP_set_LogSAP(uniboCgrSap, sap);
+    return 0;
+}
+bool LogSAP_is_enabled(UniboCGRSAP *uniboCgrSap) {
+    return UniboCGRSAP_get_LogSAP(uniboCgrSap)->enabled;
+}
+/******************************************************************************
+ *
+ * \par Function Name:
+ *      LogSAP_enable
+ *
+ * \brief Enable logger resource
+ *
+ *
+ * \par Date Written:
+ *      21/10/22
+ *
+ * \param[in] time dir_path  log directory
+ *
+ * \return int
+ *
+ * \retval  0 success
+ * \retval -2 syscall error
+ * \retval -3 cannot open log directory
+ * \retval -4 cannot open log file
+ *
+ * \par Revision History:
+ *
+ *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
+ *  -------- | --------------- | -----------------------------------------------
+ *  21/10/22 | L. Persampieri  |  Initial Implementation and documentation.
+ *****************************************************************************/
+int LogSAP_enable(UniboCGRSAP *uniboCgrSap, const char* dir_path) {
+    LogSAP* sap = UniboCGRSAP_get_LogSAP(uniboCgrSap);
+    sap->enabled = true;
+    int retval;
+    retval = createLogDir(sap, dir_path);
+    if (retval < 0) {
+        LogSAP_close(uniboCgrSap);
+        return -3;
+    }
+    retval = cleanLogDir(sap);
+    if (retval < 0) {
+        LogSAP_close(uniboCgrSap);
+        return retval;
+    }
+    retval = openLogFile(sap);
+    if (retval < 0) {
+        LogSAP_close(uniboCgrSap);
+        return -4;
+    }
+    sap->lastFlushTime = UniboCGRSAP_get_current_time(uniboCgrSap);
+
+    LogSAP_setLogTime(uniboCgrSap, UniboCGRSAP_get_current_time(uniboCgrSap));
+
+    return 0;
+}
+
+void LogSAP_disable(UniboCGRSAP *uniboCgrSap) {
+    LogSAP* sap = UniboCGRSAP_get_LogSAP(uniboCgrSap);
+    if (!sap->enabled) return;
+    sap->enabled = false;
+    sap->currentTime = -1;
+    sap->lastFlushTime = -1;
+    closeLogFile(sap);
+}
+
+/******************************************************************************
+ *
+ * \par Function Name:
+ *      LogSAP_close
+ *
+ * \brief Release logger resource
+ *
+ *
+ * \par Date Written:
+ *      21/10/22
+ *
+ * \return void
  *
  *
  * \par Revision History:
  *
- *  DD/MM/YY | AUTHOR          |  DESCRIPTION
+ *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
  *  -------- | --------------- | -----------------------------------------------
- *  02/07/20 | L. Persampieri  |  Initial Implementation and documentation.
+ *  21/10/22 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static LogSAP * get_log_sap(LogSAP *newSap) {
-	static LogSAP sap;
+void LogSAP_close(UniboCGRSAP *uniboCgrSap) {
+    LogSAP* sap = UniboCGRSAP_get_LogSAP(uniboCgrSap);
+    if (sap) {
+        LogSAP_disable(uniboCgrSap);
 
-	if(newSap != NULL) {
-		sap = *newSap;
-	}
-
-	return &sap;
+        memset(sap, 0, sizeof(LogSAP));
+        MDEPOSIT(sap);
+        UniboCGRSAP_set_LogSAP(uniboCgrSap, NULL);
+    }
 }
 
 /******************************************************************************
@@ -126,24 +223,52 @@ static LogSAP * get_log_sap(LogSAP *newSap) {
  *  -------- | --------------- | -----------------------------------------------
  *  24/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void writeLog(const char *format, ...)
+void LogSAP_writeLog(UniboCGRSAP* uniboCgrSap, const char *format, ...)
 {
 	va_list args;
-	LogSAP *sap = get_log_sap(NULL);
+	LogSAP *sap = UniboCGRSAP_get_LogSAP(uniboCgrSap);
 
 	if (sap->file_log != NULL)
 	{
 		va_start(args, format);
-
-		fprintf(sap->file_log, "%s", sap->buffer); //[            time]:
-		vfprintf(sap->file_log, format, args);
-		fputc('\n', sap->file_log);
-
-		debug_fflush(stdout);
-
+		vwriteLog(uniboCgrSap, format, args);
 		va_end(args);
 	}
-	return;
+}
+
+/******************************************************************************
+ *
+ * \par Function Name:
+ *      vwriteLog
+ *
+ * \brief Write a log line on the main log file
+ *
+ *
+ * \par Date Written:
+ *      24/01/20
+ *
+ * \return void
+ *
+ * \param[in]  *format   Use like a printf function
+ * \param[in]  args      Argument list (like vprintf)
+ *
+ *
+ * \par Revision History:
+ *
+ *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
+ *  -------- | --------------- | -----------------------------------------------
+ *  21/10/22 | L. Persampieri  |  Initial Implementation and documentation.
+ *****************************************************************************/
+void LogSAP_vwriteLog(UniboCGRSAP* uniboCgrSap, const char* format, va_list args)
+{
+    LogSAP* sap = UniboCGRSAP_get_LogSAP(uniboCgrSap);
+    if (!sap->file_log) return;
+
+    fprintf(sap->file_log, "%s", sap->buffer); //[            time]:
+    vfprintf(sap->file_log, format, args);
+    fputc('\n', sap->file_log);
+
+    debug_fflush(stdout);
 }
 
 /******************************************************************************
@@ -168,23 +293,51 @@ void writeLog(const char *format, ...)
  *  -------- | --------------- | -----------------------------------------------
  *  03/04/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void writeLogFlush(const char *format, ...)
+void LogSAP_writeLogFlush(UniboCGRSAP* uniboCgrSap, const char *format, ...)
 {
 	va_list args;
-	LogSAP *sap = get_log_sap(NULL);
+	LogSAP *sap = UniboCGRSAP_get_LogSAP(uniboCgrSap);
 
 	if (sap->file_log != NULL)
 	{
 		va_start(args, format);
-
-		fprintf(sap->file_log, "%s", sap->buffer); //[            time]:
-		vfprintf(sap->file_log, format, args);
-		fputc('\n', sap->file_log);
-		fflush(sap->file_log);
-
+        vwriteLogFlush(uniboCgrSap, format, args);
 		va_end(args);
 	}
-	return;
+}
+
+/******************************************************************************
+ *
+ * \par Function Name:
+ *      vwriteLogFlush
+ *
+ * \brief Write a log line on the main log file and flush the output stream
+ *
+ *
+ * \par Date Written:
+ *      21/10/22
+ *
+ * \return void
+ *
+ * \param[in]  *format   Use like a printf function
+ * \param[in]  args      Argument list (like vprintf())
+ *
+ *
+ * \par Revision History:
+ *
+ *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
+ *  -------- | --------------- | -----------------------------------------------
+ *  21/10/22 | L. Persampieri  |  Initial Implementation and documentation.
+ *****************************************************************************/
+void LogSAP_vwriteLogFlush(UniboCGRSAP* uniboCgrSap, const char *format, va_list args)
+{
+    LogSAP *sap = UniboCGRSAP_get_LogSAP(uniboCgrSap);
+
+    if (sap->file_log != NULL)
+    {
+        vwriteLog(uniboCgrSap, format, args);
+        fflush(sap->file_log);
+    }
 }
 
 
@@ -208,9 +361,9 @@ void writeLogFlush(const char *format, ...)
  *  -------- | --------------- | -----------------------------------------------
  *  11/04/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void log_fflush()
+void LogSAP_log_fflush(UniboCGRSAP* uniboCgrSap)
 {
-	LogSAP *sap = get_log_sap(NULL);
+	LogSAP *sap = UniboCGRSAP_get_LogSAP(uniboCgrSap);
 	if(sap->file_log != NULL)
 	{
 		fflush(sap->file_log);
@@ -234,7 +387,7 @@ void log_fflush()
  * \param[in]  time   	The time that we want to print in the next log lines
  *
  * \par Notes:
- *            1.   Set the first 19 characters of the buffer
+ *            1.   Set the first 24 characters of the buffer
  *                 used to print the log (translated: "[    ...xxxxx...]: "
  *                 where ...xxxxx... is the time)
  *
@@ -244,17 +397,20 @@ void log_fflush()
  *  -------- | --------------- | -----------------------------------------------
  *  24/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void setLogTime(time_t time)
+void LogSAP_setLogTime(UniboCGRSAP* uniboCgrSap, time_t time)
 {
-	LogSAP *sap = get_log_sap(NULL);
+	LogSAP *sap = UniboCGRSAP_get_LogSAP(uniboCgrSap);
+
+    if (!sap->enabled) return;
+
 	if (time != sap->currentTime && time >= 0)
 	{
 		sap->currentTime = time;
-		sprintf(sap->buffer, "[%15ld]: ", (long int) sap->currentTime);
-		//set the first 19 characters of the buffer
+		sprintf(sap->buffer, "[%20ld]: ", (long int) sap->currentTime);
+		//set the first 24 characters of the buffer
 		if(sap->currentTime - sap->lastFlushTime > 5) // After 5 seconds.
 		{
-			log_fflush();
+			log_fflush(uniboCgrSap);
 		}
 	}
 }
@@ -294,7 +450,7 @@ int print_string(FILE *file, char *toPrint)
 
 		result = (result >= 0) ? 0 : -2;
 
-		debug_fflush(stdout);
+		debug_fflush(file);
 	}
 
 	return result;
@@ -305,17 +461,18 @@ int print_string(FILE *file, char *toPrint)
  * \par Function Name:
  *      createLogDir
  *
- * \brief  Create the main directory where the log files will be putted in
+ * \brief  Create the main directory where the log files will be populated
  *
  *
  * \par Date Written:
  *      24/01/20
  *
+ * \param[in] dir_path /path/to/log/directory/
+ *
  * \return int
  *
- * \retval   0   We already called this function and the directory exists
- * \retval   1   Directory created correctly
- * \retval  -1   Error case: the directory cannot be created
+ * \retval   0   success
+ * \retval  -1   Cannot create log directory
  *
  * \par Revision History:
  *
@@ -323,51 +480,21 @@ int print_string(FILE *file, char *toPrint)
  *  -------- | --------------- | -----------------------------------------------
  *  24/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-int createLogDir()
+static int createLogDir(LogSAP* sap, const char* dir_path)
 {
-	/*
-	 * Currently the directory is created under the current directory
-	 * with the name: cgr_log
-	 *
-	 * Relative path: ./cgr_log
-	 */
-	LogSAP *sap = get_log_sap(NULL);
+    memset(sap->log_dir, 0, sizeof(sap->log_dir));
+    strncpy(sap->log_dir, dir_path, sizeof(sap->log_dir) - 2U);
+    int last_char_pos = ((int) strlen(sap->log_dir)) - 1;
+    if (last_char_pos >= 0 && sap->log_dir[last_char_pos] != '/') {
+        strcat(sap->log_dir, "/");
+    }
+    sap->len_log_dir = strlen(sap->log_dir);
 
-	int result = 0;
-//long unsigned int len;
-//char *homedir;
-	if (sap->log_dir_exists != '1')
-	{
-		/*
-		 homedir = getenv("HOME");
-		 if (homedir != NULL)
-		 {
-		 strcpy(log_dir, homedir);
-		 len = strlen(log_dir);
-		 if (len == 0 || (len > 0 && log_dir[len - 1] != '/'))
-		 {
-		 log_dir[len] = '/';
-		 log_dir[len + 1] = '\0';
-		 }
-		 strcat(log_dir, "cgr_log/");
-		 }
-		 */
-		strcpy(sap->log_dir, "./cgr_log/");
-		if (mkdir(sap->log_dir, 0777) != 0 && errno != EEXIST)
-		{
-			perror("Error CGR log dir cannot be created");
-			result = -1;
-			sap->len_log_dir = 0;
-		}
-		else
-		{
-			result = 1;
-			sap->log_dir_exists = '1';
-			sap->len_log_dir = strlen("./cgr_log/");
-		}
-	}
+    if (mkdir(sap->log_dir, 0777) != 0 && errno != EEXIST) {
+        return -1;
+    }
 
-	return result;
+    return 0;
 }
 
 /******************************************************************************
@@ -399,14 +526,14 @@ int createLogDir()
  *  -------- | --------------- | -----------------------------------------------
  *  24/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-FILE* openBundleFile(unsigned int num)
+FILE* openBundleFile(UniboCGRSAP* uniboCgrSap)
 {
 	FILE *file = NULL;
-	LogSAP *sap = get_log_sap(NULL);
+	LogSAP *sap = UniboCGRSAP_get_LogSAP(uniboCgrSap);
 
 	if (sap->len_log_dir > 0)
 	{
-		sprintf(sap->log_dir + sap->len_log_dir, "call_#%u", num);
+		sprintf(sap->log_dir + sap->len_log_dir, "call_#%" PRIu32, UniboCGRSAP_get_bundle_count(uniboCgrSap));
 		file = fopen(sap->log_dir, "w");
 
 		sap->log_dir[sap->len_log_dir] = '\0';
@@ -447,6 +574,11 @@ void closeBundleFile(FILE **file_call)
 	}
 }
 
+static bool starts_with(const char* string, const char* prefix, size_t prefix_len) {
+    if (strlen(string) < prefix_len) return false;
+    return (0 == strncmp(string, prefix, prefix_len));
+}
+
 /******************************************************************************
  *
  * \par Function Name:
@@ -460,10 +592,8 @@ void closeBundleFile(FILE **file_call)
  *
  * \return int
  *
- * \retval   1   Success case
- * \retval   0   If we never called 'createLogDir' or the directory
- *               wasn't created due to an error.
- * \retval  -1   The directory cannot be opened
+ * \retval   0   Success case
+ * \retval  -2   System call error
  *
  * \par Notes:
  * 			1. The only file that will not be deleted is "log.txt"
@@ -474,40 +604,41 @@ void closeBundleFile(FILE **file_call)
  *  -------- | --------------- | -----------------------------------------------
  *  24/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-int cleanLogDir()
+static int cleanLogDir(LogSAP *sap)
 {
-	int result = 0;
 	DIR *dir;
 	struct dirent *file;
-	LogSAP *sap = get_log_sap(NULL);
 
-	if (sap->log_dir_exists == '1')
-	{
-		result = 1;
+    if ((dir = opendir(sap->log_dir)) == NULL) {
+        return -2;
+    }
 
-		sap->len_log_dir = strlen(sap->log_dir);
-		if ((dir = opendir(sap->log_dir)) != NULL)
-		{
-			while ((file = readdir(dir)) != NULL)
-			{
-				if ((strcmp(file->d_name, ".") != 0) && (strcmp(file->d_name, "..") != 0)
-						&& (strcmp(file->d_name, "log.txt") != 0) && file->d_type == DT_REG)
-				{
-					strcpy(sap->log_dir + sap->len_log_dir, file->d_name);
-					remove(sap->log_dir);
-					sap->log_dir[sap->len_log_dir] = '\0';
-				}
-			}
+    sap->len_log_dir = (int) strlen(sap->log_dir);
+    const char* call_prefix = "call_#";
+    const size_t call_prefix_length = strlen(call_prefix);
+    const char* contact_prefix = "contacts.txt";
+    const size_t contact_prefix_length = strlen(contact_prefix);
+    const char* range_prefix = "ranges.txt";
+    const size_t range_prefix_length = strlen(range_prefix);
+    while ((file = readdir(dir)) != NULL)
+    {
+        if (strcmp(file->d_name, ".") == 0) continue;
+        if (strcmp(file->d_name, "..") == 0) continue;
+        if (file->d_type != DT_REG) continue;
+        // remove the file only if the filename starts with prefix
+        if (starts_with(file->d_name, call_prefix, call_prefix_length)
+        || starts_with(file->d_name, contact_prefix, contact_prefix_length)
+        || starts_with(file->d_name, range_prefix, range_prefix_length)) {
+            strcpy(sap->log_dir + sap->len_log_dir, file->d_name);
+            // here sap->log_dir is the full path to the file
+            remove(sap->log_dir);
+            // restore sap->log_dir to full path to directory
+            sap->log_dir[sap->len_log_dir] = '\0';
+        }
+    }
 
-			closedir(dir);
-		}
-		else
-		{
-			result = -1;
-		}
-	}
-
-	return result;
+    closedir(dir);
+	return 0;
 }
 
 /******************************************************************************
@@ -537,38 +668,20 @@ int cleanLogDir()
  *  -------- | --------------- | -----------------------------------------------
  *  24/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-int openLogFile()
+static int openLogFile(LogSAP *sap)
 {
-	int result = 0;
-	long unsigned int len;
-	LogSAP *sap = get_log_sap(NULL);
+    size_t len = sap->len_log_dir;
+    strcat(sap->log_dir, "log.txt");
 
-	if (sap->file_log != NULL)
-	{
-		result = 1;
-	}
-	else if (sap->log_dir_exists == '1')
-	{
-		sap->currentTime = -1;
-		len = strlen(sap->log_dir);
-		strcat(sap->log_dir, "log.txt");
+    sap->file_log = fopen(sap->log_dir, "w");
 
-		sap->file_log = fopen(sap->log_dir, "w");
+    if (sap->file_log == NULL) {
+        return -1;
+    }
 
-		if (sap->file_log == NULL)
-		{
-			perror("Error file ./cgr_log/log.txt cannot be opened");
-			result = -1;
-		}
-		else
-		{
-			result = 1;
-		}
+    sap->log_dir[len] = '\0';
 
-		sap->log_dir[len] = '\0';
-	}
-
-	return result;
+	return 0;
 }
 
 /******************************************************************************
@@ -593,9 +706,8 @@ int openLogFile()
  *  -------- | --------------- | -----------------------------------------------
  *  24/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void closeLogFile()
+void closeLogFile(LogSAP *sap)
 {
-	LogSAP *sap = get_log_sap(NULL);
 	if (sap->file_log != NULL)
 	{
 		fflush(sap->file_log);
@@ -607,9 +719,9 @@ void closeLogFile()
 /******************************************************************************
  *
  * \par Function Name:
- *      printCurrentState
+ *      LogSAP_log_contact_plan
  *
- * \brief  Print all the informations to keep trace of the current state of the graphs
+ * \brief  Print all the information to keep trace of the current state of the graphs
  *
  *
  * \par Date Written:
@@ -626,42 +738,43 @@ void closeLogFile()
  *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
  *  -------- | --------------- | -----------------------------------------------
  *  30/01/20 | L. Persampieri  |  Initial Implementation and documentation.
+ *  21/10/22 | L. Persampieri  |  Renamed function.
  *****************************************************************************/
-void printCurrentState()
+void LogSAP_log_contact_plan(UniboCGRSAP* uniboCgrSap)
 {
-	long unsigned int len = 0;
+	long unsigned int len;
 	FILE * file_contacts, *file_ranges;
-	LogSAP *sap = get_log_sap(NULL);
-	if (sap->log_dir_exists == '1')
-	{
-		len = strlen(sap->log_dir);
-		sap->log_dir[len] = '\0';
-		strcat(sap->log_dir, "contacts.txt");
-		if ((file_contacts = fopen(sap->log_dir, "a")) == NULL)
-		{
-			perror("Error contacts graph's file cannot be opened");
-			return;
-		}
-		sap->log_dir[len] = '\0';
-		strcat(sap->log_dir, "ranges.txt");
-		if ((file_ranges = fopen(sap->log_dir, "a")) == NULL)
-		{
-			perror("Error contacts graph's file cannot be opened");
-			fclose(file_contacts);
-			return;
-		}
-		sap->log_dir[len] = '\0';
+	LogSAP *sap = UniboCGRSAP_get_LogSAP(uniboCgrSap);
 
-		printContactsGraph(file_contacts, sap->currentTime);
-		printRangesGraph(file_ranges, sap->currentTime);
+    if (!sap->enabled) return;
 
-		fflush(file_contacts);
-		fclose(file_contacts);
-		fflush(file_ranges);
-		fclose(file_ranges);
-		file_contacts = NULL;
-		file_ranges = NULL;
-	}
+    len = sap->len_log_dir;
+    sap->log_dir[len] = '\0';
+    strcat(sap->log_dir, "contacts.txt");
+    if ((file_contacts = fopen(sap->log_dir, "w")) == NULL)
+    {
+        perror("Error contacts graph's file cannot be opened");
+        return;
+    }
+    sap->log_dir[len] = '\0';
+    strcat(sap->log_dir, "ranges.txt");
+    if ((file_ranges = fopen(sap->log_dir, "w")) == NULL)
+    {
+        perror("Error contacts graph's file cannot be opened");
+        fclose(file_contacts);
+        return;
+    }
+    sap->log_dir[len] = '\0';
+
+    printContactsGraph(uniboCgrSap, file_contacts);
+    printRangesGraph(uniboCgrSap, file_ranges);
+
+    fflush(file_contacts);
+    fclose(file_contacts);
+    fflush(file_ranges);
+    fclose(file_ranges);
+    file_contacts = NULL;
+    file_ranges = NULL;
 }
 
 /******************************************************************************
@@ -743,5 +856,3 @@ int print_ull_list(FILE *file, List list, char *brief, char *separator)
 
 	return result;
 }
-
-#endif

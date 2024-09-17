@@ -29,13 +29,13 @@
 #ifndef CGR_LIST_H
 #define CGR_LIST_H
 
+#include "list_type.h"
+#include "../commonDefines.h"
+
 #ifdef __cplusplus
 extern "C"
 {
 #endif
-
-#include "list_type.h"
-#include "../commonDefines.h"
 
 extern List list_create(void*, delete_function, compare_function, delete_function);
 extern void sort_list(List);

@@ -14,24 +14,27 @@
 
 #ifndef LIBRARY_CGR_SCALAR
 #define LIBRARY_CGR_SCALAR
-#define	ONE_GIG			(1 << 30)
 
-typedef struct
-{
-	long int gigs;
-	long int units;
-} CgrScalar;
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-extern void loadCgrScalar(CgrScalar*, long int);
-extern void increaseCgrScalar(CgrScalar*, long int);
-extern void reduceCgrScalar(CgrScalar*, long int);
-extern void multiplyCgrScalar(CgrScalar*, long int);
-extern void divideCgrScalar(CgrScalar*, long int);
+#define	ONE_GIG			(1 << 30)
+
+typedef struct
+{
+    int64_t gigs;
+    int64_t units;
+} CgrScalar;
+
+extern void loadCgrScalar(CgrScalar*, int64_t);
+extern void increaseCgrScalar(CgrScalar*, int64_t);
+extern void reduceCgrScalar(CgrScalar*, int64_t);
+extern void multiplyCgrScalar(CgrScalar*, int64_t);
+extern void divideCgrScalar(CgrScalar*, int64_t);
 extern void copyCgrScalar(CgrScalar *to, CgrScalar *from);
 extern void addToCgrScalar(CgrScalar*, CgrScalar*);
 extern void subtractFromCgrScalar(CgrScalar*, CgrScalar*);

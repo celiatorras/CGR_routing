@@ -34,37 +34,15 @@
 
 #include "../../library_from_ion/rbt/rbt.h"
 
-#ifndef ADD_AND_REVISE_RANGE
-/**
- * \brief Boolean: set to 1 if you want to enable the behavior of REVISABLE_RANGE
- *                 even when you call the add_range_to_graph() function. Otherwise set to 0.
- *
- * \details This macro keep the normal behavior of REVISABLE_RANGE,
- *          so if it isn't enabled the range added will not be revised.
- *
- * \par Notes:
- *          1. You can find this macro helpful when you copy the ranges graph from
- *             an interface for a BP implementation.
- *          2. If you read the ranges graph from a file with an instruction "add range"
- *             maybe you prefer to disable this macro and instead add a "revise range" instruction.
- *          3. Just to avoid disambiguity: you can revise a range only if you're adding
- *             a range with the same {fromNode, toNode, fromTime}.
- *
- * \hideinitializer
- */
-#define ADD_AND_REVISE_RANGE 1
-#endif
-
-
 static void erase_range(Range*);
-static Range* create_range(unsigned long long fromNode, unsigned long long toNode, time_t fromTime,
-		time_t toTime, unsigned int owlt);
+static Range* create_range(uint64_t fromNode, uint64_t toNode, time_t fromTime,
+		time_t toTime, uint64_t owlt);
 
 /**
  * \brief This struct is used to keep in one place all the data used by
  *        the range graph library.
  */
-typedef struct {
+struct RangeSAP {
 	/**
 	 * \brief The range graph.
 	 */
@@ -73,42 +51,7 @@ typedef struct {
 	 * \brief The time when the next Range expires.
 	 */
 	time_t timeRangeToRemove;
-} RangeGraphSAP;
-
-
-/******************************************************************************
- *
- * \par Function Name:
- *      get_range_graph_sap
- *
- * \brief Get the reference to RangeGraphSAP struct
- *
- *
- * \par Date Written:
- *      02/07/20
- *
- * \return RangeGraphSAP*
- *
- * \retval  RangeGraphSAP*   The reference to RangeGraphSAP struct
- *
- * \param[in] *newSap     Set to NULL if you just want to get the reference to RangeGraphSAP.
- *                        Otherwise, set != NULL and the RangeGraphSAP will be overwritten.
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  02/07/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-static RangeGraphSAP *get_range_graph_sap(RangeGraphSAP *newSap) {
-	static RangeGraphSAP sap;
-
-	if(newSap != NULL) {
-		sap = *newSap;
-	}
-
-	return &sap;
-}
+};
 
 /******************************************************************************
  *
@@ -279,8 +222,8 @@ void free_range(void *range)
  *  -------- | --------------- | -----------------------------------------------
  *  19/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static Range* create_range(unsigned long long fromNode, unsigned long long toNode, time_t fromTime,
-		time_t toTime, unsigned int owlt)
+static Range* create_range(uint64_t fromNode, uint64_t toNode, time_t fromTime,
+		time_t toTime, uint64_t owlt)
 {
 	Range *range = (Range*) MWITHDRAW(sizeof(Range));
 
@@ -299,7 +242,7 @@ static Range* create_range(unsigned long long fromNode, unsigned long long toNod
 /******************************************************************************
  *
  * \par Function Name:
- *      create_RangesGraph
+ *      RangeSAP_open
  *
  * \brief  Allocate memory for the ranges graph
  *
@@ -309,7 +252,7 @@ static Range* create_range(unsigned long long fromNode, unsigned long long toNod
  *
  * \return int
  *
- * \retval   1  Success case: the ranges graph now exists
+ * \retval   0  Success case: the ranges graph now exists
  * \retval  -2  MWITHDRAW error
  *
  *
@@ -318,27 +261,39 @@ static Range* create_range(unsigned long long fromNode, unsigned long long toNod
  *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
  *  -------- | --------------- | -----------------------------------------------
  *  19/01/20 | L. Persampieri  |  Initial Implementation and documentation.
+ *  21/10/22 | L. Persampieri  |  Renamed function.
  *****************************************************************************/
-int create_RangesGraph()
+int RangeSAP_open(UniboCGRSAP* uniboCgrSap)
 {
-	int result = 1;
-	RangeGraphSAP *sap = get_range_graph_sap(NULL);
+    if (UniboCGRSAP_get_RangeSAP(uniboCgrSap)) return 0;
+    RangeSAP* sap = MWITHDRAW(sizeof(RangeSAP));
+    if (!sap) return -2;
+    UniboCGRSAP_set_RangeSAP(uniboCgrSap, sap);
+    memset(sap, 0, sizeof(RangeSAP));
+    sap->timeRangeToRemove = MAX_POSIX_TIME;
+    sap->ranges = rbt_create(free_range, compare_ranges);
+	if (!sap->ranges) {
+        RangeSAP_close(uniboCgrSap);
+        return -2;
+    }
 
-	if (sap->ranges == NULL)
-	{
-		sap->ranges = rbt_create(free_range, compare_ranges);
+	return 0;
+}
 
-		if (sap->ranges != NULL)
-		{
-			result = 1;
-			sap->timeRangeToRemove = MAX_POSIX_TIME;
-		}
-		else
-		{
-			result = -2;
-		}
-	}
-	return result;
+void RangeSAP_decrease_time(UniboCGRSAP* uniboCgrSap, time_t diff) {
+    Range *current;
+    RbtNode *node;
+    RangeSAP* rangeSap = UniboCGRSAP_get_RangeSAP(uniboCgrSap);
+    rangeSap->timeRangeToRemove = MAX_POSIX_TIME;
+    for (current = get_first_range(uniboCgrSap, &node); current != NULL; current = get_next_range(&node))
+    {
+        current->fromTime -= diff;
+        current->toTime -= diff;
+
+        if (current->toTime < rangeSap->timeRangeToRemove) {
+            rangeSap->timeRangeToRemove = current->toTime;
+        }
+    }
 }
 
 /******************************************************************************
@@ -355,8 +310,6 @@ int create_RangesGraph()
  *
  * \return void
  *
- * \param[in]	time  The time used to know who are the expired ranges.
- *
  * \par Notes:
  *             1.  The timeRangeToRemove will be redefined.
  *
@@ -366,13 +319,16 @@ int create_RangesGraph()
  *  -------- | --------------- | -----------------------------------------------
  *  19/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void removeExpiredRanges(time_t time)
+void removeExpiredRanges(UniboCGRSAP* uniboCgrSap)
 {
 	time_t min = MAX_POSIX_TIME;
 	Range *range;
+    const time_t time = UniboCGRSAP_get_current_time(uniboCgrSap);
 	RbtNode *node, *next;
-	unsigned int tot = 0;
-	RangeGraphSAP *sap = get_range_graph_sap(NULL);
+#if (DEBUG_CGR)
+	uint32_t tot = 0;
+#endif
+	RangeSAP *sap = UniboCGRSAP_get_RangeSAP(uniboCgrSap);
 
 	if (time >= sap->timeRangeToRemove)
 	{
@@ -389,7 +345,9 @@ void removeExpiredRanges(time_t time)
 				if (range->toTime <= time)
 				{
 					rbt_delete(sap->ranges, range);
+#if (DEBUG_CGR)
 					tot++;
+#endif
 				}
 				else if (range->toTime < min)
 				{
@@ -400,13 +358,95 @@ void removeExpiredRanges(time_t time)
 		}
 
 		sap->timeRangeToRemove = min;
-		debug_printf("Removed %u ranges, next remove ranges time: %ld", tot,
+		debug_printf("Removed %" PRIu32 " ranges, next remove ranges time: %ld", tot,
 				(long int ) sap->timeRangeToRemove);
 	}
 
 }
+/**
+ * \brief modify range start time
+ * \retval 0 success
+ * \retval -1 range not found
+ * \retval -2 arguments error
+ * \retval -3 cannot insert overlapping ranges
+ */
+int revise_range_start_time(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime, time_t newFromTime) {
+    RbtNode* range_node;
+    Range *range = get_range(uniboCgrSap, fromNode, toNode, fromTime, &range_node);
+    if (range == NULL) {
+        return -1; // range not found
+    }
+    if (newFromTime > range->toTime) {
+        return -2;
+    }
 
-#if (REVISABLE_RANGE)
+    // note that since we are changing start time we may overlap
+    // only with a range the compares lower than the current range.
+    // so we need only to check if the previous range has the same sender
+    // and receiver and if its end time is greater than the new start time.
+
+    RbtNode* prev_range_node = rbt_prev(range_node);
+    if (!prev_range_node || !prev_range_node->data) {
+        // ok no overlapping
+    } else {
+        Range* prev_range = prev_range_node->data;
+
+        if (prev_range->fromNode == range->fromNode
+            && prev_range->toNode == range->toNode
+            && prev_range->toTime > newFromTime) {
+            // will overlap
+            return -3;
+        }
+    }
+
+    range->fromTime = newFromTime;
+    return 0;
+}
+/**
+ * \brief modify range end time
+ * \retval 0 success
+ * \retval -1 range not found
+ * \retval -2 arguments error
+ * \retval -3 cannot insert overlapping ranges
+ */
+int revise_range_end_time(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime, time_t newEndTime) {
+    RbtNode* range_node;
+    Range *range = get_range(uniboCgrSap, fromNode, toNode, fromTime, &range_node);
+    if (range == NULL) {
+        return -1; // contact not found
+    }
+    if (newEndTime < range->fromTime) {
+        return -2;
+    }
+
+    // note that since we are changing end time we may overlap
+    // only with a range the compares greater than the current range.
+    // so we need only to check if the next range has the same sender
+    // and receiver and if its start time is lower than the new end time.
+
+    RbtNode* next_range_node = rbt_next(range_node);
+    if (!next_range_node || !next_range_node->data) {
+        // ok no overlapping
+    } else {
+        Range* next_range = next_range_node->data;
+
+        if (next_range->fromNode == range->fromNode
+            && next_range->toNode == range->toNode
+            && next_range->fromTime < newEndTime) {
+            // will overlap
+            return -3;
+        }
+    }
+    range->toTime = newEndTime;
+
+    struct RangeSAP* rangeSap = UniboCGRSAP_get_RangeSAP(uniboCgrSap);
+    if (range->toTime < rangeSap->timeRangeToRemove) {
+        rangeSap->timeRangeToRemove = range->toTime;
+    }
+    return 0;
+}
+
+
 /******************************************************************************
  *
  * \par Function Name:
@@ -435,14 +475,14 @@ void removeExpiredRanges(time_t time)
  *  -------- | --------------- | -----------------------------------------------
  *  13/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-int revise_owlt(unsigned long long fromNode, unsigned long long toNode, time_t fromTime, unsigned int owlt)
+int revise_owlt(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime, uint64_t owlt)
 {
 	int result = -2;
 	Range *range = NULL;
 
 	if (fromNode != 0 && toNode != 0 && fromTime >= 0)
 	{
-		range = get_range(fromNode, toNode, fromTime, NULL);
+		range = get_range(uniboCgrSap, fromNode, toNode, fromTime, NULL);
 		result = -1;
 		if(range != NULL)
 		{
@@ -453,7 +493,6 @@ int revise_owlt(unsigned long long fromNode, unsigned long long toNode, time_t f
 
 	return result;
 }
-#endif
 
 /******************************************************************************
  *
@@ -491,13 +530,13 @@ int revise_owlt(unsigned long long fromNode, unsigned long long toNode, time_t f
  *  -------- | --------------- | -----------------------------------------------
  *  19/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-int add_range_to_graph(unsigned long long fromNode, unsigned long long toNode, time_t fromTime,
-		time_t toTime, unsigned int owlt)
+int add_range_to_graph(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime,
+                       time_t toTime, uint64_t owlt)
 {
 	int result, overlapped;
 	Range *range = NULL, *foundRange = NULL;
 	RbtNode *elt = NULL;
-	RangeGraphSAP *sap = get_range_graph_sap(NULL);
+	RangeSAP *sap = UniboCGRSAP_get_RangeSAP(uniboCgrSap);
 
 	result = -1;
 
@@ -514,7 +553,7 @@ int add_range_to_graph(unsigned long long fromNode, unsigned long long toNode, t
 	{
 		result = -1;
 		overlapped = 0;
-		foundRange = get_first_range_from_node_to_node(fromNode, toNode, &elt);
+		foundRange = get_first_range_from_node_to_node(uniboCgrSap, fromNode, toNode, &elt);
 		while (foundRange != NULL)
 		{
 			if (foundRange->fromNode == fromNode && foundRange->toNode == toNode)
@@ -522,15 +561,6 @@ int add_range_to_graph(unsigned long long fromNode, unsigned long long toNode, t
 				if(foundRange->fromTime == fromTime && foundRange->toTime == toTime)
 				{
 					// Range exists in the ranges graph
-#if (REVISABLE_RANGE && ADD_AND_REVISE_RANGE)
-					if(foundRange->owlt != owlt)
-					{
-						foundRange->owlt = owlt;
-						result = 2;
-						// Maybe you want to consider this as rilevant change to contact plan...
-						// (and in my opinion this makes sense)
-					}
-#endif
 					overlapped = 1;
 					foundRange = NULL; //I leave the loop
 				}
@@ -567,7 +597,7 @@ int add_range_to_graph(unsigned long long fromNode, unsigned long long toNode, t
 
 			result = ((elt != NULL) ? 1 : -2);
 
-			if (result == 0)
+			if (result == -2)
 			{
 				free_range(range);
 			}
@@ -579,62 +609,6 @@ int add_range_to_graph(unsigned long long fromNode, unsigned long long toNode, t
 	}
 
 	return result;
-}
-
-/******************************************************************************
- *
- * \par Function Name:
- *      removeAllRanges
- *
- * \brief  Remove all ranges with the fields {fromNode, toNode} passed as arguments.
- *
- *
- * \par Date Written:
- *      19/01/20
- *
- * \return void
- *
- * \param[in]	fromNode   The ipn node number of the sender node
- * \param[in]	toNode     The ipn node number of the receiver node
- *
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  19/01/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-static void removeAllRanges(unsigned long long fromNode, unsigned long long toNode)
-{
-	Range *current;
-	RbtNode *node;
-	RangeGraphSAP *sap = get_range_graph_sap(NULL);
-
-	current = get_first_range_from_node_to_node(fromNode, toNode, &node);
-
-	while (current != NULL)
-	{
-		node = rbt_next(node);
-		rbt_delete(sap->ranges, current);
-		if (node != NULL)
-		{
-			current = (Range*) node->data;
-		}
-		else
-		{
-			current = NULL;
-		}
-
-		if (current != NULL)
-		{
-			if ((current->fromNode != fromNode || current->toNode != toNode))
-			{
-				current = NULL;
-			}
-		}
-	}
-
-	return;
 }
 
 /******************************************************************************
@@ -660,15 +634,13 @@ static void removeAllRanges(unsigned long long fromNode, unsigned long long toNo
  *  -------- | --------------- | -----------------------------------------------
  *  19/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void remove_range_elt_from_graph(Range *range)
+void remove_range_elt_from_graph(UniboCGRSAP* uniboCgrSap, Range *range)
 {
-	RangeGraphSAP *sap = get_range_graph_sap(NULL);
+	RangeSAP *sap = UniboCGRSAP_get_RangeSAP(uniboCgrSap);
 	if (range != NULL)
 	{
 		rbt_delete(sap->ranges, range);
 	}
-
-	return;
 }
 
 /******************************************************************************
@@ -697,27 +669,17 @@ void remove_range_elt_from_graph(Range *range)
  *  -------- | --------------- | -----------------------------------------------
  *  19/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void remove_range_from_graph(time_t *fromTime, unsigned long long fromNode,
-		unsigned long long toNode)
+void remove_range_from_graph(UniboCGRSAP* uniboCgrSap, time_t fromTime, uint64_t fromNode, uint64_t toNode)
 {
 	Range arg;
-	RangeGraphSAP *sap = get_range_graph_sap(NULL);
+	RangeSAP *sap = UniboCGRSAP_get_RangeSAP(uniboCgrSap);
 
-	if (fromTime != NULL)
-	{
-		arg.fromNode = fromNode;
-		arg.toNode = toNode;
-		arg.fromTime = *fromTime;
-		arg.toTime = 0; //compare function doesn't use it
-		arg.owlt = 0; //compare function doesn't use it
-		rbt_delete(sap->ranges, &arg);
-	}
-	else
-	{
-		removeAllRanges(fromNode, toNode);
-	}
-
-	return;
+    arg.fromNode = fromNode;
+    arg.toNode = toNode;
+    arg.fromTime = fromTime;
+    arg.toTime = 0; //compare function doesn't use it
+    arg.owlt = 0; //compare function doesn't use it
+    rbt_delete(sap->ranges, &arg);
 }
 
 /******************************************************************************
@@ -740,9 +702,9 @@ void remove_range_from_graph(time_t *fromTime, unsigned long long fromNode,
  *  -------- | --------------- | -----------------------------------------------
  *  19/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void reset_RangesGraph()
+void reset_RangesGraph(UniboCGRSAP* uniboCgrSap)
 {
-	RangeGraphSAP *sap = get_range_graph_sap(NULL);
+	RangeSAP *sap = UniboCGRSAP_get_RangeSAP(uniboCgrSap);
 	rbt_clear(sap->ranges);
 	sap->timeRangeToRemove = MAX_POSIX_TIME;
 }
@@ -750,7 +712,7 @@ void reset_RangesGraph()
 /******************************************************************************
  *
  * \par Function Name:
- *      destroy_RangesGraph
+ *      RangeSAP_close
  *
  * \brief  Remove all ranges from the ranges graph, and the graph itself.
  *
@@ -766,13 +728,18 @@ void reset_RangesGraph()
  *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
  *  -------- | --------------- | -----------------------------------------------
  *  19/01/20 | L. Persampieri  |  Initial Implementation and documentation.
+ *  21/10/22 | L. Persampieri  |  Renamed function
  *****************************************************************************/
-void destroy_RangesGraph()
+void RangeSAP_close(UniboCGRSAP* uniboCgrSap)
 {
-	RangeGraphSAP *sap = get_range_graph_sap(NULL);
+    if (!UniboCGRSAP_get_RangeSAP(uniboCgrSap)) return;
+
+	RangeSAP *sap = UniboCGRSAP_get_RangeSAP(uniboCgrSap);
 	rbt_destroy(sap->ranges);
-	sap->ranges = NULL;
-	sap->timeRangeToRemove = MAX_POSIX_TIME;
+
+    memset(sap, 0, sizeof(RangeSAP));
+    MDEPOSIT(sap);
+    UniboCGRSAP_set_RangeSAP(uniboCgrSap, NULL);
 }
 
 /*
@@ -811,12 +778,12 @@ void destroy_RangesGraph()
  *  -------- | --------------- | -----------------------------------------------
  *  19/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-Range* get_range(unsigned long long fromNode, unsigned long long toNode, time_t fromTime,
-		RbtNode **node)
+Range* get_range(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t fromTime,
+                 RbtNode **node)
 {
 	Range arg, *result;
 	RbtNode *elt;
-	RangeGraphSAP *sap = get_range_graph_sap(NULL);
+	RangeSAP *sap = UniboCGRSAP_get_RangeSAP(uniboCgrSap);
 
 	result = NULL;
 	if (fromNode != 0 && toNode != 0 && fromTime >= 0)
@@ -873,11 +840,11 @@ Range* get_range(unsigned long long fromNode, unsigned long long toNode, time_t 
  *  -------- | --------------- | -----------------------------------------------
  *  19/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-Range* get_first_range(RbtNode **node)
+Range* get_first_range(UniboCGRSAP* uniboCgrSap, RbtNode **node)
 {
 	Range *result = NULL;
 	RbtNode *currentRange = NULL;
-	RangeGraphSAP *sap = get_range_graph_sap(NULL);
+	RangeSAP *sap = UniboCGRSAP_get_RangeSAP(uniboCgrSap);
 
 	currentRange = rbt_first(sap->ranges);
 	if (currentRange != NULL)
@@ -923,11 +890,11 @@ Range* get_first_range(RbtNode **node)
  *  -------- | --------------- | -----------------------------------------------
  *  19/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-Range* get_first_range_from_node(unsigned long long fromNodeNbr, RbtNode **node)
+Range* get_first_range_from_node(UniboCGRSAP* uniboCgrSap, uint64_t fromNodeNbr, RbtNode **node)
 {
 	Range arg, *result = NULL;
 	RbtNode *currentRange;
-	RangeGraphSAP *sap = get_range_graph_sap(NULL);
+	RangeSAP *sap = UniboCGRSAP_get_RangeSAP(uniboCgrSap);
 
 	arg.fromNode = fromNodeNbr;
 	arg.toNode = 0;
@@ -985,13 +952,12 @@ Range* get_first_range_from_node(unsigned long long fromNodeNbr, RbtNode **node)
  *  -------- | --------------- | -----------------------------------------------
  *  19/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-Range* get_first_range_from_node_to_node(unsigned long long fromNodeNbr,
-		unsigned long long toNodeNbr, RbtNode **node)
+Range* get_first_range_from_node_to_node(UniboCGRSAP* uniboCgrSap, uint64_t fromNodeNbr, uint64_t toNodeNbr, RbtNode **node)
 {
 	Range arg;
 	Range *result = NULL;
 	RbtNode *currentRange = NULL;
-	RangeGraphSAP *sap = get_range_graph_sap(NULL);
+	RangeSAP *sap = UniboCGRSAP_get_RangeSAP(uniboCgrSap);
 
 	arg.fromNode = fromNodeNbr;
 	arg.toNode = toNodeNbr;
@@ -1144,8 +1110,7 @@ Range* get_prev_range(RbtNode **node)
  *  -------- | --------------- | -----------------------------------------------
  *  19/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-int get_applicable_range(unsigned long long fromNode, unsigned long long toNode, time_t targetTime,
-		unsigned int *owltResult)
+int get_applicable_range(UniboCGRSAP* uniboCgrSap, uint64_t fromNode, uint64_t toNode, time_t targetTime, uint64_t *owltResult)
 {
 	RbtNode *temp = NULL;
 	int result = -1;
@@ -1153,7 +1118,7 @@ int get_applicable_range(unsigned long long fromNode, unsigned long long toNode,
 
 	if (owltResult != NULL)
 	{
-		current = get_first_range_from_node_to_node(fromNode, toNode, &temp);
+		current = get_first_range_from_node_to_node(uniboCgrSap, fromNode, toNode, &temp);
 
 		while (current != NULL)
 		{
@@ -1187,8 +1152,6 @@ int get_applicable_range(unsigned long long fromNode, unsigned long long toNode,
 
 	return result;
 }
-
-#if (LOG == 1)
 
 /******************************************************************************
  *
@@ -1227,7 +1190,7 @@ static int printRange(FILE *file, void *data)
 	{
 		result = 0;
 		range = (Range*) data;
-		fprintf(file, "%-15llu %-15llu %-15ld %-15ld %u\n", range->fromNode, range->toNode,
+		fprintf(file, "%-15" PRIu64 " %-15" PRIu64 " %-15ld %-15ld %" PRIu64 "\n", range->fromNode, range->toNode,
 				(long int) range->fromTime, (long int) range->toTime, range->owlt);
 	}
 	else
@@ -1265,17 +1228,17 @@ static int printRange(FILE *file, void *data)
  *  -------- | --------------- | -----------------------------------------------
  *  19/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-int printRangesGraph(FILE *file, time_t currentTime)
+int printRangesGraph(UniboCGRSAP* uniboCgrSap, FILE *file)
 {
 	int result = 0;
-	RangeGraphSAP *sap = get_range_graph_sap(NULL);
+	RangeSAP *sap = UniboCGRSAP_get_RangeSAP(uniboCgrSap);
 
 	if (file != NULL)
 	{
 		result = 1;
 		fprintf(file, "\n---------------------------- RANGES GRAPH ----------------------------\n");
 
-		fprintf(file, "Time: %ld\n%-15s %-15s %-15s %-15s %s\n", (long int) currentTime, "FromNode",
+		fprintf(file, "Time: %ld\n%-15s %-15s %-15s %-15s %s\n", (long int) UniboCGRSAP_get_current_time(uniboCgrSap), "FromNode",
 				"ToNode", "FromTime", "ToTime", "OWLT");
 		result = printTreeInOrder(sap->ranges, file, printRange);
 
@@ -1293,5 +1256,3 @@ int printRangesGraph(FILE *file, time_t currentTime)
 
 	return result;
 }
-
-#endif

@@ -32,8 +32,14 @@
 #define CORE_TIME_ANALYSIS_TIME_H_
 
 #include "../config.h"
+#include "../UniboCGRSAP.h"
 #include "../library/commonDefines.h"
 #include "../bundles/bundles.h"
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
 typedef enum {
 	phaseOne = 1,
@@ -41,59 +47,54 @@ typedef enum {
 	phaseThree = 3
 } UniboCgrPhase;
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
 #if (TIME_ANALYSIS_ENABLED)
 
-extern void initialize_time_analysis();
-extern void destroy_time_analysis();
-extern void print_time_results(time_t currentTime, unsigned int callNumber, CgrBundleID *id);
+extern int TimeAnalysisSAP_open(UniboCGRSAP* uniboCgrSap);
+extern void TimeAnalysisSAP_close(UniboCGRSAP* uniboCgrSap);
+extern void print_time_results(UniboCGRSAP* uniboCgrSap, time_t currentTime, unsigned int callNumber, CgrBundleID *id);
 
 #else
 
-#define initialize_time_analysis() do {  } while(0)
-#define destroy_time_analysis() do {  } while(0)
-#define print_time_results(currentTime, callNumber, id) do {  } while(0)
+#define TimeAnalysisSAP_open(uniboCgrSap) 0
+#define TimeAnalysisSAP_close(uniboCgrSap) do {  } while(0)
+#define print_time_results(uniboCgrSap, currentTime, callNumber, id) do {  } while(0)
 
 #endif
 
 
 #if (COMPUTE_TOTAL_CORE_TIME)
 
-extern void record_total_core_start_time();
-extern void record_total_core_stop_time();
+extern void record_total_core_start_time(UniboCGRSAP* uniboCgrSap);
+extern void record_total_core_stop_time(UniboCGRSAP* uniboCgrSap);
 
 #else
 
-#define record_total_core_start_time() do {  } while(0)
-#define record_total_core_stop_time() do {  } while(0)
+#define record_total_core_start_time(uniboCgrSap) do {  } while(0)
+#define record_total_core_stop_time(uniboCgrSap) do {  } while(0)
 
 #endif
 
 #if (COMPUTE_TOTAL_INTERFACE_TIME)
 
-extern void record_total_interface_start_time();
-extern void record_total_interface_stop_time();
+extern void record_total_interface_start_time(UniboCGRSAP* uniboCgrSap);
+extern void record_total_interface_stop_time(UniboCGRSAP* uniboCgrSap);
 
 #else
 
-#define record_total_interface_start_time() do {  } while(0)
-#define record_total_interface_stop_time() do {  } while(0)
+#define record_total_interface_start_time(uniboCgrSap) do {  } while(0)
+#define record_total_interface_stop_time(uniboCgrSap) do {  } while(0)
 
 #endif
 
 #if (COMPUTE_PHASES_TIME)
 
-extern void record_phases_start_time(UniboCgrPhase phase);
-extern void record_phases_stop_time(UniboCgrPhase phase);
+extern void record_phases_start_time(UniboCGRSAP* uniboCgrSap, UniboCgrPhase phase);
+extern void record_phases_stop_time(UniboCGRSAP* uniboCgrSap, UniboCgrPhase phase);
 
 #else
 
-#define record_phases_start_time(phase) do {  } while(0)
-#define record_phases_stop_time(phase) do {  } while(0)
+#define record_phases_start_time(uniboCgrSap, phase) do {  } while(0)
+#define record_phases_stop_time(uniboCgrSap, phase) do {  } while(0)
 
 #endif
 

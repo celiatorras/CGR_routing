@@ -117,8 +117,6 @@ static void remove_citation(Contact *contact, ListElt *target)
 	{
 		flush_verbose_debug_printf("Error!!!");
 	}
-
-	return;
 }
 
 /******************************************************************************
@@ -152,8 +150,6 @@ static void remove_reference_from_son(void *data)
 		son = data;
 		son->citationToFather = NULL;
 	}
-
-	return;
 }
 
 /******************************************************************************
@@ -178,7 +174,7 @@ static void remove_reference_from_son(void *data)
  * 			2. The father of this route at the end will not see anymore this route in the children list.
  * 			3. The selectedFather of this route at the end will acquire as selectedChild the selectedChild of this route.
  *			4. The selectedChild of this route at the end will acquire as selectedFather the selectedFather of this route.
- *			5. If this route has a selectedChild field setted to NULL we set to 0 the spursComputed field
+ *			5. If this route has a selectedChild field set to NULL we set to 0 the spursComputed field
  *			   of the selectedFather.
  *
  * \par Revision History:
@@ -213,8 +209,6 @@ static void update_references(Route *route)
 	{
 		list_remove_elt(route->citationToFather);
 	}
-
-	return;
 }
 
 /******************************************************************************
@@ -346,8 +340,6 @@ void clear_routes_list(List routes)
 		routes->last = NULL;
 		routes->length = 0;
 	}
-
-	return;
 }
 /******************************************************************************
  *
@@ -379,8 +371,6 @@ void destroy_routes_list(List routes)
 {
 	clear_routes_list(routes);
 	MDEPOSIT(routes);
-
-	return;
 }
 
 /******************************************************************************

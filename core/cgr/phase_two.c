@@ -49,7 +49,7 @@
 /**
  * \brief Used to keep in one place all the data used by phase two.
  */
-typedef struct {
+struct PhaseTwoSAP {
 	/**
 	 * \brief The candidate routes list.
 	 */
@@ -68,60 +68,24 @@ typedef struct {
 	/**
 	 * \brief The number of neighbors found during the current call.
 	 */
-	long unsigned int neighborsFound;
+	uint32_t neighborsFound;
 	/**
 	 * \brief The "max neighbors number" computed during the previous
 	 *        iteration in phase two during the current call to CGR.
-	 *        Resetted to 0 at each call to CGR.
+	 *        Reset to 0 at each call to CGR.
 	 */
-	long unsigned int last_max_neighbors_number;
-} PhaseTwoSAP;
+	uint32_t last_max_neighbors_number;
+};
 
 typedef enum {
 	DiscardedRoute = 0,
 	CandidateRoute = 1
 } PhaseTwoRouteFlag;
 
-
 /******************************************************************************
  *
  * \par Function Name:
- * 		get_current_call_sap
- *
- * \brief Get the PhaseTwoSAP with all the values used by phase two during the current call
- *
- *
- * \par Date Written:
- * 	    02/07/20
- *
- * \return PhaseTwoSAP*
- *
- * \retval  PhaseTwoSAP*     The struct with all the values used by phase two during the current call
- *
- * \param[in]   *newSap      If you just want a reference to the SAP set NULL here;
- *                           otherwise set != NULL (the previous one will be overwritten).
- *
- *
- * \par Revision History:
- *
- *  DD/MM/YY | AUTHOR          |  DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  02/07/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-static PhaseTwoSAP *get_phase_two_sap(PhaseTwoSAP * newSap) {
-	static PhaseTwoSAP sap;
-
-	if(newSap != NULL) {
-		sap = *newSap;
-	}
-
-	return &sap;
-}
-
-/******************************************************************************
- *
- * \par Function Name:
- * 		initialize_phase_two
+ * 		PhaseTwoSAP_open
  *
  * \brief Initialize the data used by the phase two.
  *
@@ -131,7 +95,7 @@ static PhaseTwoSAP *get_phase_two_sap(PhaseTwoSAP * newSap) {
  *
  * \return int
  *
- * \retval   1   Success case: phase two initialized
+ * \retval   0   Success case: phase two initialized
  * \retval  -2   MWITHDRAW error
  *
  *
@@ -141,46 +105,37 @@ static PhaseTwoSAP *get_phase_two_sap(PhaseTwoSAP * newSap) {
  *  DD/MM/YY | AUTHOR          |  DESCRIPTION
  *  -------- | --------------- | -----------------------------------------------
  *  06/02/20 | L. Persampieri  |  Initial Implementation and documentation.
+ *  21/10/22 | L. Persampieri  |  Renamed function
  *****************************************************************************/
-int initialize_phase_two()
+int PhaseTwoSAP_open(UniboCGRSAP* uniboCgrSap)
 {
-	int result = 1;
-	PhaseTwoSAP *sap = get_phase_two_sap(NULL);
-	if (sap->routes == NULL)
-	{
-		sap->routes = list_create(NULL, NULL, NULL, NULL);
-	}
-	if(sap->subset == NULL)
-	{
-		sap->subset = list_create(NULL, NULL, NULL, NULL);
-	}
-	if(sap->suppressedNeighbors == NULL)
-	{
-		sap->suppressedNeighbors = list_create(NULL, NULL, NULL, NULL);
-	}
+    if (UniboCGRSAP_get_PhaseTwoSAP(uniboCgrSap)) return 0; // already initialized
+    PhaseTwoSAP* sap = MWITHDRAW(sizeof(PhaseTwoSAP));
+    if (!sap) {
+        return -2;
+    }
+    UniboCGRSAP_set_PhaseTwoSAP(uniboCgrSap, sap);
+    memset(sap, 0, sizeof(PhaseTwoSAP));
+    sap->routes = list_create(NULL, NULL, NULL, NULL);
+    sap->subset = list_create(NULL, NULL, NULL, NULL);
+    sap->suppressedNeighbors = list_create(NULL, NULL, NULL, NULL);
 
-	sap->neighborsFound = 0;
-	sap->last_max_neighbors_number = 0;
-
-	if (sap->routes == NULL || sap->subset == NULL || sap->suppressedNeighbors == NULL)
-	{
-		result = -2;
-		destroy_phase_two();
-	}
-	else
-	{
+	if (!sap->routes || !sap->subset || !sap->suppressedNeighbors) {
+		PhaseTwoSAP_close(uniboCgrSap);
+        return -2;
+	} else {
 		free_list_elts(sap->routes);
 		free_list_elts(sap->subset);
 		free_list_elts(sap->suppressedNeighbors);
 	}
 
-	return result;
+	return 0;
 }
 
 /******************************************************************************
  *
  * \par Function Name:
- * 		destroy_phase_two
+ * 		PhaseTwoSAP_close
  *
  * \brief Deallocate all the memory allocated by the phase two.
  *
@@ -197,21 +152,23 @@ int initialize_phase_two()
  *  DD/MM/YY | AUTHOR          |  DESCRIPTION
  *  -------- | --------------- | -----------------------------------------------
  *  06/02/20 | L. Persampieri  |  Initial Implementation and documentation.
+ *  21/10/22 | L. Persampieri  |  Renamed function
  *****************************************************************************/
-void destroy_phase_two()
+void PhaseTwoSAP_close(UniboCGRSAP* uniboCgrSap)
 {
-	PhaseTwoSAP *sap = get_phase_two_sap(NULL);
+	PhaseTwoSAP *sap = UniboCGRSAP_get_PhaseTwoSAP(uniboCgrSap);
+
+    if (!sap) {
+        return;
+    }
 
 	free_list(sap->routes);
 	free_list(sap->subset);
 	free_list(sap->suppressedNeighbors);
-	sap->suppressedNeighbors = NULL;
-	sap->routes = NULL;
-	sap->subset = NULL;
-	sap->neighborsFound = 0;
-	sap->last_max_neighbors_number = 0;
+    memset(sap, 0, sizeof(PhaseTwoSAP));
 
-	return;
+    MDEPOSIT(sap);
+    UniboCGRSAP_set_PhaseTwoSAP(uniboCgrSap, NULL);
 }
 
 /******************************************************************************
@@ -235,17 +192,15 @@ void destroy_phase_two()
  *  -------- | --------------- | -----------------------------------------------
  *  06/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void reset_phase_two()
+void reset_phase_two(UniboCGRSAP* uniboCgrSap)
 {
-	PhaseTwoSAP *sap = get_phase_two_sap(NULL);
+	PhaseTwoSAP *sap = UniboCGRSAP_get_PhaseTwoSAP(uniboCgrSap);
 
 	sap->neighborsFound = 0;
 	sap->last_max_neighbors_number = 0;
 	free_list_elts(sap->routes);
 	free_list_elts(sap->subset);
 	free_list_elts(sap->suppressedNeighbors);
-
-	return;
 }
 
 /******************************************************************************
@@ -276,9 +231,9 @@ void reset_phase_two()
  *  -------- | --------------- | -----------------------------------------------
  *  06/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int isExcluded(unsigned long long target, List excludedNeighbors)
+static int isExcluded(uint64_t target, List excludedNeighbors)
 {
-	unsigned long long *current;
+	uint64_t *current;
 	ListElt *elt;
 	int result = 0;
 
@@ -286,7 +241,7 @@ static int isExcluded(unsigned long long target, List excludedNeighbors)
 	{
 		if (elt->data != NULL)
 		{
-			current = (unsigned long long*) elt->data;
+			current = (uint64_t*) elt->data;
 
 			if (*current == target)
 			{
@@ -328,7 +283,7 @@ static int isExcluded(unsigned long long target, List excludedNeighbors)
  *  -------- | --------------- | -----------------------------------------------
  *  13/05/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-int reached_neighbors_limit(long unsigned int neighborsFound, long unsigned int suppressedFound, long unsigned int neighborsLimit, long unsigned int maxNeighborsNumber)
+int reached_neighbors_limit(uint64_t neighborsFound, uint64_t suppressedFound, uint64_t neighborsLimit, uint64_t maxNeighborsNumber)
 {
 	int result = 0;
 
@@ -398,13 +353,13 @@ int reached_neighbors_limit(long unsigned int neighborsFound, long unsigned int 
  *  -------- | --------------- | -----------------------------------------------
  *  06/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int computeResidualBacklog(unsigned long regionNbr, time_t current_time, unsigned long long localNode, Route *route, CgrScalar *allotment, CgrScalar *volume,
-		CgrScalar *residualBacklog)
+static int computeResidualBacklog(UniboCGRSAP* uniboCgrSap, time_t current_time, uint64_t localNode, Route *route, CgrScalar *allotment, CgrScalar *volume,
+                                  CgrScalar *residualBacklog)
 {
 	int result = -1;
 	Contact *contact;
 	RbtNode *rbt_node;
-	unsigned long long neighbor = route->neighbor;
+	uint64_t neighbor = route->neighbor;
 	time_t startTime, endTime, applicableDuration;
 	CgrScalar applicableBacklogRelief;
 
@@ -412,7 +367,7 @@ static int computeResidualBacklog(unsigned long regionNbr, time_t current_time, 
 	loadCgrScalar(volume, 0);
 	loadCgrScalar(&applicableBacklogRelief, 0);
 
-	for (contact = get_first_contact_from_node_to_node(regionNbr, localNode, neighbor, &rbt_node);
+	for (contact = get_first_contact_from_node_to_node(uniboCgrSap, localNode, neighbor, &rbt_node);
 			contact != NULL; contact = get_next_contact(&rbt_node))
 	{
 		if (contact->fromNode != localNode || contact->toNode != neighbor
@@ -554,7 +509,7 @@ static int computeEffectiveVolumeLimit(Contact *contact, Priority priority,
 	else
 	{
 		*effectiveVolumeLimit =
-				(double) ((long unsigned int) effectiveDuration * contact->xmitRate);
+				(double) ((uint64_t) effectiveDuration * contact->xmitRate);
 		if (contact->mtv[priority] < *effectiveVolumeLimit)
 		{
 			*effectiveVolumeLimit = contact->mtv[priority];
@@ -611,21 +566,19 @@ static int computeEffectiveVolumeLimit(Contact *contact, Priority priority,
  *  -------- | --------------- | -----------------------------------------------
  *  06/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int computeExpectedBundleDeliveryTime(time_t current_time, CgrBundle *bundle, Route *route,
-		CgrScalar *residualBacklog, time_t *lastByteArrivalTime)
+static int computeExpectedBundleDeliveryTime(UniboCGRSAP* uniboCgrSap, time_t current_time, CgrBundle *bundle, Route *route,
+                                             CgrScalar *residualBacklog, time_t *lastByteArrivalTime)
 {
 	int result = -1, viableRoute;
-	unsigned int owlt, owltMargin, owltSum = 0;
+	uint64_t owlt, owltMargin, owltSum = 0;
 	CgrScalar applicableRadiationLatency;
 	time_t firstByteTransmitTime, lastByteTransmitTime, startTime, arrivalTime;
 	double effectiveVolumeLimit;
 	Contact *contact, *nextContact;
 	ListElt *elt, *nextElt;
 	Priority priority;
-#if (QUEUE_DELAY == 1)
 	double nominalContactVolume;
 	time_t queueDelay;
-#endif
 
 	priority = bundle->priority_level;
 	elt = route->hops->first;
@@ -677,7 +630,7 @@ static int computeExpectedBundleDeliveryTime(time_t current_time, CgrBundle *bun
 			{
 				viableRoute = 0;
 			}
-			else if (get_applicable_range(contact->fromNode, contact->toNode, firstByteTransmitTime,
+			else if (get_applicable_range(uniboCgrSap, contact->fromNode, contact->toNode, firstByteTransmitTime,
 					&owlt) < 0)
 			{
 				viableRoute = 0;
@@ -685,7 +638,7 @@ static int computeExpectedBundleDeliveryTime(time_t current_time, CgrBundle *bun
 			else
 			{
 				owltMargin = ((MAX_SPEED_MPH / 3600) * owlt) / 186282;
-				*lastByteArrivalTime = lastByteTransmitTime + owlt + owltMargin; //SABR 3.2.6.6
+				*lastByteArrivalTime = (time_t) ((uint64_t) lastByteTransmitTime + owlt + owltMargin); //SABR 3.2.6.6
 
 				//update phase one value: owltSum
 				owltSum += owlt + owltMargin;
@@ -693,11 +646,11 @@ static int computeExpectedBundleDeliveryTime(time_t current_time, CgrBundle *bun
 				//update phase one value: arrivalTime
 				if (arrivalTime > contact->fromTime)
 				{
-					arrivalTime += owlt + owltMargin;
+					arrivalTime += (time_t) (owlt + owltMargin);
 				}
 				else
 				{
-					arrivalTime = contact->fromTime + owlt + owltMargin;
+					arrivalTime = (time_t)((uint64_t) contact->fromTime + owlt + owltMargin);
 				}
 
 				if (contact->mtv[priority] <= 0.0) // SABR 3.2.6.8.11
@@ -711,7 +664,7 @@ static int computeExpectedBundleDeliveryTime(time_t current_time, CgrBundle *bun
 					{
 						viableRoute = 0;
 					}
-					else if (effectiveVolumeLimit < bundle->evc) //TODO do not fragment
+					else if (effectiveVolumeLimit < (double) bundle->evc) //TODO do not fragment
 					{
 						viableRoute = 0;
 					}
@@ -728,36 +681,36 @@ static int computeExpectedBundleDeliveryTime(time_t current_time, CgrBundle *bun
 						if (contact != NULL)
 						{
 
-#if (QUEUE_DELAY == 1)
-							/* Added by G.M. De Cola
+                            if (UniboCGRSAP_check_queue_delay(uniboCgrSap)) {
+                                /* Added by G.M. De Cola
 							 * Computing queueDelay from nominal contactVolume, actual mtv
 							 * for the selected bundle priority and nominal xmit rate of the contact
 							 */
 
-							nominalContactVolume = (double) ((long unsigned int) (contact->toTime
-									- contact->fromTime) * contact->xmitRate);
-							queueDelay = (time_t) ((nominalContactVolume - contact->mtv[priority])
-									/ ((double) contact->xmitRate));
+                                nominalContactVolume = (double) ((uint64_t) (contact->toTime
+                                                                             - contact->fromTime) * contact->xmitRate);
+                                queueDelay = (time_t) ((nominalContactVolume - contact->mtv[priority])
+                                                       / ((double) contact->xmitRate));
 
-							//ETO on all hops
-							if (*lastByteArrivalTime > contact->fromTime + queueDelay)
-							{
-								firstByteTransmitTime = *lastByteArrivalTime;
-							}
-							else
-							{
-								firstByteTransmitTime = contact->fromTime + queueDelay;
-							}
-#else
-							if (*lastByteArrivalTime > contact->fromTime)
-							{
-								firstByteTransmitTime = *lastByteArrivalTime;
-							}
-							else
-							{
-								firstByteTransmitTime = contact->fromTime;
-							}
-#endif
+                                //ETO on all hops
+                                if (*lastByteArrivalTime > contact->fromTime + queueDelay)
+                                {
+                                    firstByteTransmitTime = *lastByteArrivalTime;
+                                }
+                                else
+                                {
+                                    firstByteTransmitTime = contact->fromTime + queueDelay;
+                                }
+                            } else {
+                                if (*lastByteArrivalTime > contact->fromTime)
+                                {
+                                    firstByteTransmitTime = *lastByteArrivalTime;
+                                }
+                                else
+                                {
+                                    firstByteTransmitTime = contact->fromTime;
+                                }
+                            }
 
 							loadCgrScalar(&applicableRadiationLatency, (long int) bundle->evc);
 							divideCgrScalar(&applicableRadiationLatency, (long int) contact->xmitRate);
@@ -834,14 +787,13 @@ static int computeExpectedBundleDeliveryTime(time_t current_time, CgrBundle *bun
  *  -------- | --------------- | -----------------------------------------------
  *  06/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int computePBAT(time_t current_time, unsigned long long localNode, Route *route, CgrBundle *bundle)
+static int computePBAT(UniboCGRSAP* uniboCgrSap, time_t current_time, uint64_t localNode, Route *route, CgrBundle *bundle)
 {
-	int result = -1;
+	int result;
 	CgrScalar applicableBacklog, totalBacklog, allotment, volume, residualBacklog;
 	time_t lastByteArrivalTime;
-
-	if (computeApplicableBacklog(route->neighbor, bundle->priority_level, bundle->ordinal, &applicableBacklog, &totalBacklog) < 0)
-	{
+	if (UniboCGRSAP_compute_applicable_backlog(uniboCgrSap, route->neighbor, bundle->priority_level, bundle->ordinal,
+                                               &applicableBacklog, &totalBacklog) < 0) {
 		result = -2;
 	}
 	else
@@ -849,7 +801,7 @@ static int computePBAT(time_t current_time, unsigned long long localNode, Route 
 		copyCgrScalar(&(route->committed), &totalBacklog);
 		copyCgrScalar(&residualBacklog, &applicableBacklog);
 
-		if (computeResidualBacklog(bundle->regionNbr, current_time, localNode, route, &allotment, &volume, &residualBacklog) < 0)
+		if (computeResidualBacklog(uniboCgrSap, current_time, localNode, route, &allotment, &volume, &residualBacklog) < 0)
 		{
 			result = -3;
 		}
@@ -868,9 +820,8 @@ static int computePBAT(time_t current_time, unsigned long long localNode, Route 
 			}
 			/**********************************************************/
 
-			result = computeExpectedBundleDeliveryTime(current_time, bundle, route, &residualBacklog,
+			result = computeExpectedBundleDeliveryTime(uniboCgrSap, current_time, bundle, route, &residualBacklog,
 					&lastByteArrivalTime);
-
 			if (result == 0)
 			{
 				if (lastByteArrivalTime > bundle->expiration_time)
@@ -916,11 +867,11 @@ static int computePBAT(time_t current_time, unsigned long long localNode, Route 
  *  -------- | --------------- | -----------------------------------------------
  *  30/04/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int insert_route_in_subset_computed_routes(Neighbor *neighbor, Route *newSubsetRoute)
+static int insert_route_in_subset_computed_routes(UniboCGRSAP* uniboCgrSap, Neighbor *neighbor, Route *newSubsetRoute)
 {
 	int result = 0;
 
-	PhaseTwoSAP *sap = get_phase_two_sap(NULL);
+	PhaseTwoSAP *sap = UniboCGRSAP_get_PhaseTwoSAP(uniboCgrSap);
 
 	if(newSubsetRoute->spursComputed == 0)
 	{
@@ -928,7 +879,7 @@ static int insert_route_in_subset_computed_routes(Neighbor *neighbor, Route *new
 
 		if(neighbor == NULL)
 		{
-			neighbor = get_neighbor(newSubsetRoute->neighbor);
+			neighbor = get_neighbor(uniboCgrSap, newSubsetRoute->neighbor);
 		}
 		if(neighbor != NULL && !(CANDIDATE_ROUTES_FOUND(neighbor)))
 		{
@@ -983,12 +934,12 @@ static int insert_route_in_subset_computed_routes(Neighbor *neighbor, Route *new
  *  -------- | --------------- | -----------------------------------------------
  *  30/04/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static void remove_neighbor_from_subset_computed_routes(unsigned long long newNeighbor)
+static void remove_neighbor_from_subset_computed_routes(UniboCGRSAP* uniboCgrSap, uint64_t newNeighbor)
 {
 	ListElt *elt, *next;
 	Route *current;
 
-	PhaseTwoSAP *sap = get_phase_two_sap(NULL);
+	PhaseTwoSAP *sap = UniboCGRSAP_get_PhaseTwoSAP(uniboCgrSap);
 
 	elt = sap->subset->first;
 
@@ -1007,8 +958,6 @@ static void remove_neighbor_from_subset_computed_routes(unsigned long long newNe
 		}
 		 elt = next;
 	}
-
-	return;
 }
 
 /******************************************************************************
@@ -1038,7 +987,7 @@ static void remove_neighbor_from_subset_computed_routes(unsigned long long newNe
  *  -------- | --------------- | -----------------------------------------------
  *  30/04/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int suppress_neighbor(List suppressedNeighbors, unsigned long long *neighbor)
+static int suppress_neighbor(List suppressedNeighbors, uint64_t *neighbor)
 {
 	int result = -1;
 
@@ -1083,10 +1032,10 @@ static int suppress_neighbor(List suppressedNeighbors, unsigned long long *neigh
  *  -------- | --------------- | -----------------------------------------------
  *  30/04/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int suppress_destination_excluded_neighbors(Node *destination, List suppressedNeighbors, List excludedNeighbors)
+static int suppress_destination_excluded_neighbors(UniboCGRSAP* uniboCgrSap, Node *destination, List suppressedNeighbors, List excludedNeighbors)
 {
 	ListElt *elt, *elt_suppr, *next, *next_suppr;
-	unsigned long long *current, *current_suppr;
+	uint64_t *current, *current_suppr;
 	int result = 0;
 
 	// initially remove all previously excluded neighbors from list
@@ -1098,7 +1047,7 @@ static int suppress_destination_excluded_neighbors(Node *destination, List suppr
 
 		if(elt->data != NULL)
 		{
-			current = (unsigned long long *) elt->data;
+			current = (uint64_t *) elt->data;
 
 			elt_suppr = suppressedNeighbors->first;
 
@@ -1109,7 +1058,7 @@ static int suppress_destination_excluded_neighbors(Node *destination, List suppr
 
 				if(elt_suppr->data != NULL)
 				{
-					current_suppr = (unsigned long long *) elt_suppr->data;
+					current_suppr = (uint64_t *) elt_suppr->data;
 
 					if(*current == *current_suppr)
 					{
@@ -1134,9 +1083,9 @@ static int suppress_destination_excluded_neighbors(Node *destination, List suppr
 	{
 		if(elt->data != NULL)
 		{
-			current = (unsigned long long *) elt->data;
+			current = (uint64_t *) elt->data;
 
-			if(is_node_in_destination_neighbors_list(destination, *current))
+			if(is_node_in_destination_neighbors_list(uniboCgrSap, destination, *current))
 			{
 				if(suppress_neighbor(suppressedNeighbors, current) == -2)
 				{
@@ -1185,57 +1134,53 @@ static int suppress_destination_excluded_neighbors(Node *destination, List suppr
  *  -------- | --------------- | -----------------------------------------------
  *  30/04/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int update_neighbors_counter(Neighbor *neighbor, Route *newCandidateRoute)
+static int update_neighbors_counter(UniboCGRSAP* uniboCgrSap, Neighbor *neighbor, Route *newCandidateRoute)
 {
 	int result = -1;
-#if (CGR_AVOID_LOOP > 0)
 	int update = 1;
-#endif
-	PhaseTwoSAP *sap;
-
-	sap = get_phase_two_sap(NULL);
+	PhaseTwoSAP *sap = UniboCGRSAP_get_PhaseTwoSAP(uniboCgrSap);
 
 	if(neighbor == NULL)
 	{
-		neighbor = get_neighbor(newCandidateRoute->neighbor);
+		neighbor = get_neighbor(uniboCgrSap, newCandidateRoute->neighbor);
 	}
 	if(neighbor != NULL) //if neighbor exists
 	{
 		result = 1;
 
-#if (CGR_AVOID_LOOP > 0)
-		if(newCandidateRoute->checkValue == FAILED_NEIGHBOR || newCandidateRoute->checkValue == CLOSING_LOOP)
-		{
-			// Ok, (failed/closing loop) neighbor.
-			// We treat this neighbors as "suppressed" neighbors,
-			// the intent is to find N "no loop" neighbors.
-			// Anyway we're in this function
-			// because we keep in mind these "less prioritary" routes
-			update = 0;
-			result = 0;
-			if(!(CANDIDATE_ROUTES_FOUND(neighbor)))
-			{
-				if(suppress_neighbor(sap->suppressedNeighbors, &(newCandidateRoute->neighbor)) == -2)
-				{
-					result = -2;
-				}
-			}
-		}
-#endif
+        if (UniboCGRSAP_check_reactive_anti_loop(uniboCgrSap) || UniboCGRSAP_check_proactive_anti_loop(uniboCgrSap)) {
+            if(newCandidateRoute->checkValue == FAILED_NEIGHBOR || newCandidateRoute->checkValue == CLOSING_LOOP)
+            {
+                // Ok, (failed/closing loop) neighbor.
+                // We treat this neighbors as "suppressed" neighbors,
+                // the intent is to find N "no loop" neighbors.
+                // Anyway we're in this function
+                // because we keep in mind these "less prioritary" routes
+                update = 0;
+                result = 0;
+                if(!(CANDIDATE_ROUTES_FOUND(neighbor)))
+                {
+                    if(suppress_neighbor(sap->suppressedNeighbors, &(newCandidateRoute->neighbor)) == -2)
+                    {
+                        result = -2;
+                    }
+                }
+            }
 
-#if (CGR_AVOID_LOOP > 0)
-		if(update)
-		{
-#endif
-			//only if this is the first candidate route with this neighbor
-			if(!(CANDIDATE_ROUTES_FOUND(neighbor)))
-			{
-				sap->neighborsFound += 1;
-			}
-
-#if (CGR_AVOID_LOOP > 0)
-		}
-#endif
+            if (update) {
+                //only if this is the first candidate route with this neighbor
+                if(!(CANDIDATE_ROUTES_FOUND(neighbor)))
+                {
+                    sap->neighborsFound += 1;
+                }
+            }
+        } else {
+            //only if this is the first candidate route with this neighbor
+            if(!(CANDIDATE_ROUTES_FOUND(neighbor)))
+            {
+                sap->neighborsFound += 1;
+            }
+        }
 
 		SET_CANDIDATE_ROUTES_FOUND(neighbor);
 
@@ -1277,11 +1222,11 @@ static int update_neighbors_counter(Neighbor *neighbor, Route *newCandidateRoute
  *  -------- | --------------- | -----------------------------------------------
  *  30/04/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int phase_one_conversation_management(PhaseTwoRouteFlag routeFlag, Route *route, long unsigned int neighbors_limit, long unsigned int max_neighbors_number)
+static int phase_one_conversation_management(UniboCGRSAP* uniboCgrSap, PhaseTwoRouteFlag routeFlag, Route *route, uint64_t neighbors_limit, uint64_t max_neighbors_number)
 {
 	Neighbor *neighbor;
 	int result = 0;
-	PhaseTwoSAP *sap = get_phase_two_sap(NULL);
+	PhaseTwoSAP *sap = UniboCGRSAP_get_PhaseTwoSAP(uniboCgrSap);
 
 	if(reached_neighbors_limit(sap->neighborsFound, sap->suppressedNeighbors->length, neighbors_limit, max_neighbors_number))
 	{
@@ -1290,7 +1235,7 @@ static int phase_one_conversation_management(PhaseTwoRouteFlag routeFlag, Route 
 //		debug_printf("Nothing to do (nF %lu, miss %lu, supp %lu, tot %lu)..." , neighborsFound, missing_neighbors, suppressedNeighbors->length, max_neighbors_number);
 		result = 1;
 	}
-	else if((neighbor = get_neighbor(route->neighbor)) == NULL)
+	else if((neighbor = get_neighbor(uniboCgrSap, route->neighbor)) == NULL)
 	{
 		result = -1;
 	}
@@ -1301,7 +1246,7 @@ static int phase_one_conversation_management(PhaseTwoRouteFlag routeFlag, Route 
 			// route is a candidate route
 			// remove all the routes with the same neighbor from the subset
 
-			remove_neighbor_from_subset_computed_routes(route->neighbor);
+			remove_neighbor_from_subset_computed_routes(uniboCgrSap, route->neighbor);
 			UNSET_ROUTES_IN_SUBSET(neighbor); //no more routes in the subset with this neighbor
 		}
 		if(routeFlag == CandidateRoute && result != -2)
@@ -1310,7 +1255,7 @@ static int phase_one_conversation_management(PhaseTwoRouteFlag routeFlag, Route 
 			// update the counter of "viable" neighbors
 			//only if the neighbors isn't "failed" or "closing loop";
 			//then set neighbor->routesFound to 1
-			if(update_neighbors_counter(neighbor, route) < 0)
+			if(update_neighbors_counter(uniboCgrSap, neighbor, route) < 0)
 			{
 				result = -2;
 			}
@@ -1320,7 +1265,7 @@ static int phase_one_conversation_management(PhaseTwoRouteFlag routeFlag, Route 
 			//route isn't a candidate route
 			//candidate route for this neighbor yet not found.
 			//add this route into the subset
-			if(insert_route_in_subset_computed_routes(neighbor, route) < 0)
+			if(insert_route_in_subset_computed_routes(uniboCgrSap, neighbor, route) < 0)
 			{
 				result = -2;
 			}
@@ -1330,7 +1275,6 @@ static int phase_one_conversation_management(PhaseTwoRouteFlag routeFlag, Route 
 	return result;
 }
 
-#if (CGR_AVOID_LOOP > 0)
 
 /******************************************************************************
  *
@@ -1364,63 +1308,59 @@ static int phase_one_conversation_management(PhaseTwoRouteFlag routeFlag, Route 
  *  -------- | --------------- | -----------------------------------------------
  *  27/03/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int loopIdentified(Route *route, CgrBundle *bundle)
+static int loopIdentified(UniboCGRSAP* uniboCgrSap, Route *route, CgrBundle *bundle)
 {
 	int result = 0;
-#if (CGR_AVOID_LOOP == 2 || CGR_AVOID_LOOP == 3)
 	int found;
 	ListElt *elt, *last_contact;
 	Contact *current;
 	unsigned int loop_level = 0;
-#endif
 
 	route->checkValue = NO_LOOP;
 
-#if (CGR_AVOID_LOOP == 1 || CGR_AVOID_LOOP == 3)
-	// Reactive
-	if (search_ipn_node(bundle->failedNeighbors, route->neighbor) == 0)
-	{
-		result = 4;
-		route->checkValue = FAILED_NEIGHBOR;
-	}
-#endif
-#if (CGR_AVOID_LOOP == 2 || CGR_AVOID_LOOP == 3)
-	// Proactive
-	if (result == 0 && route->hops != NULL)
-	{
-		found = 0;
-		last_contact = route->hops->last; //the last contact can't cause the loop
+    if (UniboCGRSAP_check_reactive_anti_loop(uniboCgrSap)) {
+        // Reactive
+        if (search_ipn_node(bundle->failedNeighbors, route->neighbor) == 0)
+        {
+            result = 4;
+            route->checkValue = FAILED_NEIGHBOR;
+        }
+    }
+    if (UniboCGRSAP_check_proactive_anti_loop(uniboCgrSap)) {
+        // Proactive
+        if (result == 0 && route->hops != NULL)
+        {
+            found = 0;
+            last_contact = route->hops->last; //the last contact can't cause the loop
 
-		for (elt = route->hops->first; elt != last_contact && elt != NULL && !found; elt =
-				elt->next)
-		{
-			current = (Contact*) elt->data;
-			if (current != NULL && search_ipn_node(bundle->geoRoute, current->toNode) == 0)
-			{
-				found = 1;
-			}
+            for (elt = route->hops->first; elt != last_contact && elt != NULL && !found; elt =
+                                                                                                 elt->next)
+            {
+                current = (Contact*) elt->data;
+                if (current != NULL && search_ipn_node(bundle->geoRoute, current->toNode) == 0)
+                {
+                    found = 1;
+                }
 
-			loop_level++;
-		}
+                loop_level++;
+            }
 
-		if (found)
-		{
-			result = 2;
+            if (found)
+            {
+                result = 2;
 
-			route->checkValue = POSSIBLE_LOOP;
-			if (loop_level == 1)
-			{
-				result = 3;
-				route->checkValue = CLOSING_LOOP;
-			}
-		}
-	}
-#endif
+                route->checkValue = POSSIBLE_LOOP;
+                if (loop_level == 1)
+                {
+                    result = 3;
+                    route->checkValue = CLOSING_LOOP;
+                }
+            }
+        }
+    }
 
 	return result;
 }
-
-#endif
 
 #if (NEGLECT_CONFIDENCE == 0)
 /******************************************************************************
@@ -1496,8 +1436,6 @@ static int lowDlvConfidence(float bundleDlvConfidence, float routeArrivalConfide
  * \retval   -8  Route not viable: The neighbor is in the excluded nodes list SABR 3.2.6.9 b)
  * \retval   -9  Route not viable: PBAT computation error
  *
- * \param[in]    current_time       The time used during the call
- * \param[in]    localNode          The own node
  * \param[in]    *bundle            The bundle that has to be forwarded
  * \param[in]    excludedNeighbors  The excluded nodes list SABR 3.2.5.2
  * \param[in]    *route             The route to check
@@ -1528,9 +1466,11 @@ static int lowDlvConfidence(float bundleDlvConfidence, float routeArrivalConfide
  *  -------- | --------------- | -----------------------------------------------
  *  06/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-int checkRoute(time_t current_time, unsigned long long localNode, CgrBundle *bundle, List excludedNeighbors, Route *route)
+int checkRoute(UniboCGRSAP* uniboCgrSap, CgrBundle *bundle, List excludedNeighbors, Route *route)
 {
 	int result = -1;
+    const time_t current_time = UniboCGRSAP_get_current_time(uniboCgrSap);
+    const uint64_t localNode = UniboCGRSAP_get_local_node(uniboCgrSap);
 #if (NEGLECT_CONFIDENCE == 0)
 	Contact *firstContact;
 #endif
@@ -1569,22 +1509,22 @@ int checkRoute(time_t current_time, unsigned long long localNode, CgrBundle *bun
 		{
 			result = -8;
 		}
-		else if (computePBAT(current_time, localNode, route, bundle) < 0)
+		else if (computePBAT(uniboCgrSap, current_time, localNode, route, bundle) < 0)
 		{
 			result = -9;
 		}
 		else //viable route
 		{
-#if (CGR_AVOID_LOOP > 0)
-			result = loopIdentified(route, bundle);
+            if (UniboCGRSAP_check_reactive_anti_loop(uniboCgrSap) || UniboCGRSAP_check_proactive_anti_loop(uniboCgrSap)) {
+                result = loopIdentified(uniboCgrSap, route, bundle);
 
-			if (result > 0)
-			{
-				result = 0;
-			}
-#else
-			result = 0;
-#endif
+                if (result > 0)
+                {
+                    result = 0;
+                }
+            } else {
+                result = 0;
+            }
 
 		}
 	}
@@ -1635,18 +1575,18 @@ int checkRoute(time_t current_time, unsigned long long localNode, CgrBundle *bun
  *  06/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *  27/04/20 | L. Persampieri  |  Refactoring
  *****************************************************************************/
-int getCandidateRoutes(Node *terminusNode, CgrBundle *bundle, List excludedNeighbors, List computedRoutes,
-		List *subsetComputedRoutes, long unsigned int *missingNeighbors, List *candidateRoutes)
+int getCandidateRoutes(UniboCGRSAP* uniboCgrSap, Node *terminusNode, CgrBundle *bundle, List excludedNeighbors, List computedRoutes,
+                       List *subsetComputedRoutes, uint32_t *missingNeighbors, List *candidateRoutes)
 {
 	int result = -1, check, error = 0;
 	ListElt *elt;
 	Route *route;
-	long unsigned int max_neighbors_number;
-	time_t current_time = get_current_time();
-	unsigned long long localNode = get_local_node();
-	PhaseTwoSAP *sap = get_phase_two_sap(NULL);
+	uint64_t max_neighbors_number;
+	PhaseTwoSAP *sap = UniboCGRSAP_get_PhaseTwoSAP(uniboCgrSap);
+    uint32_t one_route_per_neighbor_limit = 0;
+    UniboCGRSAP_check_one_route_per_neighbor(uniboCgrSap, &one_route_per_neighbor_limit);
 
-	record_phases_start_time(phaseTwo);
+	record_phases_start_time(uniboCgrSap, phaseTwo);
 
 	debug_printf("Entry point phase two.");
 	free_list_elts(sap->subset); //clear the previous subset
@@ -1659,27 +1599,25 @@ int getCandidateRoutes(Node *terminusNode, CgrBundle *bundle, List excludedNeigh
 	{
 
 	    // Get the neighbors count (all neighbors)
-	    *missingNeighbors = get_local_node_neighbors_count();
-
+	    *missingNeighbors = get_local_node_neighbors_count(uniboCgrSap);
 		max_neighbors_number = *missingNeighbors;
 
-#if (MAX_DIJKSTRA_ROUTES > 0)
-		if(!IS_CRITICAL(bundle) && *missingNeighbors > MAX_DIJKSTRA_ROUTES)
-		{
-			*missingNeighbors = MAX_DIJKSTRA_ROUTES;
-		}
-#endif
+        if (one_route_per_neighbor_limit > 0) {
+            if(!IS_CRITICAL(bundle) && *missingNeighbors > one_route_per_neighbor_limit)
+            {
+                *missingNeighbors = one_route_per_neighbor_limit;
+            }
+        }
 		result = 0;
 
 		if(max_neighbors_number != sap->last_max_neighbors_number)
 		{
 //			debug_printf("Suppressing excluded nodes (last: %lu, current: %lu)...",last_max_neighbors_number, max_neighbors_number);
-			if(suppress_destination_excluded_neighbors(terminusNode, sap->suppressedNeighbors, excludedNeighbors) < 0)
+			if(suppress_destination_excluded_neighbors(uniboCgrSap, terminusNode, sap->suppressedNeighbors, excludedNeighbors) < 0)
 			{
 				result = -2;
 				error = 1;
 			}
-
 			sap->last_max_neighbors_number = max_neighbors_number;
 		}
 
@@ -1688,8 +1626,7 @@ int getCandidateRoutes(Node *terminusNode, CgrBundle *bundle, List excludedNeigh
 			if (elt->data != NULL)
 			{
 				route = (Route*) elt->data;
-				check = checkRoute(current_time, localNode, bundle, excludedNeighbors, route);
-
+				check = checkRoute(uniboCgrSap, bundle, excludedNeighbors, route);
 				if (check == 0)
 				{
 					// ok, candidate route
@@ -1698,7 +1635,7 @@ int getCandidateRoutes(Node *terminusNode, CgrBundle *bundle, List excludedNeigh
 					// if we have reached the "neighbors limit" we don't go back to phase one
 					// so there isn't a "conversation" between phase one and phase two
 
-					if(phase_one_conversation_management(CandidateRoute, route, *missingNeighbors, max_neighbors_number) < 0)
+					if(phase_one_conversation_management(uniboCgrSap, CandidateRoute, route, *missingNeighbors, max_neighbors_number) < 0)
 					{
 						result = -2;
 						error = 1;
@@ -1708,20 +1645,19 @@ int getCandidateRoutes(Node *terminusNode, CgrBundle *bundle, List excludedNeigh
 						result = -2;
 						error = 1;
 					}
-
 				}
 				else if(check == -3 ||
 						check == -4 ||
 						check == -5 ||
 						check == -6 ||
 						check == -9 ||
-						(check == -8 && MAX_DIJKSTRA_ROUTES == 1))
+						(check == -8 && one_route_per_neighbor_limit == 1))
 				{
 					//Ok, this route isn't viable
 					//but the checkRoute() said that
 					//this route could be used as "fromRoute" to compute other routes
 
-					if(phase_one_conversation_management(DiscardedRoute, route, *missingNeighbors, max_neighbors_number) < 0)
+					if(phase_one_conversation_management(uniboCgrSap, DiscardedRoute, route, *missingNeighbors, max_neighbors_number) < 0)
 					{
 						result = -2;
 						error = 1;
@@ -1763,16 +1699,15 @@ int getCandidateRoutes(Node *terminusNode, CgrBundle *bundle, List excludedNeigh
 
 		}
 
-		debug_printf("%lu neighbors found, %lu missing neighbors, %lu suppressed neighbors.", sap->neighborsFound, *missingNeighbors, sap->suppressedNeighbors->length);
+		debug_printf("%" PRIu32 " neighbors found, %" PRIu32 " missing neighbors, %lu suppressed neighbors.", sap->neighborsFound, *missingNeighbors, sap->suppressedNeighbors->length);
 
 	}
 
-	record_phases_stop_time(phaseTwo);
+	record_phases_stop_time(uniboCgrSap, phaseTwo);
 
 	return result;
 }
 
-#if (LOG == 1)
 /******************************************************************************
  *
  * \par Function Name:
@@ -1801,58 +1736,53 @@ int getCandidateRoutes(Node *terminusNode, CgrBundle *bundle, List excludedNeigh
  *  -------- | --------------- | -----------------------------------------------
  *  06/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int print_phase_two_route(FILE *file, Route *route)
+static int print_phase_two_route(UniboCGRSAP* uniboCgrSap, FILE *file, Route *route)
 {
 	int result = -1;
 	char num[20];
-#if (CGR_AVOID_LOOP > 0)
 	char *temp;
-#endif
 
 	if (file != NULL && route != NULL)
 	{
-#if (CGR_AVOID_LOOP > 0)
-		if (route->checkValue == NO_LOOP)
-		{
-			temp = "No loop";
-		}
-#if (CGR_AVOID_LOOP == 2 || CGR_AVOID_LOOP == 3)
-		else if (route->checkValue == POSSIBLE_LOOP)
-		{
-			temp = "Possible loop";
-		}
-		else if (route->checkValue == CLOSING_LOOP)
-		{
-			temp = "Closing loop";
-		}
-#endif
-#if (CGR_AVOID_LOOP == 1 || CGR_AVOID_LOOP == 3)
-		else if (route->checkValue == FAILED_NEIGHBOR)
-		{
-			temp = "Failed neighbor";
-		}
-#endif
-		else
-		{
-			temp = "";
-		}
-#endif
+        temp = "";
+        if (UniboCGRSAP_check_reactive_anti_loop(uniboCgrSap) || UniboCGRSAP_check_proactive_anti_loop(uniboCgrSap)) {
+            if (route->checkValue == NO_LOOP)
+            {
+                temp = "No loop";
+            }
+            if (UniboCGRSAP_check_proactive_anti_loop(uniboCgrSap)) {
+                if (route->checkValue == POSSIBLE_LOOP)
+                {
+                    temp = "Possible loop";
+                }
+                else if (route->checkValue == CLOSING_LOOP)
+                {
+                    temp = "Closing loop";
+                }
+            }
+            if (UniboCGRSAP_check_reactive_anti_loop(uniboCgrSap)) {
+                if (route->checkValue == FAILED_NEIGHBOR)
+                {
+                    temp = "Failed neighbor";
+                }
+            }
+        }
 
 		result = 0;
 		num[0] = '\0';
 		sprintf(num, "%u)", route->num);
 
-#if (CGR_AVOID_LOOP > 0)
-		fprintf(file, "%-15s %-15ld %-15ld %-15g %-15s %-15ld %-15ld %-15ld %ld\n", num,
-				(long int) route->eto, (long int) route->pbat, route->routeVolumeLimit, temp,
-				route->overbooked.gigs, route->overbooked.units, route->committed.gigs,
-				route->committed.units);
-#else
-		fprintf(file, "%-15s %-15ld %-15ld %-15g %-15ld %-15ld %-15ld %ld\n", num,
-				(long int) route->eto, (long int) route->pbat, route->routeVolumeLimit, route->overbooked.gigs,
-				route->overbooked.units, route->committed.gigs, route->committed.units);
-#endif
-
+        if (UniboCGRSAP_check_reactive_anti_loop(uniboCgrSap) || UniboCGRSAP_check_proactive_anti_loop(uniboCgrSap)) {
+            fprintf(file, "%-15s %-15ld %-15ld %-15g %-15s %-15" PRIu64 " %-15" PRIu64 " %-15" PRIu64 " %" PRIu64 "\n",
+                    num,
+                    (long int) route->eto, (long int) route->pbat, route->routeVolumeLimit, temp,
+                    route->overbooked.gigs, route->overbooked.units, route->committed.gigs,
+                    route->committed.units);
+        } else {
+            fprintf(file, "%-15s %-15ld %-15ld %-15g %-15ld %-15ld %-15ld %ld\n", num,
+                    (long int) route->eto, (long int) route->pbat, route->routeVolumeLimit, route->overbooked.gigs,
+                    route->overbooked.units, route->committed.gigs, route->committed.units);
+        }
 	}
 
 	return result;
@@ -1882,7 +1812,7 @@ static int print_phase_two_route(FILE *file, Route *route)
  *  -------- | --------------- | -----------------------------------------------
  *  06/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void print_phase_two_routes(FILE *file, List candidateRoutes)
+void print_phase_two_routes(UniboCGRSAP* uniboCgrSap, FILE *file, List candidateRoutes)
 {
 	ListElt *elt;
 
@@ -1893,18 +1823,18 @@ void print_phase_two_routes(FILE *file, List candidateRoutes)
 		if (candidateRoutes != NULL && candidateRoutes->length > 0)
 		{
 
-#if (CGR_AVOID_LOOP > 0)
-			fprintf(file, "\n%-15s %-15s %-15s %-15s %-15s %-15s %-15s %-15s %s\n", "Route n.",
-					"ETO", "PBAT", "RVL", "Type", "Overbooked (G)", "Overbooked (U)",
-					"Protected (G)", "Protected (U)");
-#else
-			fprintf(file, "\n%-15s %-15s %-15s %-15s %-15s %-15s %-15s %s\n",
-					"Route n.", "ETO", "PBAT", "RVL", "Overbooked (G)", "Overbooked (U)",
-					"Protected (G)", "Protected (U)");
-#endif
+            if (UniboCGRSAP_check_reactive_anti_loop(uniboCgrSap) || UniboCGRSAP_check_proactive_anti_loop(uniboCgrSap)) {
+                fprintf(file, "\n%-15s %-15s %-15s %-15s %-15s %-15s %-15s %-15s %s\n", "Route n.",
+                        "ETO", "PBAT", "RVL", "Type", "Overbooked (G)", "Overbooked (U)",
+                        "Protected (G)", "Protected (U)");
+            } else {
+                fprintf(file, "\n%-15s %-15s %-15s %-15s %-15s %-15s %-15s %s\n",
+                        "Route n.", "ETO", "PBAT", "RVL", "Overbooked (G)", "Overbooked (U)",
+                        "Protected (G)", "Protected (U)");
+            }
 			for (elt = candidateRoutes->last; elt != NULL; elt = elt->prev)
 			{
-				print_phase_two_route(file, (Route*) elt->data);
+				print_phase_two_route(uniboCgrSap, file, (Route*) elt->data);
 			}
 		}
 		else
@@ -1919,6 +1849,4 @@ void print_phase_two_routes(FILE *file, List candidateRoutes)
 
 	}
 }
-
-#endif
 

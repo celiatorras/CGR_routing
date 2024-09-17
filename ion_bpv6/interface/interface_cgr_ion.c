@@ -51,7 +51,6 @@
 #include "../../core/cgr/cgr_phases.h"
 #include "../../core/library_from_ion/scalar/scalar.h"
 
-#include "../../core/contact_plan/contactPlan.h"
 #include "../../core/contact_plan/contacts/contacts.h"
 #include "../../core/contact_plan/ranges/ranges.h"
 #include "../../core/msr/msr_utils.h"

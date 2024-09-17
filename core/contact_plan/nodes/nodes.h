@@ -32,8 +32,14 @@
 #ifndef SOURCES_CONTACTS_PLAN_NODES_NODES_H_
 #define SOURCES_CONTACTS_PLAN_NODES_NODES_H_
 
+#include "../../UniboCGRSAP.h"
 #include "../../library/commonDefines.h"
 #include "../../library/list/list_type.h"
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
 typedef struct node Node;
 
@@ -76,7 +82,7 @@ struct node
 	/**
 	 * \brief Ipn node number
 	 */
-	unsigned long long nodeNbr;
+	uint64_t nodeNbr;
 	/**
 	 * \brief Where we store the routes computed to reach this node
 	 */
@@ -109,7 +115,7 @@ typedef struct
 	/**
 	 * \brief The ipn number of the local node's neighbor
 	 */
-	unsigned long long ipn_number;
+	uint64_t ipn_number;
 	/**
 	 * \brief The time when the last contact to this neighbor expires
 	 */
@@ -146,33 +152,28 @@ typedef struct
 
 /*********************************************************************/
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
+
+extern int NodeSAP_open(UniboCGRSAP* uniboCgrSap);
+extern void NodeSAP_close(UniboCGRSAP* uniboCgrSap);
+extern void reset_NodesTree(UniboCGRSAP* uniboCgrSap);
 
 
-extern int create_NodesTree();
+extern void discardAllRoutesFromNodesTree(UniboCGRSAP* uniboCgrSap);
 
-extern void discardAllRoutesFromNodesTree();
+extern int add_node_to_graph(UniboCGRSAP* uniboCgrSap, uint64_t nodeNbrToAdd);
+extern Node* add_node(UniboCGRSAP* uniboCgrSap, uint64_t nodeNbr);
 
-extern int add_node_to_graph(unsigned long long nodeNbrToAdd);
-extern Node* add_node(unsigned long long nodeNbr);
+extern void remove_node_from_graph(UniboCGRSAP* uniboCgrSap, uint64_t nodeNbrToRemove);
 
-extern void remove_node_from_graph(unsigned long long nodeNbrToRemove);
+extern Node* get_node(UniboCGRSAP* uniboCgrSap, uint64_t nodeNbr);
 
-extern Node* get_node(unsigned long long nodeNbr);
-
-extern void reset_NodesTree();
-extern void destroy_NodesTree();
-
-extern Neighbor * get_neighbor(unsigned long long node_number);
-extern long unsigned int get_local_node_neighbors_count();
-extern void reset_neighbors_temporary_fields();
-extern int insert_neighbors_to_reach_destination(List neighbors, Node *destination);
-extern void removeOldNeighbors(time_t current_time);
-extern int build_local_node_neighbors_list(unsigned long long localNode);
-extern int is_node_in_destination_neighbors_list(Node *destination, unsigned long long node);
+extern Neighbor * get_neighbor(UniboCGRSAP* uniboCgrSap, uint64_t node_number);
+extern uint64_t get_local_node_neighbors_count(UniboCGRSAP* uniboCgrSap);
+extern void reset_neighbors_temporary_fields(UniboCGRSAP* uniboCgrSap);
+extern int insert_neighbors_to_reach_destination(UniboCGRSAP* uniboCgrSap, List neighbors, Node *destination);
+extern void removeOldNeighbors(UniboCGRSAP* uniboCgrSap);
+extern int build_local_node_neighbors_list(UniboCGRSAP* uniboCgrSap);
+extern int is_node_in_destination_neighbors_list(UniboCGRSAP* uniboCgrSap, Node *destination, uint64_t node);
 
 #ifdef __cplusplus
 }

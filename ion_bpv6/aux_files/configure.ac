@@ -8,7 +8,7 @@
 
 
 AC_PREREQ(2.69)
-AC_INIT(ion, open source 4.1.1, ion-dtn-support@lists.sourceforge.net)
+AC_INIT(ion, open source 4.1.2, ion-dtn-support@lists.sourceforge.net)
 IS_NASA_B=0
 
 #  Josh Schendel removed the -Werror on 05/15/2012 per issue #355 to deal with
@@ -26,7 +26,7 @@ AC_CONFIG_MACRO_DIR([m4])
 # Moving developmental Makefiles out of the way if the user builds with autoconf
 echo "Moving developmental Makefiles to Makefile.dev"
 MAKEFILES=`find . -name 'Makefile'`
-for f in $MAKEFILES; do
+for f in $MAKEFILES; do 
 	if [[ "$f" != "./Makefile" ]]; then
 		mv $f "$f.dev"
 	fi
@@ -43,17 +43,17 @@ SUB3="WSL2";
 
      *"$SUB2"*)
     SUB=NULL;
-
+	
     ;;
     esac
 	 case $virtual_device_name in
 
      *"$SUB3"*)
     SUB=NULL;
-
+	
     ;;
     esac
-
+	
 	# check uname -r contains wsl1 or not
     case $virtual_device_name in
 
@@ -63,8 +63,9 @@ SUB3="WSL2";
 	exit 0;
     ;;
     esac
-
+	
 ## -----checking wsl type------------------------------------------------------------------- ##
+
 
 
 # Checks for programs.
@@ -97,9 +98,12 @@ case $host_os in
 		if test $host_cpu = "x86_64" ; then
 			AM_CFLAGS="$AM_CFLAGS -Dunix -Ddarwin -DSPACE_ORDER=3 -m64 "
 			echo "Build 64-bit Darwin specific platform code."
+		elif test $host_cpu = "aarch64" ; then
+			AM_CFLAGS="$AM_CFLAGS -Dunix -Ddarwin -DSPACE_ORDER=3 -m64"
+			echo "Build 64-bit ARM Darwin specific platform code."	
 		elif test $host_cpu = "arm" ; then
-        	AM_CFLAGS="$AM_CFLAGS -Dunix -Ddarwin -DSPACE_ORDER=3 -m64 "
-        	echo "Build 64-bit ARM Darwin specific platform code."
+			AM_CFLAGS="$AM_CFLAGS -Dunix -Ddarwin -DSPACE_ORDER=3 -m64 "
+			echo "Build 64-bit ARM Darwin specific platform code."
 		else
 			AM_CFLAGS="$AM_CFLAGS -Dunix -Ddarwin -DSPACE_ORDER=2 -m32 "
 			echo "Build 32-bit Darwin specific platform code."
@@ -109,6 +113,10 @@ case $host_os in
 	linux*)
 		PLATFORM="linux"
 		if test $host_cpu = "x86_64" ; then
+			AC_DEFINE([linux],[1],[Build 64-bit Linux specific platform code.])
+			AM_CFLAGS="$AM_CFLAGS -Dlinux -DSPACE_ORDER=3 -fno-strict-aliasing"
+			echo "Build 64-bit Linux specific platform code."
+		elif test $host_cpu = "aarch64" ; then
 			AC_DEFINE([linux],[1],[Build 64-bit Linux specific platform code.])
 			AM_CFLAGS="$AM_CFLAGS -Dlinux -DSPACE_ORDER=3 -fno-strict-aliasing"
 			echo "Build 64-bit Linux specific platform code."
@@ -212,7 +220,7 @@ AM_CONDITIONAL(ENABLE_BPACS, test "x$ENABLE_BPACS" = "xyes")
 AC_ARG_ENABLE(
     bpv6,
     [AC_HELP_STRING([--enable-bpv6], [force build of bpv6])],
-    [VER="4.1.1"
+    [VER="4.1.2"
      VER="-DVNAME=ION-OPEN-SOURCE-$VER"
      AM_CFLAGS="$AM_CFLAGS $VER -DBUILD_BPv6"
      BUILD_BPv6=true
@@ -224,7 +232,7 @@ AC_ARG_ENABLE(
 		no)  ENABLE_BPACS=no;;
      esac
      echo "Building ION with BP version 6"],
-    [VER="4.1.1"
+    [VER="4.1.2"
      VER="-DVNAME=ION-OPEN-SOURCE-$VER"
      AM_CFLAGS="$AM_CFLAGS $VER -DBUILD_BPv7"
      BUILD_BPv7=true
@@ -283,7 +291,7 @@ AC_ARG_ENABLE(
 	echo "Building ION with UniBo CGR code"
      fi],
     [UNIBO_CGR=no
-     AC_DEFINE([UNIBO_CGR],[0],[Define to 1 to build Unibo-CGR])])
+	AC_DEFINE([UNIBO_CGR],[0],[Define to 1 to build Unibo-CGR])])
 AM_CONDITIONAL(UNIBO_CGR, test "x$UNIBO_CGR" = "xyes")
 
 #
@@ -482,6 +490,35 @@ AC_ARG_ENABLE(
         )
 AM_CONDITIONAL([BUILD_NM_REST], [test "x$BUILD_NM_REST" = "xtrue"])
 
+#
+# allow the user running configure to declare that the platform is musl
+#
+AC_ARG_ENABLE(
+	musl,
+	[AC_HELP_STRING([--enable-musl], [declare that the platform is MUSL])],
+	[AM_CFLAGS="$AM_CFLAGS -DMUSL"
+	 MUSL=yes],
+	[]
+)
+if test "x$MUSL" = "xyes" ; then
+	echo "Building for MUSL... yes"
+fi
+AM_CONDITIONAL([MUSL], [test "x$MUSL" = "xyes"])
+
+#
+# allow the user running configure to choose the TCPCL_LOW_CYCLE option
+#
+AC_ARG_ENABLE(
+	tcpcl-low-cycle,
+	[AC_HELP_STRING([--enable-tcpcl-low-cycle], [enable TCPCL_LOW_CYCLE option])],
+	[AM_CFLAGS="$AM_CFLAGS -DTCPCL_LOW_CYCLE"
+	 TCPCL_LOW_CYCLE=yes],
+	[]
+)
+if test "x$TCPCL_LOW_CYCLE" = "xyes" ; then
+	echo "Enabling TCPCL_LOW_CYCLE... yes"
+fi
+AM_CONDITIONAL([TCPCL_LOW_CYCLE], [test "x$TCPCL_LOW_CYCLE" = "xyes"])
 
 # Check for libraries.
 ORIGCFLAGS="$CFLAGS"

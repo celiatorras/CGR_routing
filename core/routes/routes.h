@@ -33,10 +33,17 @@
 #define LIBRARY_MANAGEROUTES_H_
 
 #include <sys/time.h>
+
+#include "../UniboCGRSAP.h"
 #include "../contact_plan/nodes/nodes.h"
 #include "../library/commonDefines.h"
 #include "../library/list/list_type.h"
 #include "../library_from_ion/scalar/scalar.h"
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
 typedef struct cgrRoute
 {
@@ -86,12 +93,10 @@ typedef struct cgrRoute
 	 */
 	time_t computedAtTime;
 
-#if (LOG == 1)
 	/**
 	 * \brief Actually only for logs: Number of the route in the selectedRoutes list
 	 */
 	unsigned int num;
-#endif
 	/************************************************/
 
 	/*************** Phase two values ***************/
@@ -121,7 +126,7 @@ typedef struct cgrRoute
 	 *
 	 * \details Calculated in phase one, updated in phase two.
 	 */
-	unsigned int owltSum;
+	uint64_t owltSum;
 	/**
 	 * \brief Back-reference to this element in knownRoutes or selectedRoutes.
 	 */
@@ -129,7 +134,7 @@ typedef struct cgrRoute
 	/**
 	 * \brief First contact's toNode field
 	 */
-	unsigned long long neighbor;
+	uint64_t neighbor;
 	/**
 	 * \brief Best case transmission opportunity to the neighbor
 	 */
@@ -154,11 +159,6 @@ typedef struct cgrRoute
 	CgrScalar committed;
 	/************************************************/
 } Route;
-
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 
 extern Route* create_cgr_route();
 extern void delete_cgr_route(void*);

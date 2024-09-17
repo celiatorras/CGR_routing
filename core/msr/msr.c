@@ -32,56 +32,22 @@
 #include "../cgr/cgr_phases.h"
 #include "../contact_plan/contacts/contacts.h"
 #include "../contact_plan/ranges/ranges.h"
+#include "../library/log/log.h"
 
-#if (LOG == 1)
+
+struct MSRSAP {
+    List routes;
+};
+
 static void print_msr_proposed_routes(FILE *file_call, CgrBundle *bundle);
-static void print_msr_candidate_routes(FILE *file_call);
-static void print_msr_best_routes(FILE *file_call);
-#else
-#define print_msr_proposed_routes(file_call, bundle) do {  } while(0)
-#define print_msr_candidate_routes(file_call) do {  } while(0)
-#define print_msr_best_routes(file_call) do {  } while(0)
-#endif
+static void print_msr_candidate_routes(UniboCGRSAP* uniboCgrSap, FILE *file_call);
+static void print_msr_best_routes(UniboCGRSAP* uniboCgrSap, FILE *file_call);
+
 
 /******************************************************************************
  *
  * \par Function Name:
- * 		get_routes
- *
- * \brief Get the routes list. In this list are stored the routes choosed by MSR.
- *
- *
- * \par Date Written:
- * 	    02/07/20
- *
- * \return List
- *
- * \retval  List   The list where are stored the routes choosed by MSR.
- *
- * \param[in] newRoutes  Set to NULL if you just want to get the routes list;
- *                       otherwise set != NULL to overwrite the previous list
- *
- *
- * \par Revision History:
- *
- *  DD/MM/YY | AUTHOR          |  DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  02/07/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-static List get_routes(List newRoutes) {
-	static List routes;
-
-	if(newRoutes != NULL) {
-		routes = newRoutes;
-	}
-
-	return routes;
-}
-
-/******************************************************************************
- *
- * \par Function Name:
- * 		initialized_msr
+ * 		MSRSAP_open
  *
  * \brief Initialize the data used by MSR.
  *
@@ -90,7 +56,7 @@ static List get_routes(List newRoutes) {
  *
  * \return int
  *
- * \retval  1   MSR initialized correctly.
+ * \retval  0   MSR initialized correctly.
  * \retval -2   MWITHDRAW error
  *
  *
@@ -99,29 +65,32 @@ static List get_routes(List newRoutes) {
  *  DD/MM/YY | AUTHOR          |   DESCRIPTION
  *  -------- | --------------- |  -----------------------------------------------
  *  23/04/20 | L. Persampieri  |   Initial Implementation and documentation.
+ *  21/10/22 | L. Persampieri  |   Renamed function
  *****************************************************************************/
-int initialize_msr()
+int MSRSAP_open(UniboCGRSAP* uniboCgrSap)
 {
-	int result = 1;
-	List routes = list_create(NULL,NULL,NULL,NULL);
-	if(routes == NULL)
-	{
-		result = -2;
-	}
-	else
-	{
-		result = 1;
-		get_routes(routes); // save
-	}
+    if (UniboCGRSAP_get_MSRSAP(uniboCgrSap)) return 0;
 
-	return result;
+    MSRSAP* sap = MWITHDRAW(sizeof(MSRSAP));
+    if (!sap) { return -2; }
+    UniboCGRSAP_set_MSRSAP(uniboCgrSap, sap);
+
+    memset(sap, 0, sizeof(MSRSAP));
+
+	sap->routes = list_create(NULL,NULL,NULL,NULL);
+	if(!sap->routes) {
+        MSRSAP_close(uniboCgrSap);
+        return 2;
+    }
+
+	return 0;
 }
 
 
 /******************************************************************************
  *
  * \par Function Name:
- * 		detroy_msr
+ * 		MSRSAP_close
  *
  * \brief Deallocate all memory previously allocated by MSR.
  *
@@ -136,13 +105,16 @@ int initialize_msr()
  *  DD/MM/YY | AUTHOR          |   DESCRIPTION
  *  -------- | --------------- |  -----------------------------------------------
  *  23/04/20 | L. Persampieri  |   Initial Implementation and documentation.
+ *  21/10/22 | L. Persampieri  |   Renamed function
  *****************************************************************************/
-void destroy_msr()
+void MSRSAP_close(UniboCGRSAP* uniboCgrSap)
 {
-	List routes = get_routes(NULL);
-	free_list(routes);
-	routes = NULL;
-	get_routes(routes); // save
+    if (!UniboCGRSAP_get_MSRSAP(uniboCgrSap)) return;
+    MSRSAP* sap = UniboCGRSAP_get_MSRSAP(uniboCgrSap);
+	free_list(sap->routes);
+    memset(sap, 0, sizeof(MSRSAP));
+    MDEPOSIT(sap);
+    UniboCGRSAP_set_MSRSAP(uniboCgrSap, NULL);
 }
 
 /******************************************************************************
@@ -165,7 +137,6 @@ void destroy_msr()
  * \retval       -4    Critical bundle, MSR is not optimal for a critical bundle so we
  *                     don't perform the MSR algorithm
  *
- * \param[in]   current_time       The current (differential from interface) time from the start of Unibo-CGR
  * \param[in]   *bundle            The bundle to forward
  * \param[in]   excludedNeighbors  The excluded nodes list SABR 3.2.5.2
  * \param[in]   file_call          The file where we print some informations about
@@ -180,26 +151,22 @@ void destroy_msr()
  *  -------- | --------------- |  -----------------------------------------------
  *  23/04/20 | L. Persampieri  |   Initial Implementation and documentation.
  *****************************************************************************/
-int tryMSR(time_t current_time, CgrBundle *bundle, List excludedNeighbors, FILE* file_call, List *bestRoutes)
+int tryMSR(UniboCGRSAP* uniboCgrSap, CgrBundle *bundle, List excludedNeighbors, FILE* file_call, List *bestRoutes)
 {
 	int result = -3;
-	List routes = get_routes(NULL);
-
-#if (LOG == 0)
-    (void) file_call; /* unused */
-#endif
+    MSRSAP* sap = UniboCGRSAP_get_MSRSAP(uniboCgrSap);
 
 	debug_printf("Entry point.");
 
 	if(bundle != NULL && excludedNeighbors != NULL && bestRoutes != NULL)
 	{
-		free_list_elts(routes);
+		free_list_elts(sap->routes);
 
 		if(IS_CRITICAL(bundle))
 		{
 			result = -4;
 		}
-		else if(bundle->msrRoute == NULL)
+		else if(bundle->msrRoute == NULL || list_get_length(bundle->msrRoute->hops) == 0)
 		{
 			print_msr_proposed_routes(file_call, bundle);
 			debug_printf("MSR route not found.");
@@ -207,15 +174,15 @@ int tryMSR(time_t current_time, CgrBundle *bundle, List excludedNeighbors, FILE*
 		}
 		else
 		{
-			result = checkRoute(current_time, get_local_node(NULL), bundle,excludedNeighbors, bundle->msrRoute);
+			result = checkRoute(uniboCgrSap, bundle,excludedNeighbors, bundle->msrRoute);
 			if(result == -2)
 			{
-				writeLog("Check route: MWITHDRAW error.");
+				writeLog(uniboCgrSap, "Check route: MWITHDRAW error.");
 			}
 			else if(result != 0)
 			{
 				print_msr_proposed_routes(file_call, bundle);
-				print_msr_candidate_routes(file_call);
+				print_msr_candidate_routes(uniboCgrSap, file_call);
 				debug_printf("MSR route isn't viable.");
 				result = -1;
 			}
@@ -223,16 +190,16 @@ int tryMSR(time_t current_time, CgrBundle *bundle, List excludedNeighbors, FILE*
 			{
 				print_msr_proposed_routes(file_call, bundle);
 				debug_printf("MSR route is viable.");
-				if(list_insert_last(routes, bundle->msrRoute) != NULL)
+				if(list_insert_last(sap->routes, bundle->msrRoute) != NULL)
 				{
-					print_msr_candidate_routes(file_call);
+					print_msr_candidate_routes(uniboCgrSap, file_call);
 					// go directly to phase three
-					result = chooseBestRoutes(bundle, routes);
+					result = chooseBestRoutes(uniboCgrSap, bundle, sap->routes);
 					if(result > 0)
 					{
-						*bestRoutes = routes;
+						*bestRoutes = sap->routes;
 					}
-					print_msr_best_routes(file_call);
+					print_msr_best_routes(uniboCgrSap, file_call);
 				}
 				else
 				{
@@ -245,7 +212,6 @@ int tryMSR(time_t current_time, CgrBundle *bundle, List excludedNeighbors, FILE*
 	return result;
 }
 
-#if (LOG == 1)
 /******************************************************************************
  *
  * \par Function Name:
@@ -284,7 +250,7 @@ static void print_msr_proposed_route(FILE *file, Route *route, unsigned int num)
 		fprintf(file,
 				"\n%u)\n%-15s %-15s %-15s %-15s %-15s %-15s %s\n",
 				route->num, "Neighbor", "FromTime", "ToTime", "ArrivalTime", "OwltSum", "Confidence", "Hops");
-		fprintf(file, "%-15llu %-15ld %-15ld %-15ld %-15u %-15.2f ", route->neighbor,
+		fprintf(file, "%-15" PRIu64 " %-15ld %-15ld %-15ld %-15" PRIu64 " %-15.2f ", route->neighbor,
 				(long int) route->fromTime, (long int) route->toTime, (long int) route->arrivalTime,
 				route->owltSum, route->arrivalConfidence);
 
@@ -303,7 +269,7 @@ static void print_msr_proposed_route(FILE *file, Route *route, unsigned int num)
 				{
 					contact = (Contact*) elt->data;
 					fprintf(file,
-							"%-15llu %-15llu %-15ld %-15ld %-15lu %-10.2f%-5s %-15g %-15g %g\n",
+							"%-15" PRIu64 " %-15" PRIu64 " %-15ld %-15ld %-15lu %-10.2f%-5s %-15g %-15g %g\n",
 							contact->fromNode, contact->toNode, (long int) contact->fromTime,
 							(long int) contact->toTime, contact->xmitRate, contact->confidence,
 							(elt == route->rootOfSpur) ? " x" : "", contact->mtv[0],
@@ -338,57 +304,52 @@ static void print_msr_proposed_route(FILE *file, Route *route, unsigned int num)
  *  -------- | --------------- |  -----------------------------------------------
  *  23/04/20 | L. Persampieri  |   Initial Implementation and documentation.
  *****************************************************************************/
-static int print_msr_candidate_route(FILE *file, Route *route)
+static int print_msr_candidate_route(UniboCGRSAP* uniboCgrSap, FILE *file, Route *route)
 {
 	int result = -1;
 	char num[20];
-#if (CGR_AVOID_LOOP > 0)
 	char *temp;
-#endif
 
 	if (file != NULL && route != NULL)
 	{
-#if (CGR_AVOID_LOOP > 0)
-		if (route->checkValue == NO_LOOP)
-		{
-			temp = "No loop";
-		}
-#if (CGR_AVOID_LOOP == 2 || CGR_AVOID_LOOP == 3)
-		else if (route->checkValue == POSSIBLE_LOOP)
-		{
-			temp = "Possible loop";
-		}
-		else if (route->checkValue == CLOSING_LOOP)
-		{
-			temp = "Closing loop";
-		}
-#endif
-#if (CGR_AVOID_LOOP == 1 || CGR_AVOID_LOOP == 3)
-		else if (route->checkValue == FAILED_NEIGHBOR)
-		{
-			temp = "Failed neighbor";
-		}
-#endif
-		else
-		{
-			temp = "";
-		}
-#endif
+        temp = "";
+        if (UniboCGRSAP_check_reactive_anti_loop(uniboCgrSap) || UniboCGRSAP_check_proactive_anti_loop(uniboCgrSap)) {
+            if (route->checkValue == NO_LOOP)
+            {
+                temp = "No loop";
+            }
+            if (UniboCGRSAP_check_proactive_anti_loop(uniboCgrSap)) {
+                if (route->checkValue == POSSIBLE_LOOP)
+                {
+                    temp = "Possible loop";
+                }
+                else if (route->checkValue == CLOSING_LOOP)
+                {
+                    temp = "Closing loop";
+                }
+            }
+            if (UniboCGRSAP_check_reactive_anti_loop(uniboCgrSap)) {
+                if (route->checkValue == FAILED_NEIGHBOR) {
+                    temp = "Failed neighbor";
+                }
+            }
+        }
+
 
 		result = 0;
 		num[0] = '\0';
 		sprintf(num, "%u)", route->num);
 
-#if (CGR_AVOID_LOOP > 0)
-		fprintf(file, "%-15s %-15ld %-15ld %-15g %-15s %-15ld %-15ld %-15ld %ld\n", num,
-				(long int) route->eto, (long int) route->pbat, route->routeVolumeLimit, temp,
-				route->overbooked.gigs, route->overbooked.units, route->committed.gigs,
-				route->committed.units);
-#else
-		fprintf(file, "%-15s %-15ld %-15ld %-15g %-15ld %-15ld %-15ld %ld\n", num,
-				(long int) route->eto, (long int) route->pbat, route->routeVolumeLimit, route->overbooked.gigs,
-				route->overbooked.units, route->committed.gigs, route->committed.units);
-#endif
+        if (UniboCGRSAP_check_reactive_anti_loop(uniboCgrSap) || UniboCGRSAP_check_proactive_anti_loop(uniboCgrSap)) {
+            fprintf(file, "%-15s %-15ld %-15ld %-15g %-15s %-15ld %-15ld %-15ld %ld\n", num,
+                    (long int) route->eto, (long int) route->pbat, route->routeVolumeLimit, temp,
+                    route->overbooked.gigs, route->overbooked.units, route->committed.gigs,
+                    route->committed.units);
+        } else {
+            fprintf(file, "%-15s %-15ld %-15ld %-15g %-15ld %-15ld %-15ld %ld\n", num,
+                    (long int) route->eto, (long int) route->pbat, route->routeVolumeLimit, route->overbooked.gigs,
+                    route->overbooked.units, route->committed.gigs, route->committed.units);
+        }
 
 	}
 
@@ -422,7 +383,7 @@ static int print_msr_candidate_route(FILE *file, Route *route)
  *****************************************************************************/
 static int print_msr_best_route(FILE *file, Route *route)
 {
-	int len = -1, result = -1;
+	int len, result = -1;
 	char num[20];
 
 	if (file != NULL && route != NULL)
@@ -432,7 +393,7 @@ static int print_msr_best_route(FILE *file, Route *route)
 		len = sprintf(num, "%u)", route->num);
 		if (len >= 0)
 		{
-			fprintf(file, "%-15s %llu\n", num, route->neighbor);
+			fprintf(file, "%-15s %" PRIu64 "\n", num, route->neighbor);
 		}
 
 	}
@@ -475,7 +436,7 @@ static void print_msr_proposed_routes(FILE *file, CgrBundle *bundle)
 
 		fprintf(file,
 				"\n------------------------------------------------------------ MSR: PROPOSED ROUTES -------------------------------------------------------------\n");
-		if(bundle->msrRoute != NULL)
+		if(bundle->msrRoute != NULL && list_get_length(bundle->msrRoute->hops))
 		{
 			print_msr_proposed_route(file, bundle->msrRoute, count);
 		}
@@ -512,30 +473,30 @@ static void print_msr_proposed_routes(FILE *file, CgrBundle *bundle)
  *  -------- | --------------- |  -----------------------------------------------
  *  23/04/20 | L. Persampieri  |   Initial Implementation and documentation.
  *****************************************************************************/
-static void print_msr_candidate_routes(FILE *file)
+static void print_msr_candidate_routes(UniboCGRSAP* uniboCgrSap, FILE *file)
 {
 	ListElt *elt;
-	List routes = get_routes(NULL);
 
 	if (file != NULL)
 	{
+        List routes = UniboCGRSAP_get_MSRSAP(uniboCgrSap)->routes;
 		fprintf(file,
 				"\n------------------------------------------------------------ MSR: CANDIDATE ROUTES ------------------------------------------------------------\n");
 		if (routes != NULL && routes->length > 0)
 		{
 
-#if (CGR_AVOID_LOOP > 0)
-			fprintf(file, "\n%-15s %-15s %-15s %-15s %-15s %-15s %-15s %-15s %s\n", "Route n.",
-					"ETO", "PBAT", "RVL", "Type", "Overbooked (G)", "Overbooked (U)",
-					"Protected (G)", "Protected (U)");
-#else
-			fprintf(file, "\n%-15s %-15s %-15s %-15s %-15s %-15s %-15s %s\n",
-					"Route n.", "ETO", "PBAT", "RVL", "Overbooked (G)", "Overbooked (U)",
-					"Protected (G)", "Protected (U)");
-#endif
+            if (UniboCGRSAP_check_reactive_anti_loop(uniboCgrSap) || UniboCGRSAP_check_proactive_anti_loop(uniboCgrSap)) {
+                fprintf(file, "\n%-15s %-15s %-15s %-15s %-15s %-15s %-15s %-15s %s\n", "Route n.",
+                        "ETO", "PBAT", "RVL", "Type", "Overbooked (G)", "Overbooked (U)",
+                        "Protected (G)", "Protected (U)");
+            } else {
+                fprintf(file, "\n%-15s %-15s %-15s %-15s %-15s %-15s %-15s %s\n",
+                        "Route n.", "ETO", "PBAT", "RVL", "Overbooked (G)", "Overbooked (U)",
+                        "Protected (G)", "Protected (U)");
+            }
 			for (elt = routes->last; elt != NULL; elt = elt->prev)
 			{
-				print_msr_candidate_route(file, (Route*) elt->data);
+				print_msr_candidate_route(uniboCgrSap, file, (Route*) elt->data);
 			}
 		}
 		else
@@ -574,13 +535,13 @@ static void print_msr_candidate_routes(FILE *file)
  *  -------- | --------------- | -----------------------------------------------
  *  23/04/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static void print_msr_best_routes(FILE *file)
+static void print_msr_best_routes(UniboCGRSAP* uniboCgrSap, FILE *file)
 {
 	ListElt *elt;
-	List routes = get_routes(NULL);
 
 	if (file != NULL)
 	{
+        List routes = UniboCGRSAP_get_MSRSAP(uniboCgrSap)->routes;
 		fprintf(file, "\n---------------- MSR: BEST ROUTES ----------------\n");
 
 		if (routes != NULL && routes->length > 0)
@@ -600,8 +561,4 @@ static void print_msr_best_routes(FILE *file)
 		debug_fflush(file);
 	}
 }
-
-
-
-#endif
 

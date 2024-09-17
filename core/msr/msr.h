@@ -35,50 +35,22 @@
 
 #include <stdlib.h>
 
+#include "../UniboCGRSAP.h"
 #include "../library/commonDefines.h"
 #include "../library/list/list.h"
 #include "../bundles/bundles.h"
 #include "../routes/routes.h"
 
-
-#if (MSR == 1)
-
-extern int tryMSR(time_t current_time, CgrBundle *bundle, List excludedNeighbors, FILE *file_call, List *bestRoutes);
-extern int initialize_msr();
-extern void destroy_msr();
-
+#ifdef __cplusplus
+extern "C" {
 #endif
 
-/************ CHECK MACROS ERROR *************/
+extern int tryMSR(UniboCGRSAP* uniboCgrSap, CgrBundle *bundle, List excludedNeighbors, FILE *file_call, List *bestRoutes);
+extern int MSRSAP_open(UniboCGRSAP* uniboCgrSap);
+extern void MSRSAP_close(UniboCGRSAP* uniboCgrSap);
 
-#if (MSR != 0 && MSR != 1)
-fatal error
-// Intentional compilation error
-// MSR must be 0 or 1
+#ifdef __cplusplus
+}
 #endif
-
-#if (MSR == 1)
-
-#if (WISE_NODE != 0 && WISE_NODE != 1)
-fatal error
-// Intentional compilation error
-// WISE_NODE must be 0 or 1
-#endif
-
-#if (MSR_TIME_TOLERANCE < 0)
-fatal error
-// Intentional compilation error
-// MSR_TIME_TOLERANCE must be greater or equal to 0.
-#endif
-
-#if (WISE_NODE == 0 && MSR_HOPS_LOWER_BOUND < 1)
-fatal error
-// Intentional compilation error
-// MSR_HOPS_TOLERANCE must be greater or equal to 1.
-#endif
-
-#endif
-
-/*********************************************/
 
 #endif /* CGR_UNIBO_MSR_MSR_H_ */

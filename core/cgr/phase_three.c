@@ -38,6 +38,105 @@
 #include "../library/list/list.h"
 #include "../routes/routes.h"
 
+typedef int (*getBestRouteFn)(
+        UniboCGRSAP* uniboCgrSap,
+        void* firstRoute,
+        void* secondRoute);
+
+/*  ... declare cost functions between here ... */
+static int best_route_cost_function(UniboCGRSAP* uniboCgrSap, void *first, void *second);
+/* ... and here ... */
+
+
+/**
+ * \brief Private data for phase three.
+ */
+struct PhaseThreeSAP {
+    getBestRouteFn costFunction;
+};
+
+/******************************************************************************
+ *
+ * \par Function Name:
+ * 		PhaseThreeSAP_open
+ *
+ * \brief Initialize all the data used by the phase three
+ *
+ *
+ * \par Date Written:  21/10/22
+ *
+ * \return int
+ *
+ * \retval   0   Success case: initialized
+ * \retval  -2   MWITHDRAW error
+ *
+ *
+ * \par Revision History:
+ *
+ *  DD/MM/YY | AUTHOR          |   DESCRIPTION
+ *  -------- | --------------- |  -----------------------------------------------
+ *  21/10/22 | L. Persampieri  |   Initial Implementation and documentation.
+ *****************************************************************************/
+int PhaseThreeSAP_open(UniboCGRSAP* uniboCgrSap) {
+    if (UniboCGRSAP_get_PhaseThreeSAP(uniboCgrSap)) return 0;
+    PhaseThreeSAP* sap = MWITHDRAW(sizeof(PhaseThreeSAP));
+    if (!sap) return -2;
+
+    UniboCGRSAP_set_PhaseThreeSAP(uniboCgrSap, sap);
+    memset(sap, 0, sizeof(PhaseThreeSAP));
+    sap->costFunction = best_route_cost_function;
+    return 0;
+}
+
+/******************************************************************************
+ *
+ * \par Function Name:
+ * 		PhaseThreeSAP_close
+ *
+ * \brief Deallocate all the memory allocated by the phase two.
+ *
+ *
+ * \par Date Written:  21/10/22
+ *
+ * \return void
+ *
+ * \par Revision History:
+ *
+ *  DD/MM/YY | AUTHOR          |   DESCRIPTION
+ *  -------- | --------------- |  -----------------------------------------------
+ *  21/10/22 | L. Persampieri  |   Initial Implementation and documentation.
+ *****************************************************************************/
+void PhaseThreeSAP_close(UniboCGRSAP* uniboCgrSap) {
+    PhaseThreeSAP* sap = UniboCGRSAP_get_PhaseThreeSAP(uniboCgrSap);
+    if (!sap) return;
+    memset(sap, 0, sizeof(PhaseThreeSAP));
+    MDEPOSIT(sap);
+    UniboCGRSAP_set_PhaseThreeSAP(uniboCgrSap, NULL);
+}
+
+/******************************************************************************
+ *
+ * \par Function Name:
+ * 		PhaseThreeSAP_set_cost_function_default
+ *
+ * \brief Set the "default" cost function used to compare routes in phase three.
+ *
+ *
+ * \par Date Written:  21/10/22
+ *
+ * \return void
+ *
+ * \par Revision History:
+ *
+ *  DD/MM/YY | AUTHOR          |   DESCRIPTION
+ *  -------- | --------------- |  -----------------------------------------------
+ *  21/10/22 | L. Persampieri  |   Initial Implementation and documentation.
+ *****************************************************************************/
+void PhaseThreeSAP_set_cost_function_default(UniboCGRSAP* uniboCgrSap) {
+    PhaseThreeSAP* sap = UniboCGRSAP_get_PhaseThreeSAP(uniboCgrSap);
+    sap->costFunction = best_route_cost_function;
+}
+
 /******************************************************************************
  *
  * \par Function Name:
@@ -67,26 +166,22 @@
  *  -------- | --------------- | -----------------------------------------------
  *  13/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static int best_route_cost_function(void *first, void *second)
+static int best_route_cost_function(UniboCGRSAP* uniboCgrSap, void *first, void *second)
 {
 	int result = -1;
-	Route *firstRoute, *secondRoute;
+    Route* firstRoute = first;
+    Route* secondRoute = second;
 
-	firstRoute = (Route*) first;
-	secondRoute = (Route*) second;
 
-#if (CGR_AVOID_LOOP > 0)
-	if (firstRoute->checkValue > secondRoute->checkValue)
-	{
-		result = 1;
-	}
-	else if (firstRoute->checkValue < secondRoute->checkValue)
-	{
-		result = -1;
-	}
-	else
-	{
-#endif
+    if (UniboCGRSAP_check_reactive_anti_loop(uniboCgrSap) || UniboCGRSAP_check_proactive_anti_loop(uniboCgrSap)) {
+        if (firstRoute->checkValue > secondRoute->checkValue) {
+            return 1;
+        }
+        else if (firstRoute->checkValue < secondRoute->checkValue)
+        {
+            return -1;
+        }
+    } else {
 		if (firstRoute->pbat > secondRoute->pbat) //SABR 3.2.8.1.4 a) 1)
 		{
 			result = 1;
@@ -105,14 +200,12 @@ static int best_route_cost_function(void *first, void *second)
 				}
 				else if (firstRoute->toTime == secondRoute->toTime)
 				{
-#if (CCSDS_SABR_DEFAULTS == 0 && CGR_ION_3_7_0 == 0)
 					if (firstRoute->owltSum > secondRoute->owltSum)
 					{
 						result = 1;
 					}
 					else if (firstRoute->owltSum == secondRoute->owltSum)
 					{
-#endif
 						//SABR 3.2.8.1.4 a) 4)
 						if (firstRoute->neighbor > secondRoute->neighbor)
 						{
@@ -122,15 +215,11 @@ static int best_route_cost_function(void *first, void *second)
 						{
 							result = 0;
 						}
-#if (CCSDS_SABR_DEFAULTS == 0 && CGR_ION_3_7_0 == 0)
 					}
-#endif
 				}
 			}
 		}
-#if (CGR_AVOID_LOOP > 0)
 	}
-#endif
 
 	return result;
 }
@@ -141,7 +230,6 @@ static int best_route_cost_function(void *first, void *second)
  * 		getOneBestRoutePerNeighbor
  *
  * \brief For each neighbor choose the best route and removes from candidateRoutes the other routes.
- * 		  At the end candidateRoutes will be sorted (the first route will be the best route and so on)
  *
  *
  * \par Date Written:
@@ -160,14 +248,12 @@ static int best_route_cost_function(void *first, void *second)
  *  -------- | --------------- | -----------------------------------------------
  *  13/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static void getOneBestRoutePerNeighbor(List candidateRoutes)
+static void getOneBestRoutePerNeighbor(UniboCGRSAP* uniboCgrSap, List candidateRoutes)
 {
 	ListElt *elt, *next, *temp;
 	Route *currentNeighborFirstRoute, *currentRoute;
-	compare_function temp_compare;
-	unsigned long long viaNeighbor = 0;
+	unsigned long long viaNeighbor;
 
-	elt = candidateRoutes->first;
 	for (elt = candidateRoutes->first; elt != NULL; elt = elt->next)
 	{
 		temp = elt->next;
@@ -179,7 +265,7 @@ static void getOneBestRoutePerNeighbor(List candidateRoutes)
 			next = temp->next;
 			if (viaNeighbor == currentRoute->neighbor)
 			{
-				if (best_route_cost_function(currentRoute, elt->data) < 0)
+				if (best_route_cost_function(uniboCgrSap, (Route*) currentRoute, (Route*) elt->data) < 0)
 				{
 					elt->data = currentRoute;
 				}
@@ -190,14 +276,6 @@ static void getOneBestRoutePerNeighbor(List candidateRoutes)
 			temp = next;
 		}
 	}
-
-	temp_compare = candidateRoutes->compare;
-	candidateRoutes->compare = best_route_cost_function;
-
-	sort_list(candidateRoutes);
-	candidateRoutes->compare = temp_compare;
-
-	return;
 }
 
 /******************************************************************************
@@ -225,7 +303,7 @@ static void getOneBestRoutePerNeighbor(List candidateRoutes)
  *  -------- | --------------- | -----------------------------------------------
  *  13/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static void getBestRoute(List candidateRoutes)
+static void getBestRoute(UniboCGRSAP* uniboCgrSap, List candidateRoutes)
 {
 	ListElt *elt, *next, *bestElt = NULL;
 
@@ -241,7 +319,7 @@ static void getBestRoute(List candidateRoutes)
 		}
 		else
 		{
-			if (best_route_cost_function(elt->data, bestElt->data) < 0)
+			if (best_route_cost_function(uniboCgrSap, (Route*) elt->data, (Route*) bestElt->data) < 0)
 			{
 				bestElt->data = elt->data;
 			}
@@ -251,8 +329,6 @@ static void getBestRoute(List candidateRoutes)
 
 		elt = next;
 	}
-
-	return;
 }
 
 /******************************************************************************
@@ -304,8 +380,6 @@ static void update_volumes(CgrBundle *bundle, List bestRoutes)
 			}
 		}
 	}
-
-	return;
 }
 
 /******************************************************************************
@@ -340,8 +414,9 @@ static void update_volumes(CgrBundle *bundle, List bestRoutes)
  *  -------- | --------------- | -----------------------------------------------
  *  13/02/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-int chooseBestRoutes(CgrBundle *bundle, List candidateRoutes)
+int chooseBestRoutes(UniboCGRSAP* uniboCgrSap, CgrBundle *bundle, List candidateRoutes)
 {
+    (void) uniboCgrSap;
 	int result = -1;
 
 	debug_printf("Entry point phase three.");
@@ -350,11 +425,11 @@ int chooseBestRoutes(CgrBundle *bundle, List candidateRoutes)
 	{
 		if (IS_CRITICAL(bundle))
 		{
-			getOneBestRoutePerNeighbor(candidateRoutes);
+			getOneBestRoutePerNeighbor(uniboCgrSap, candidateRoutes);
 		}
 		else
 		{
-			getBestRoute(candidateRoutes);
+			getBestRoute(uniboCgrSap, candidateRoutes);
 		}
 
 		update_volumes(bundle, candidateRoutes);
@@ -362,12 +437,10 @@ int chooseBestRoutes(CgrBundle *bundle, List candidateRoutes)
 		result = (int) candidateRoutes->length;
 	}
 
-	debug_printf("Best routes choosed: %d", result);
+	debug_printf("Best routes chosen: %d", result);
 
 	return result;
 }
-
-#if (LOG == 1)
 
 /******************************************************************************
  *
@@ -399,7 +472,7 @@ int chooseBestRoutes(CgrBundle *bundle, List candidateRoutes)
  *****************************************************************************/
 static int print_phase_three_route(FILE *file, Route *route)
 {
-	int len = -1, result = -1;
+	int len, result = -1;
 	char num[20];
 
 	if (file != NULL && route != NULL)
@@ -409,7 +482,7 @@ static int print_phase_three_route(FILE *file, Route *route)
 		len = sprintf(num, "%u)", route->num);
 		if (len >= 0)
 		{
-			fprintf(file, "%-15s %llu\n", num, route->neighbor);
+			fprintf(file, "%-15s %" PRIu64 "\n", num, route->neighbor);
 		}
 
 	}
@@ -465,6 +538,4 @@ void print_phase_three_routes(FILE *file, List bestRoutes)
 		debug_fflush(file);
 	}
 }
-
-#endif
 

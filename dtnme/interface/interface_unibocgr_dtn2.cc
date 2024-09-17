@@ -33,195 +33,140 @@
 #  include <dtn-config.h>
 #endif
 #include "interface_unibocgr_dtn2.h"
-//include from dtn2
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <string.h>
-#include <unistd.h>
+#include "feature-config.h"
+
+// include from system
+#include <cstdlib>
 #include <iostream>
-#include <time.h>
 
-#include "../../core/library/commonDefines.h"
-#include "../../core/cgr/cgr.h"
+// include from dtnme
+#include "../../../RouteEntry.h"
 
-#include "../../core/bundles/bundles.h"
-#include "../../core/contact_plan/contactPlan.h"
+// include from Unibo-CGR
+#include "../../include/UniboCGR.h"
 
-#include "../../core/contact_plan/contacts/contacts.h"
-#include "../../core/contact_plan/ranges/ranges.h"
-#include "../../core/library/list/list.h"
-#include "../../core/library_from_ion/scalar/scalar.h"
-
-#include "../../core/cgr/cgr_phases.h"
-#include "../../core/msr/msr_utils.h"
-#include "../../core/time_analysis/time.h"
+// include from ContactPlanManager
 #include "../../../../contact_plan/ContactPlanManager.h"
+#include "../../../../contact_plan/CPContact.h"
+#include "../../../../contact_plan/CPRange.h"
 
 
 #define NOMINAL_PRIMARY_BLKSIZE	29 // from ION 4.0.0: bpv7/library/libbpP.c
 #define EPOCH_2000_SEC 946684800
 #define UNUSED(x) (void)(x)
 
+using dtn::CPContact;
+using dtn::CPRange;
+using dtn::Bundle;
+using dtn::ContactPlanManager;
+using dtn::UniboCGRBundleRouter;
 
-/**
- * \brief This is the name of the contact file from which unibocgr get contacts and ranges
- */
-#define CONTACT_FILE "./contact-plan.txt"
-/**
- * \brief This time is used by the CGR as time 0.
- */
-static time_t reference_time = -1;
-/**
- * \brief Boolean used to know if the CGR has been initialized or not.
- */
-static int initialized = 0;
-/**
- * \brief The list of excluded neighbors for the current bundle.
- */
-static List excludedNeighbors = NULL;
-/**
- * \brief The local node
- */
+struct DTNME_UniboCGR {
+    struct timeval lastContactPlanUpdate;
 
-static unsigned long long localIpn;
-/**
- * \brief The istance of the UniboCGR router used by dtn2
- */
-static dtn::UniboCGRBundleRouter* uniborouter;
-//}
-/**
- * \brief CgrBundle used during the current call.
- */
-static CgrBundle *cgrBundle = NULL;
+    /* * from Unibo-CGR * */
 
-/**
- * \brief Default region number.
- */
-static const unsigned long defaultRegionNbr = 1;
+    UniboCGR uniboCgr; // Unibo-CGR instance
+    UniboCGR_Bundle uniboCgrBundle; // cached Unibo-CGR bundle
+    UniboCGR_Contact uniboCgrContact; // cached Unibo-CGR contact
+    UniboCGR_Range uniboCgrRange; // cached Unibo-CGR range
+    UniboCGR_excluded_neighbors_list uniboCgrExcludedNeighborsList; // cached Unibo-CGR Excluded Neighbors List
 
-/**
- *  \Object to manage the load and update of contatc-plan.txt
- */
-dtn::ContactPlanManager *planManager;
+    /* * from DTNME * */
 
-struct timeval lastread_struct;
-time_t lastread;
-struct stat st;
+    uint64_t local_node_number = 0; // who am i?
+    dtn::UniboCGRBundleRouter* uniborouter; // DTNME router
+};
 
-#define printDebugIonRoute(ionwm, route) do {  } while(0)
+// callback
+static int computeApplicableBacklog(uint64_t neighbor,
+                                    UniboCGR_BundlePriority priority,
+                                    uint8_t ordinal,
+                                    uint64_t *applicableBacklog,
+                                    uint64_t *totalBacklog,
+                                    void* userArg);
 
-//ported from ION bpv6 for CGRR and RGR extension
-typedef struct
-{
-	unsigned long long	fromNode;
-	unsigned long long	toNode;
-	time_t	fromTime;
-} CGRRHop;
-
-typedef struct
-{
-	unsigned int  hopCount; //Number of hops (contacts)
-	CGRRHop		 *hopList; //Hop (contact): identified by [from, to, fromTime]
-} CGRRoute;
-
-
-typedef struct
-{
-	unsigned int recRoutesLength; //number of recomputedRoutes
-	CGRRoute originalRoute; //computed by the source
-	CGRRoute *recomputedRoutes; //computed by following nodes
-} CGRRouteBlock;
-
-typedef struct
-{
-	unsigned int	length;
-	char			*nodes;
-} GeoRoute;
-
-
-#if (CGR_AVOID_LOOP > 0)
-/******************************************************************************
- *
- * \par Function Name:
- *      get_rgr_ext_block
- *
- * \brief  Get the GeoRoute stored into RGR Extension Block
- *
- *
- * \par Date Written:
- *
- *
- * \return int
- *
- * \retval  0  Success case: GeoRoute found
- * \retval -1  GeoRoute not found
- * \retval -2  System error
- *
- * \param[in]   *bundle    The DTN2 bundle that contains the RGR Extension Block
- * \param[out]  *resultBlk The GeoRoute extracted from the RGR Extension Block, only in success case.
- *                         The resultBLk must be allocated by the caller.
- *
- * \warning bundle    doesn't have to be NULL
- * \warning resultBlk doesn't have to be NULL
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  16/09/20 | G. Gori         |  Definition and documentation.
- *****************************************************************************/
-static int get_rgr_ext_block(dtn::Bundle *bundle, GeoRoute *resultBlk)
-{
-	int result =0;
-	//TODO: implement RGR extension block processor, take data and popolate resultBlk.
-	//pay attention, resultBlk NEEDS to be allocated ( malloc() ) and then call free() outside this function in convert_bundle_...()
-	return result;
+static void DTNME_UniboCGR_destroy(DTNME_UniboCGR* instance, time_t current_time_unix) {
+    if (!instance) return;
+    UniboCGR_close(&instance->uniboCgr, current_time_unix);
+    UniboCGR_Contact_destroy(&instance->uniboCgrContact);
+    UniboCGR_Range_destroy(&instance->uniboCgrRange);
+    UniboCGR_Bundle_destroy(&instance->uniboCgrBundle);
+    UniboCGR_destroy_excluded_neighbors_list(&instance->uniboCgrExcludedNeighborsList);
+    delete instance;
 }
-#endif
 
-#if (MSR == 1)
-/******************************************************************************
- *
- * \par Function Name:
- *      get_cgrr_ext_block
- *
- * \brief  Get the CGRRouteBlock stored into CGRR Extension Block
- *
- *
- * \par Date Written:
- *
- *
- * \return int
- *
- * \retval  0  Success case: CGRRouteBlock found
- * \retval -1  CGRRouteBlock not found
- * \retval -2  System error
- *
- * \param[in]   *bundle    The DTN2 bundle that contains the RGR Extension Block
- * \param[out] **resultBlk The CGRRouteBlock extracted from the CGRR Extension Block, only in success case.
- *                         The resultBLk will be allocated by this function.
- *
- * \warning bundle    doesn't have to be NULL
- * \warning resultBlk doesn't have to be NULL
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  16/09/20 | G. Gori		   |  Definition and documentation.
- *****************************************************************************/
-static int get_cgrr_ext_block(dtn::Bundle *bundle, CGRRouteBlock **resultBlk)
-{
-	int result = 0, i, j;
-	//TODO: implements CGRR extension block processor, take data and popolate resultBlk
-	//pay attention, resultBlk NEEDS to be allocated ( malloc() ) and then call free() outside this function in convert_bundle_...()
+static DTNME_UniboCGR* DTNME_UniboCGR_create(time_t current_time_unix,
+                                             time_t reference_time_unix,
+                                             uint64_t local_node_number,
+                                             dtn::UniboCGRBundleRouter* router) {
+    DTNME_UniboCGR* instance = new DTNME_UniboCGR();
+    if (!instance) { return nullptr; } // maybe DTNME uses no-throw new()
 
-	return result;
+    instance->local_node_number = local_node_number;
+    instance->uniborouter = router;
+
+    UniboCGR_Error uniboCgrError;
+    uniboCgrError = UniboCGR_Contact_create(&instance->uniboCgrContact);
+    if (UniboCGR_check_error(uniboCgrError)) {
+        std::cerr << "Cannot create Unibo-CGR Contact: " << UniboCGR_get_error_string(uniboCgrError) << std::endl;
+        DTNME_UniboCGR_destroy(instance, current_time_unix);
+        return nullptr;
+    }
+    uniboCgrError = UniboCGR_Range_create(&instance->uniboCgrRange);
+    if (UniboCGR_check_error(uniboCgrError)) {
+        std::cerr << "Cannot create Unibo-CGR Range: " << UniboCGR_get_error_string(uniboCgrError) << std::endl;
+        DTNME_UniboCGR_destroy(instance, current_time_unix);
+        return nullptr;
+    }
+    uniboCgrError = UniboCGR_Bundle_create(&instance->uniboCgrBundle);
+    if (UniboCGR_check_error(uniboCgrError)) {
+        std::cerr << "Cannot create Unibo-CGR Bundle: " << UniboCGR_get_error_string(uniboCgrError) << std::endl;
+        DTNME_UniboCGR_destroy(instance, current_time_unix);
+        return nullptr;
+    }
+    uniboCgrError = UniboCGR_create_excluded_neighbors_list(&instance->uniboCgrExcludedNeighborsList);
+    if (UniboCGR_check_error(uniboCgrError)) {
+        std::cerr << "Cannot create Unibo-CGR Excluded Neighbors List: " << UniboCGR_get_error_string(uniboCgrError) << std::endl;
+        DTNME_UniboCGR_destroy(instance, current_time_unix);
+        return nullptr;
+    }
+    uniboCgrError = UniboCGR_open(&instance->uniboCgr,
+                                  current_time_unix,
+                                  reference_time_unix,
+                                  local_node_number,
+                                  PhaseThreeCostFunction_default,
+                                  computeApplicableBacklog,
+                                  instance);
+    if (UniboCGR_check_error(uniboCgrError)) {
+        std::cerr << "Cannot create Unibo-CGR instance: " << UniboCGR_get_error_string(uniboCgrError) << std::endl;
+        DTNME_UniboCGR_destroy(instance, current_time_unix);
+        return nullptr;
+    }
+
+    return instance;
 }
-#endif
+
+static DTNME_UniboCGR* get_unibo_cgr_instance(DTNME_UniboCGR* newInstance = NULL) {
+    static DTNME_UniboCGR* instance = NULL;
+    if (newInstance) {
+        instance = newInstance;
+    }
+    return instance;
+}
+
+// str must be a string in ipn format ( ipn:x.y ). otherwise undefined behaviour.
+static uint64_t extract_node_number_from_ipn_eid_string(const std::string& str) {
+    std::string delimiter1 = ":";
+    std::string delimiter2 = ".";
+    std::string s = str.substr(str.find(delimiter1) + 1, str.find(delimiter2) - 1);
+    std::stringstream convert;
+    uint64_t node_number;
+    convert << s;
+    convert >> node_number;
+    return node_number;
+}
+
 /******************************************************************************
  *
  * \par Function Name:
@@ -241,7 +186,7 @@ static int get_cgrr_ext_block(dtn::Bundle *bundle, CGRRouteBlock **resultBlk)
  * \retval -1  Arguments error
  * \retval -2 Bundle have a DTN name, not IPN. Can't use CGR.
  *
- * \param[in]    current_time       The current time, in differential time from reference_time in s
+ * \param[in]    uniboCgr           Unibo-CGR instance
  * \param[in]    *Dtn2Bundle        The bundle in DTN2
  * \param[out]   *CgrBundle         The bundle in this CGR's implementation.
  *
@@ -250,147 +195,87 @@ static int get_cgrr_ext_block(dtn::Bundle *bundle, CGRRouteBlock **resultBlk)
  *
  *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
  *  -------- | --------------- | -----------------------------------------------
- *  05/07/20 | G. Gori		    |  Initial Implementation and documentation.
+ *  05/07/20 | G. Gori		   |  Initial Implementation and documentation.
+ *  03/11/22 | L. Persampieri  |  Adapted to new Unibo-CGR version (2.0).
  *****************************************************************************/
-static int convert_bundle_from_dtn2_to_cgr(time_t current_time, dtn::Bundle *Dtn2Bundle, CgrBundle *CgrBundle)
+static int convert_bundle_from_dtn2_to_cgr(UniboCGR uniboCgr, dtn::Bundle *Dtn2Bundle, UniboCGR_Bundle CgrBundle)
 {
-	//TODO Consider to take count of extensions
-	//To avoid warning
-	UNUSED(current_time);
 	int result = -1;
-	time_t offset;
-#if (MSR == 1)
-	CGRRouteBlock *cgrrBlk;
-#endif
-#if (CGR_AVOID_LOOP > 0)
-	GeoRoute geoRoute;
-#endif
 
-	if (Dtn2Bundle != NULL && CgrBundle != NULL)
+	if (Dtn2Bundle && CgrBundle)
 	{
-		std::string ipnName = Dtn2Bundle->dest().str();
-		if (ipnName.rfind("dtn", 0) == 0) {
-		  // it's a dtn name, can't use CGR
-		  result = -2;
-		}
-		else //parse the ipn EID to find the destNode (the node number)
-//CCaini we should add a check to verify that the EID is ipn; do not assume it is, as now.
-		{
-			std::string delimiter1 = ":";
-			std::string delimiter2 = ".";
-			std::string s = ipnName.substr(ipnName.find(delimiter1) + 1, ipnName.find(delimiter2) - 1);
-			std::stringstream convert;
-			unsigned long long destNode;
-			convert << s;
-			convert >> destNode;
-			CgrBundle->terminus_node = destNode;
-			CgrBundle->regionNbr = defaultRegionNbr;
+        UniboCGR_Bundle_reset(CgrBundle);
+        result = -2;
+		std::string destination_eid_str = Dtn2Bundle->dest().str();
+		if (destination_eid_str.rfind("ipn:", 0) == 0) {
 
-			#if (MSR == 1)
-					CgrBundle->msrRoute = NULL;
-					result = get_cgrr_ext_block(Dtn2Bundle, &cgrrBlk);
+            uint64_t destNode = extract_node_number_from_ipn_eid_string(destination_eid_str);
 
-					if(result == 0)
-					{
-						result = set_msr_route(current_time, cgrrBlk, CgrBundle);
-						free(cgrrBlk);
-					}
-			#endif
-			#if (CGR_AVOID_LOOP > 0)
-					if(result != -2)
-					{
-						result = get_rgr_ext_block(Dtn2Bundle, &geoRoute);
-						if(result == 0)
-						{
-							result = set_geo_route_list(geoRoute.nodes, CgrBundle);
-							free(geoRoute.nodes);
-						}
-					}
-			#endif
-			if (result != -2)
-			{
-				CLEAR_FLAGS(CgrBundle->flags); //reset previous mask
-					#ifdef ECOS_ENABLED
-				if(Dtn2Bundle->ecos_critical())
-				{
-					SET_CRITICAL(CgrBundle);
-				}
-					#endif
-				/*Non ho trovato info sul backward propagation CCaini: this infromation is provided by ION, but most
-  				 likely not by DTNME 
-				if (!(IS_CRITICAL(CgrBundle)) && IonBundle->returnToSender)
-				{
-					SET_BACKWARD_PROPAGATION(CgrBundle);
-				}*/
-				if(!(Dtn2Bundle->do_not_fragment()))
-				{
-					SET_FRAGMENTABLE(CgrBundle);
-				}
-				#ifdef ECOS_ENABLED
-				CgrBundle->ordinal = (unsigned int) Dtn2Bundle->ecos_ordinal();
-				#endif
+            UniboCGR_Bundle_set_destination_node_id(CgrBundle, destNode);
 
-				 // TODO CgrBundle->id.source_node = Dtn2Bundle->source();
-				CgrBundle->id.source_node = 0; // TODO TEMP CCaini it should  be trivial to add; it should be a field of Dtn2Bundle
-//if the source id dtn, keep 0; otherwise insert the node number . It is used only by logs. We should actually pass the EID, such as ipn:3.4 as a string
-				CgrBundle->id.creation_timestamp = Dtn2Bundle->creation_ts().secs_or_millisecs_;
-				CgrBundle->id.sequence_number = Dtn2Bundle->creation_ts().seqno_;
-//	                        CgrBundle->bp_version = Dtn2Bundle->bp_version();
-				if( Dtn2Bundle->is_fragment())
-				{
-					CgrBundle->id.fragment_length = Dtn2Bundle->frag_length();
-					CgrBundle->id.fragment_offset = Dtn2Bundle->frag_offset();
-				}
-				else
-				{
-					CgrBundle->id.fragment_length = 0;
-					CgrBundle->id.fragment_offset = 0;
-				}
+            UniboCGR_Bundle_set_flag_do_not_fragment(CgrBundle, Dtn2Bundle->do_not_fragment());
+            UniboCGR_Bundle_set_flag_probe(CgrBundle, false); // not found in DTNME
+            UniboCGR_Bundle_set_flag_backward_propagation(CgrBundle, false); // not found in DTNME
+#ifdef ECOS_ENABLED
+            UniboCGR_Bundle_set_flag_critical(CgrBundle, Dtn2Bundle->ecos_critical());
+            switch (Dtn2Bundle->priority()) {
+                case dtn::Bundle::COS_BULK:
+                    UniboCGR_Bundle_set_priority_bulk(CgrBundle);
+                    break;
+                case dtn::Bundle::COS_EXPEDITED:
+                    UniboCGR_Bundle_set_priority_expedited(CgrBundle, Dtn2Bundle->ecos_ordinal());
+                    break;
+                default:
+                    UniboCGR_Bundle_set_priority_normal(CgrBundle);
+                    break;
+            }
+#else
+            UniboCGR_Bundle_set_flag_critical(CgrBundle, false);
+            UniboCGR_Bundle_set_priority_normal(CgrBundle);
+#endif
 
-				CgrBundle->size = NOMINAL_PRIMARY_BLKSIZE + Dtn2Bundle->durable_size();
+            UniboCGR_Bundle_set_delivery_confidence(CgrBundle, 0.0f); // not found in DTNME
 
-				CgrBundle->evc = computeBundleEVC(CgrBundle->size); // SABR 2.4.3
+            if (UniboCGR_feature_logger_check(uniboCgr)) {
+                UniboCGR_Bundle_set_source_node_id(CgrBundle, Dtn2Bundle->dest().str().c_str());
+                UniboCGR_Bundle_set_sequence_number(CgrBundle, Dtn2Bundle->creation_ts().seqno_);
 
-/*CCaini  In the new Unibo-CGR version the offset will be calculated in Unibo-CGR core*/
-//
-				offset = Dtn2Bundle->creation_ts().secs_or_millisecs_ + EPOCH_2000_SEC - reference_time;
+                if( Dtn2Bundle->is_fragment()) {
+                    UniboCGR_Bundle_set_fragment_offset(CgrBundle, Dtn2Bundle->frag_offset());
+                    UniboCGR_Bundle_set_fragment_length(CgrBundle, Dtn2Bundle->frag_length());
+                } else {
+                    UniboCGR_Bundle_set_fragment_offset(CgrBundle, 0);
+                    UniboCGR_Bundle_set_fragment_length(CgrBundle, 0);
+                }
 
-				//offset relative_creation_time_in_s è la differenza tra la creazione del bundle e il momento di partenza del demone dtnme in s
-				//CgrBundle->expiration_time = IonBundle->expirationTime
-				//		- IonBundle->id.creationTime.seconds + offset;
+                UniboCGR_Bundle_set_total_application_data_unit_length(CgrBundle, Dtn2Bundle->orig_length());
+            }
 
-				CgrBundle->expiration_time = Dtn2Bundle->expiration_millis() + offset;
-				//Read PreviousHop Extension
-				std::string ipnName2 = Dtn2Bundle->prevhop().str();
-				if (ipnName2.rfind("dtn", 0) == 0) {
-				  // it's a dtn name, can't use CGR
-				  //try to use it anyway without previous hop
-				  ipnName2 = "ipn:0.0";
-				  //result = -2;
-				}
-				if(ipnName2 != "")
-				{
-					std::size_t da = ipnName2.find(delimiter1);
-					std::size_t a = ipnName2.find(delimiter2);
-					std::string s2 = ipnName2.substr(da +1,a -1);
-					std::stringstream converts;
-					unsigned long long sendNode;
-					converts << s2;
-					converts >> sendNode;
-					CgrBundle->sender_node = sendNode;
-				}
-				else
-				{
-					CgrBundle->sender_node = 0;
-				}
-				u_int8_t pr = Dtn2Bundle->priority();
-				if(pr==0) {CgrBundle->priority_level = Bulk;}
-				if(pr==1) {CgrBundle->priority_level = Normal;}
-				if(pr==2) {CgrBundle->priority_level = Expedited;}
-				if(pr>2) {CgrBundle->priority_level = Normal; writeLog("Error: priority of bundle is not a valid value: %zu. Using default: normal", pr);}
-				CgrBundle->dlvConfidence = 0;
-					result = 0;
-			}
+            UniboCGR_Bundle_set_primary_block_length(CgrBundle, NOMINAL_PRIMARY_BLKSIZE);
+            UniboCGR_Bundle_set_total_ext_block_length(CgrBundle, 0); // not found in DTNME
+            UniboCGR_Bundle_set_payload_length(CgrBundle, Dtn2Bundle->payload().length());
+
+            if (Dtn2Bundle->is_bpv6()) {
+                UniboCGR_Bundle_set_bundle_protocol_version(CgrBundle, 6);
+                // BPv6 -- creation time and lifetime in seconds
+                UniboCGR_Bundle_set_creation_time(CgrBundle, Dtn2Bundle->creation_time_secs());
+                UniboCGR_Bundle_set_lifetime(CgrBundle, Dtn2Bundle->expiration_secs());
+            } else { // BPv7
+                UniboCGR_Bundle_set_bundle_protocol_version(CgrBundle, 7);
+                // BPv7 -- creation time and lifetime in milliseconds
+                UniboCGR_Bundle_set_creation_time(CgrBundle, Dtn2Bundle->creation_time_millis());
+                UniboCGR_Bundle_set_lifetime(CgrBundle, Dtn2Bundle->expiration_millis());
+            }
+
+            std::string previous_hop_eid_str = Dtn2Bundle->prevhop().str();
+            if (previous_hop_eid_str.rfind("ipn:", 0) == 0) {
+                uint64_t previous_hop_node_number = extract_node_number_from_ipn_eid_string(previous_hop_eid_str);
+                UniboCGR_Bundle_set_previous_node_id(CgrBundle, previous_hop_node_number);
+            } else {
+                UniboCGR_Bundle_set_previous_node_id(CgrBundle, 0);
+            }
+
+            result = 0;
 		}
 	}
 
@@ -410,12 +295,8 @@ static int convert_bundle_from_dtn2_to_cgr(time_t current_time, dtn::Bundle *Dtn
  * \par Date Written: 
  *      16/07/20
  *
- * \return int 
+ * \return void
  *
- * \retval   0  All routes converted
- * \retval  -1  CGR's contact points to NULL
- *
- * \param[in]     evc             Bundle's estimated volume consumption
  * \param[in]     cgrRoutes       The list of routes in CGR's format
  * \param[out]    *res        	 All the next hops that CGR found, separated by a single space
  *
@@ -425,495 +306,263 @@ static int convert_bundle_from_dtn2_to_cgr(time_t current_time, dtn::Bundle *Dtn
  *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
  *  -------- | --------------- | -----------------------------------------------
  *  16/07/20 | G. Gori         |  Initial Implementation and documentation.
+ *  03/11/22 | L. Persampieri  |  Adapted to new Unibo-CGR version (2.0).
  *****************************************************************************/
-static int convert_routes_from_cgr_to_dtn2(long unsigned int evc, List cgrRoutes, std::string *res)
+static void convert_routes_from_cgr_to_dtn2(UniboCGR uniboCgr, UniboCGR_route_list cgrRoutes, std::string *res)
 {
-	ListElt *elt;
-	Route *current;
-	size_t count = 0;
-	UNUSED(count);
-	UNUSED(evc);
-	int result = 0;
 	int numRes = 0;
-	for (elt = cgrRoutes->first; elt != NULL && result >= 0; elt = elt->next)
-	{
-		if (elt->data != NULL)
+    UniboCGR_Route uniboCgrRoute = NULL;
+    UniboCGR_Error okRoute = UniboCGR_get_first_route(uniboCgr, cgrRoutes, &uniboCgrRoute);
+    for (/* empty */; okRoute == UniboCGR_NoError; okRoute = UniboCGR_get_next_route(uniboCgr, &uniboCgrRoute)) {
+		if (uniboCgrRoute != NULL)
 		{
 			if(numRes>0)
 			{
-				//spazio che separa i risultati
+				// blank-separated neighbors EID
 				res->append(" ");
 			}
-			current = (Route*) elt->data;
+            uint64_t neighbor = UniboCGR_Route_get_neighbor(uniboCgrRoute);
 			std::string toNode = "ipn:";
 			std::stringstream streamNode;
-			streamNode << toNode << current->neighbor;
+			streamNode << toNode << neighbor;
 			res->append(streamNode.str());
-			// Always using 0 as demux token
+			// Always using 0 as service number
 			res->append(".0");
 			numRes++;
 		}
-		else
-		{
-			result = -1;
-		}
 	}
+}
 
-	return result;
+static void convert_UniboCGR_Contact_to_CPContact(UniboCGR uniboCgr, UniboCGR_Contact inputContact, dtn::CPContact& outputContact) {
+    outputContact.setFrom(UniboCGR_Contact_get_sender(inputContact));
+    outputContact.setTo(UniboCGR_Contact_get_receiver(inputContact));
+
+    /* note: we must subtract the reference time since Unibo-CGR returns absolute times (Unix) and ContactPlanManager uses relative times. */
+    outputContact.setStartTime(UniboCGR_Contact_get_start_time(uniboCgr, inputContact) - dtn::ContactPlanManager::instance()->get_time_zero());
+    outputContact.setEndTime(UniboCGR_Contact_get_end_time(uniboCgr, inputContact) - dtn::ContactPlanManager::instance()->get_time_zero());
+
+    outputContact.setTransmissionSpeed(UniboCGR_Contact_get_xmit_rate(inputContact));
+}
+
+static void convert_CPContact_to_UniboCGR_Contact(UniboCGR uniboCgr, const dtn::CPContact& inputContact, UniboCGR_Contact outputContact) {
+    /* note: default values -- type and confidence are not part of CPContact */
+    UniboCGR_Contact_set_type(outputContact, UniboCGR_ContactType_Scheduled);
+    UniboCGR_Contact_set_confidence(outputContact, 1.0f);
+
+    UniboCGR_Contact_set_sender(outputContact, inputContact.getFrom());
+    UniboCGR_Contact_set_receiver(outputContact, inputContact.getTo());
+
+    /* note: we must add the reference time since Unibo-CGR wants absolute times (Unix) and ContactPlanManager uses relative times. */
+    UniboCGR_Contact_set_start_time(uniboCgr, outputContact, inputContact.getStartTime() + dtn::ContactPlanManager::instance()->get_time_zero());
+    UniboCGR_Contact_set_end_time(uniboCgr, outputContact, inputContact.getEndTime() + dtn::ContactPlanManager::instance()->get_time_zero());
+
+    UniboCGR_Contact_set_xmit_rate(outputContact, inputContact.getTransmissionSpeed());
+}
+
+static void convert_UniboCGR_Range_to_CPRange(UniboCGR uniboCgr, UniboCGR_Range inputRange, dtn::CPRange& outputRange) {
+    outputRange.setFrom(UniboCGR_Range_get_sender(inputRange));
+    outputRange.setTo(UniboCGR_Range_get_receiver(inputRange));
+
+    /* note: we must subtract the reference time since Unibo-CGR returns absolute times (Unix) and ContactPlanManager uses relative times. */
+    outputRange.setStartTime(UniboCGR_Range_get_start_time(uniboCgr, inputRange) - dtn::ContactPlanManager::instance()->get_time_zero());
+    outputRange.setEndTime(UniboCGR_Range_get_end_time(uniboCgr, inputRange) - dtn::ContactPlanManager::instance()->get_time_zero());
+
+    outputRange.setDelay(UniboCGR_Range_get_one_way_light_time(inputRange));
+}
+
+static void convert_CPRange_to_UniboCGR_Range(UniboCGR uniboCgr, const dtn::CPRange& inputRange, UniboCGR_Range outputRange) {
+    UniboCGR_Range_set_sender(outputRange, inputRange.getFrom());
+    UniboCGR_Range_set_receiver(outputRange, inputRange.getTo());
+
+    /* note: we must add the reference time since Unibo-CGR wants absolute times (Unix) and ContactPlanManager uses relative times. */
+    UniboCGR_Range_set_start_time(uniboCgr, outputRange, inputRange.getStartTime() + dtn::ContactPlanManager::instance()->get_time_zero());
+    UniboCGR_Range_set_end_time(uniboCgr, outputRange, inputRange.getEndTime() + dtn::ContactPlanManager::instance()->get_time_zero());
+
+    UniboCGR_Range_set_one_way_light_time(outputRange, inputRange.getDelay());
+}
+
+enum UpdateType {
+      UpdateType_NoUpdate,
+      UpdateType_ChangeEndTime,
+      UpdateType_ChangeXmitRate,
+      UpdateType_ChangeOneWayLightTime,
+      UpdateType_Remove
+};
+
+/*
+ * Run UniboCGR_contact_plan_change_contact_*() if a CPContact has been changed.
+ * Run UniboCGR_contact_plan_remove_contact() if contact is not found.
+ * Do nothing otherwise (and return UpdateType_NoUpdate).
+ */
+static UpdateType handle_contact_update(UniboCGR uniboCgr, UniboCGR_Contact uniboCgrContact, const std::list<CPContact>& contact_list) {
+    dtn::CPContact cpContact;
+    convert_UniboCGR_Contact_to_CPContact(uniboCgr, uniboCgrContact, cpContact);
+
+    for (std::list<CPContact>::const_iterator it = contact_list.cbegin(); it != contact_list.cend(); ++it) {
+        const CPContact &currentCpContact = *it;
+        if (cpContact != currentCpContact) continue; // next iteration -- does not match sender/receiver/startTime
+
+        // cpContact found!
+
+        UniboCGR_Error error;
+
+        if (cpContact.getEndTime() != currentCpContact.getEndTime()) {
+            error = UniboCGR_contact_plan_change_contact_end_time(uniboCgr,
+                                                                  UniboCGR_Contact_get_type(uniboCgrContact),
+                                                                  UniboCGR_Contact_get_sender(uniboCgrContact),
+                                                                  UniboCGR_Contact_get_receiver(uniboCgrContact),
+                                                                  UniboCGR_Contact_get_start_time(uniboCgr, uniboCgrContact),
+                                                                  currentCpContact.getEndTime() + dtn::ContactPlanManager::instance()->get_time_zero());
+            if (error == UniboCGR_NoError) {
+                return UpdateType_ChangeEndTime;
+            }
+        }
+        if (cpContact.getTransmissionSpeed() != currentCpContact.getTransmissionSpeed()) {
+            UniboCGR_contact_plan_change_contact_xmit_rate(uniboCgr,
+                                                           UniboCGR_Contact_get_type(uniboCgrContact),
+                                                           UniboCGR_Contact_get_sender(uniboCgrContact),
+                                                           UniboCGR_Contact_get_receiver(uniboCgrContact),
+                                                           UniboCGR_Contact_get_start_time(uniboCgr, uniboCgrContact),
+                                                           currentCpContact.getTransmissionSpeed());
+            if (error == UniboCGR_NoError) {
+                return UpdateType_ChangeXmitRate;
+            }
+        }
+
+        // contact found but do not need to update it
+        return UpdateType_NoUpdate;
+    }
+    UniboCGR_log_write(uniboCgr, "Before contact remove");
+    // contact not found -- must remove it from Unibo-CGR
+    UniboCGR_contact_plan_remove_contact(uniboCgr,
+                                         UniboCGR_Contact_get_type(uniboCgrContact),
+                                         UniboCGR_Contact_get_sender(uniboCgrContact),
+                                         UniboCGR_Contact_get_receiver(uniboCgrContact),
+                                         UniboCGR_Contact_get_start_time(uniboCgr, uniboCgrContact));
+
+    return UpdateType_Remove;
 }
 
 
+/*
+ * Run UniboCGR_contact_plan_change_range_*() if a CPRange has been changed.
+ * Run UniboCGR_contact_plan_remove_range() if range is not found.
+ * Do nothing otherwise (and return UpdateType_NoUpdate).
+ */
+static UpdateType handle_range_update(UniboCGR uniboCgr, UniboCGR_Range uniboCgrRange, const std::list<CPRange>& range_list) {
+    dtn::CPRange cpRange;
+    convert_UniboCGR_Range_to_CPRange(uniboCgr, uniboCgrRange, cpRange);
 
+    for (std::list<CPRange>::const_iterator it = range_list.cbegin(); it != range_list.cend(); ++it) {
+        const CPRange &currentCpRange = *it;
+        if (cpRange != currentCpRange) continue; // next iteration -- does not match sender/receiver/startTime
 
+        // cpRange found!
 
-/******************************************************************************
- *
- * \par Function Name:
- *      add_contact
- *
- * \brief  Add a contact to the contacts graph of this CGR's implementation.
- *
- *
- * \par Date Written:
- *      02/07/20
- *
- * \return int
- *
- * \retval   1   Contact added
- * \retval   0   Contact's arguments error
- * \retval  -1   The contact overlaps with other contacts
- * \retval  -2   Can't read all info of the contact
- * \retval  -3   Can't read all info of the contact
- * \retval  -4   Can't read fromTime or toTime
- *
- * \param[in]   fileline	The line read from the file
- *
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  02/07/20 | G. Gori	       |  Initial Implementation and documentation.
- *****************************************************************************/
-static int add_contact(char * fileline)
-{
-	Contact CgrContact;
-	CgrContact.fromTime = 0;
-	CgrContact.toTime = 0;
-	int count = 10, n=0, result = -2;
-	long long fn = 0;
-	long unsigned int xn = 0;
-	CgrContact.type = TypeScheduled;
-	//fromTime
-	if(fileline[count] == '+')
-	{
-		count++;
-		while(fileline[count] >= 48 && fileline[count] <= 57) {
-			n = n * 10 + fileline[count] - '0';
-			count++;
-		}
-		count++; 
-		CgrContact.fromTime = n;
-		n=0;
-	}
-	else result = -4;
-	//toTime
-	if(fileline[count] == '+')
-	{
-		count++;
-		while(fileline[count] >= 48 && fileline[count] <= 57) {
-			n = n * 10 + fileline[count] - '0';
-			count++;
-		}
-		count++;
-		CgrContact.toTime = n;
-		n=0;
-	}
-	else result = -4;
-	//fromNode
-	while(fileline[count] >= 48 && fileline[count] <= 57) {
-			fn = fn * 10 + fileline[count] - '0';
-			count++;
-		}
-	count++;
-	CgrContact.fromNode = fn ;
-	fn=0;
-	//toNode
-	while(fileline[count] >= 48 && fileline[count] <= 57) {
-			fn = fn * 10 + fileline[count] - '0';
-			count++;
-		}
-	count++;
-	CgrContact.toNode = fn ;
-	fn=0;
-	//txrate
-	while(fileline[count] >= 48 && fileline[count] <= 57) {
-			xn = xn * 10 + fileline[count] - '0';
-			count++;
-			result=0;
-		}
-	count++;
-	CgrContact.xmitRate = xn ;
-	CgrContact.confidence = 1;
-	if (result == 0)
-	{
-		// Try to add contact
-		result = addContact(defaultRegionNbr, CgrContact.fromNode, CgrContact.toNode, CgrContact.fromTime,
-				CgrContact.toTime, CgrContact.xmitRate, CgrContact.confidence, 0, NULL);
-		if(result >= 1)
-		{
-			result = 1;
-		}
+        UniboCGR_Error error;
 
-	}
-	else
-	{
-		result = -3;
-	}
+        if (cpRange.getEndTime() != currentCpRange.getEndTime()) {
+            error = UniboCGR_contact_plan_change_range_end_time(uniboCgr,
+                                                                UniboCGR_Range_get_sender(uniboCgrRange),
+                                                                UniboCGR_Range_get_receiver(uniboCgrRange),
+                                                                UniboCGR_Range_get_start_time(uniboCgr, uniboCgrRange),
+                                                                currentCpRange.getEndTime() + dtn::ContactPlanManager::instance()->get_time_zero());
+            if (error == UniboCGR_NoError) {
+                return UpdateType_ChangeEndTime;
+            }
+        }
+        if (cpRange.getDelay() != currentCpRange.getDelay()) {
+            error = UniboCGR_contact_plan_change_range_one_way_light_time(uniboCgr,
+                                                                          UniboCGR_Range_get_sender(uniboCgrRange),
+                                                                          UniboCGR_Range_get_receiver(uniboCgrRange),
+                                                                          UniboCGR_Range_get_start_time(uniboCgr, uniboCgrRange),
+                                                                          currentCpRange.getDelay());
+            if (error == UniboCGR_NoError) {
+                return UpdateType_ChangeOneWayLightTime;
+            }
+        }
 
-	return result;
+        // range found but do not need to update it
+        return UpdateType_NoUpdate;
+    }
+
+    // range not found -- must remove it from Unibo-CGR
+    UniboCGR_contact_plan_remove_range(uniboCgr,
+                                       UniboCGR_Range_get_sender(uniboCgrRange),
+                                       UniboCGR_Range_get_receiver(uniboCgrRange),
+                                       UniboCGR_Range_get_start_time(uniboCgr, uniboCgrRange));
+
+    return UpdateType_Remove;
 }
 
-/******************************************************************************
- *
- * \par Function Name:
- *      add_range
- *
- * \brief  Add a range to the ranges graph of this CGR's implementation.
- *
- *
- * \par Date Written:
- *      02/07/20
- *
- * \return int
- *
- * \retval   1   Range added
- * \retval   0   Range's arguments error
- * \retval  -1   fileline is not properly formatted
- * \retval  -2   fileline doesn't start with "+"
- *
- * \param[in]  char*		The line that contains the range
- *
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  02/07/20 | G. Gori		    |  Initial Implementation and documentation.
- *****************************************************************************/
-static int add_range(char* fileline)
-{
-	Range CgrRange;
-	CgrRange.fromTime = 0;
-	CgrRange.toTime = 0;
-	int result = -1;
-	int n = 0;
-	int count = 8;
-	unsigned int ow = 0;
-	long long fn = 0;
-	//fromTime
-	if(fileline[count] == '+')
-	{
-		count++;
-		while(fileline[count] >= 48 && fileline[count] <= 57) {
-			n = n * 10 + fileline[count] - '0';
-			count++;
-		}
-		count++; 
-		CgrRange.fromTime = n;
-		n=0;
-	}
-	else result = -2;
-	//toTime
-	if(fileline[count] == '+')
-	{
-		count++;
-		while(fileline[count] >= 48 && fileline[count] <= 57) {
-			n = n * 10 + fileline[count] - '0';
-			count++;
-		}
-		count++; 
-		CgrRange.toTime = n;
-		n=0;
-	}
-	else result = -2;
-	//fromNode
-	while(fileline[count] >= 48 && fileline[count] <= 57) {
-			fn = fn * 10 + fileline[count] - '0';
-			count++;
-		}
-	count++;
-	CgrRange.fromNode = fn ;
-	fn=0;
-	//toNode
-	while(fileline[count] >= 48 && fileline[count] <= 57) {
-			fn = fn * 10 + fileline[count] - '0';
-			count++;
-		}
-	count++;
-	CgrRange.toNode = fn ;
-	//owlt
-	while(fileline[count] >= 48 && fileline[count] <= 57) {
-			ow = ow * 10 + fileline[count] - '0';
-			count++;
-			result = 0;
-		}
-	count++;
-	CgrRange.owlt = ow ;
-	if (result == 0)
-	{
-		result = addRange(CgrRange.fromNode, CgrRange.toNode, CgrRange.fromTime, CgrRange.toTime,
-				CgrRange.owlt);
-		if(result >= 1)
-		{
-			result = 1;
-		}
-	}
-	else
-	{
-		result = -1;
-	}
-	return result;
+static void update_contact_plan(DTNME_UniboCGR* instance, time_t current_time_unix) {
+    dtn::ContactPlanManager* cpm = dtn::ContactPlanManager::instance();
+    UniboCGR_log_write(instance->uniboCgr, "Before contact plan update");
+    if (cpm->check_for_updates(&instance->lastContactPlanUpdate)) {
+        UniboCGR_log_write(instance->uniboCgr, "Before contact plan open");
+        UniboCGR_contact_plan_open(instance->uniboCgr, current_time_unix);
+        UniboCGR_log_write(instance->uniboCgr, "Before get contact list");
+        std::list<CPContact> contact_list = cpm->get_contact_list();
+        UniboCGR_log_write(instance->uniboCgr, "Before contact update");
+        { /* check for contact to update/remove */
+            UniboCGR_Contact uniboCgrContact = NULL;
+            UniboCGR_Error okContact = UniboCGR_get_first_contact(instance->uniboCgr, &uniboCgrContact);
+            while (okContact == UniboCGR_NoError) {
+                UniboCGR_log_write(instance->uniboCgr, "sender %lu receiver %lu start %ld",
+                                   UniboCGR_Contact_get_sender(uniboCgrContact),
+                                   UniboCGR_Contact_get_receiver(uniboCgrContact),
+                                   UniboCGR_Contact_get_start_time(instance->uniboCgr, uniboCgrContact));
+                if (handle_contact_update(instance->uniboCgr, uniboCgrContact, contact_list) != UpdateType_NoUpdate) {
+                    // need to iterate again from first contact -- change occurred (current iterator invalidated)
+                    okContact = UniboCGR_get_first_contact(instance->uniboCgr, &uniboCgrContact);
+                    UniboCGR_log_write(instance->uniboCgr, "loop first contact");
+                } else {
+                    okContact = UniboCGR_get_next_contact(instance->uniboCgr, &uniboCgrContact);
+                    UniboCGR_log_write(instance->uniboCgr, "loop next contact");
+                }
+            }
+        }
+        UniboCGR_log_write(instance->uniboCgr, "Before contact add");
+        { /* check for contact to add */
+            for (std::list<CPContact>::iterator it = contact_list.begin(); it != contact_list.end(); ++it) {
+                convert_CPContact_to_UniboCGR_Contact(instance->uniboCgr, *it, instance->uniboCgrContact);
+                UniboCGR_contact_plan_add_contact(instance->uniboCgr,
+                                                  instance->uniboCgrContact,
+                                                  false);
+                UniboCGR_log_write(instance->uniboCgr, "loop add contact");
+            }
+        }
+        UniboCGR_log_write(instance->uniboCgr, "Before get range list");
+        std::list<CPRange> range_list = cpm->get_range_list();
+        UniboCGR_log_write(instance->uniboCgr, "Before range update");
+        { /* check for range to update/remove */
+            UniboCGR_Range uniboCgrRange = NULL;
+            UniboCGR_Error okRange = UniboCGR_get_first_range(instance->uniboCgr, &uniboCgrRange);
+            while (okRange == UniboCGR_NoError) {
+                if (handle_range_update(instance->uniboCgr, uniboCgrRange, range_list) != UpdateType_NoUpdate) {
+                    // need to iterate again from first range -- change occurred (current iterator invalidated)
+                    okRange = UniboCGR_get_first_range(instance->uniboCgr, &uniboCgrRange);
+                    UniboCGR_log_write(instance->uniboCgr, "loop first range");
+                } else {
+                    okRange = UniboCGR_get_next_range(instance->uniboCgr, &uniboCgrRange);
+                    UniboCGR_log_write(instance->uniboCgr, "loop next range");
+                }
+            }
+        }
+        UniboCGR_log_write(instance->uniboCgr, "Before range add");
+        { /* check for range to add */
+            for (std::list<CPRange>::iterator it = range_list.begin(); it != range_list.end(); ++it) {
+                convert_CPRange_to_UniboCGR_Range(instance->uniboCgr, *it, instance->uniboCgrRange);
+                UniboCGR_contact_plan_add_range(instance->uniboCgr,
+                                                instance->uniboCgrRange);
+                UniboCGR_log_write(instance->uniboCgr, "loop add range");
+            }
+        }
+
+        UniboCGR_contact_plan_close(instance->uniboCgr);
+    }
 }
 
-
-/******************************************************************************
- *
- * \par Function Name:
- *      read_file_contactranges
- *
- * \brief  Read and add all new contacts or ranges of the file with filename
- * 		  specified in the first parameter to the
- *         contacts graph of thic CGR's implementation.
- *
- * \details Only for Registration and Scheduled contacts.
- *
- *
- * \par Date Written:
- *      02/07/20
- *
- * \return int
- *
- * \retval  ">= 0"  Number of contacts added to the contacts graph
- * \retval     -1   open file error
- *
- * \param[in]   char*	The name of the file to read
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  02/07/20 | G. Gori         |  Initial Implementation and documentation.
- *****************************************************************************/
-static int read_file_contactranges(char * filename)
-{
-	int result = 0, totAdded = 0, stop = 0;
-	UNUSED(totAdded);
-	UNUSED(stop);
-	
-	int skip = 0, count = 1;
-	int result_contacts = 0, result_ranges = 0;
-	int fd = open(filename, O_RDONLY);
-	char car;
-	if(fd < 0)
-	{
-		result = -1;
-	}
-	else
-	{
-		while(read(fd,&car,sizeof(char)))
-		{
-			if(car == '#') skip = 1;
-			if(car == '\n')
-			{
-				if(skip==0)
-				{
-					lseek(fd,-count, 1);
-					char * res;
-					res = (char*) malloc(sizeof(char)*count);
-
-					read(fd,res,sizeof(char)*count);
-					//Recognize if it's enough lenght and if it is a contact or range
-					if(count > 18 && res[0] == 'a')
-					{
-						if(res[2] == 'c' && res[3] == 'o' && res[4] == 'n' && res[5] == 't' && res[6] == 'a' && res[7] == 'c' && res[8] == 't')
-						{
-							result = add_contact(res);
-							if(result == 1)
-							{
-								result_contacts++;
-							}
-						}
-						else if(res[2] == 'r' && res[3] == 'a' && res[4] == 'n' && res[5] == 'g' && res[6] == 'e')
-						{
-							result = add_range(res);
-							if(result == 1)
-							{
-								result_ranges++;
-							}
-						}
-					}
-					count = 0;
-					free(res);
-				}
-				else if(skip==1)
-				{
-					count=0;
-					skip=0;
-				}
-			}
-			count++;
-		}
-		close(fd);
-#if (LOG == 1)
-		if (result_contacts > 0)
-		{
-			writeLog("Added %d contacts.", result_contacts);
-		}
-		if (result_ranges > 0)
-		{
-			//This piece of code add bidirectional range if there are only unidirectional in the contact plan
-			RbtNode *node = NULL;
-			Range* primo; RbtNode *node2 = NULL;
-			primo = get_first_range(&node);
-			if(primo != NULL)
-			{
-				Range *trovato = NULL;
-				do
-				{
-					if((*primo).fromNode < (*primo).toNode)
-					{
-						trovato = get_first_range_from_node_to_node((*primo).toNode, (*primo).fromNode, &node2);
-						if(trovato == NULL)
-						{
-							//I add the opposite range
-							result = addRange((*primo).toNode, (*primo).fromNode, (*primo).fromTime, (*primo).toTime, (*primo).owlt);
-							if(result >= 1)
-							{
-								result_ranges++;
-							}
-						}
-					}
-					primo = get_next_range(&node);
-				}
-				while(primo != NULL);
-			}
-			else
-			{
-				writeLog("No ranges found in graph");
-			}
-			writeLog("Added %d ranges.", result_ranges);
-		}
-#endif
-	}
-	result = result_contacts + result_ranges;
-	return result;
-}
-
-
-
-
-
-/******************************************************************************
- *
- * \par Function Name:
- *      update_contact_plan
- *
- * \brief  
- *
- *
- * \par Date Written:
- *      01/07/20
- *
- * \return int
- *
- * \retval   0  Contact plan has been changed and updated
- * \retval  -1  Contact plan isn't changed
- * \retval  -2  File error
- *
- * \param[in]   filename     The name of the file from which we read contacts
- * \param[in]   update       Set true to update contact plan, false to not update
- *
- * \warning file should exist
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  01/07/20 | G. Gori         |  Initial Implementation and documentation.
- *****************************************************************************/
-static int update_contact_plan(char * filename, bool update)
-{
-	int result = -2;
-	int result_read;
-	ContactPlanSAP cpSap = get_contact_plan_sap(NULL);
-   //Currently contacts are read from file, so we don't have any update during execution
-   //Set a condition in this if() if you need to check for update
-	if (update)
-	{
-		writeLog("#### Contact plan modified ####");
-		result_read = read_file_contactranges(filename);
-		if (result_read < 0) //Error
-		{
-			result = -1;
-		}
-		else
-		{
-			result = 0;
-			printf("Contact plan read: %d\n", result_read);
-		}
-		struct timeval tv;
-		gettimeofday(&tv, NULL);
-		cpSap.contactPlanEditTime.tv_sec = tv.tv_sec;
-		cpSap.contactPlanEditTime.tv_usec = tv.tv_usec;
-		set_time_contact_plan_updated(cpSap.contactPlanEditTime.tv_sec,cpSap.contactPlanEditTime.tv_usec);
-
-		writeLog("###############################");
-		printCurrentState();
-
-	}
-	else result = -1;
-
-	return result;
-
-}
-
-/******************************************************************************
- *
- * \par Function Name:
- *      exclude_neighbors
- *
- * \brief  Function that will exclude all the neighbors that can't be used as first hop
- *         to reach the destination. Currently it only clear the list.
- *
- *
- * \par Date Written:
- *      01/07/20
- *
- * \return int
- *
- * \retval   0   Success case: List converted
- *
- * \warning excludedNeighbors has to be previously initialized
- *
- * \par Notes:
- *           1. This function clear the previous excludedNeighbors list
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  01/07/20 | G. Gori         |  Initial Implementation and documentation.
- *****************************************************************************/
- 
- /* Commented to avoid warning
-static int exclude_neighbors()
-{
-	int result = 0;
-	free_list_elts(excludedNeighbors); //clear the previous list
-	return result;
-} 
-*/
 /******************************************************************************
  *
  * \par Function Name:
@@ -929,11 +578,7 @@ static int exclude_neighbors()
  * \return int
  *
  * \retval    0   Routes found and converted
- * \retval   -1   There aren't route to reach the destination
- * \retval   -3   Phase one arguments error
- * \retval   -4   CGR arguments error
- * \retval   -5   callCGR arguments error
- * \retval   -7   Bundle's conversion error
+ * \retval   -1   System error
  * \retval   -8   Bundle's conversion error: bundle have DTN name instead of IPN
  *
  * \param[in]     time              The current time
@@ -947,88 +592,53 @@ static int exclude_neighbors()
  *  -------- | --------------- | -----------------------------------------------
  *  05/07/20 | G. Gori		    |  Initial Implementation and documentation.
  *  19/04/22 | Federico Le Pera |  Support to update contact plan only if it changes
+ *  03/11/22 | Lorenzo Persampieri |  Adapted to new Unibo-CGR version (2.0).
  *****************************************************************************/
 int callUniboCGR(time_t time, dtn::Bundle *bundle, std::string *res)
 {
-	int result = -5;
-	int entries = -1;
-	List cgrRoutes = NULL;
-	UniboCgrSAP sap = get_unibo_cgr_sap(NULL);
-	UNUSED(sap);
-	record_total_interface_start_time();
-	debug_printf("Entry point interface.");
-	if (initialized && bundle != NULL)
-	{
-		//planManager->isCGRupdateComparedList();
-		//removeRangesContacts();
-		planManager->update_contact_plan(CONTACT_FILE);
-		//printf("The contact-plan.txt was modified at ReferenceTime (Unix time): %ld s\n", date);
-		if (result != -2 && result !=-1)
-		{
-			// INPUT CONVERSION: learn the bundle's characteristics and store them into the CGR's bundle struct
-			result = convert_bundle_from_dtn2_to_cgr(time - reference_time, bundle, cgrBundle);
-			if (result == 0)
-			{
+	DTNME_UniboCGR* instance = get_unibo_cgr_instance();
 
-				//Start log only after checking that bundle is ok
-				start_call_log(time - reference_time,sap.count_bundles);
-				print_log_bundle_id(cgrBundle->id.source_node,
-						cgrBundle->id.creation_timestamp,
-						cgrBundle->id.sequence_number,
-						cgrBundle->id.fragment_length,
-						cgrBundle->id.fragment_offset);
-				writeLog("Payload length: %zu.", bundle->payload().length());
-				if(cgrBundle->terminus_node==localIpn)
-				{
-					writeLog("Bundle destination reached");
-					log_fflush();
-					return 1;
-				}
-				debug_printf("Go to CGR.");
-				// Call Unibo-CGR
-				result = getBestRoutes(time - reference_time, cgrBundle, excludedNeighbors,
-						&cgrRoutes);
+    if (!instance || !bundle) {
+        // same as "route not found" case
+        *res = "";
+        return 0;
+    }
 
-				if (result > 0 && cgrRoutes != NULL)
-				{
-					// OUTPUT CONVERSION: convert the best routes into DTN2's CgrRoute and
-					// put them into ION's Lyst
-					result = convert_routes_from_cgr_to_dtn2(
-							cgrBundle->evc, cgrRoutes, res);
-					free_list_elts(excludedNeighbors);
-					if (result == -1)
-					{
-						result = -8;
-					}
-				}
-			}
-			else
-			{
-				if(result == -2)
-				{
-					result = -8;
-				}
-				else result = -7;
-			}
-			reset_bundle(cgrBundle);
-		}
-		if(result==-1)result=-2;
-	}
+    update_contact_plan(instance, time);
 
-	debug_printf("result -> %d\n", result);
+    UniboCGR_routing_open(instance->uniboCgr, time);
 
-#if (LOG == 1)
-	if (result < -1)
-	{
-		writeLog("Error (interface): %d.", result);
-	}
-	end_call_log();
-	log_fflush();
-#endif
+    int result = convert_bundle_from_dtn2_to_cgr(instance->uniboCgr, bundle, instance->uniboCgrBundle);
+    if (result == -2) {
+        UniboCGR_routing_close(instance->uniboCgr);
+        return -8; // unknown destination scheme
+    } else if (result < 0) {
+        UniboCGR_routing_close(instance->uniboCgr);
+        return -1; // fatal error
+    }
 
-	record_total_interface_stop_time();
-	print_time_results(time - reference_time, sap.count_bundles, &(cgrBundle->id));
-	return result;
+    UniboCGR_reset_excluded_neighbors_list(instance->uniboCgrExcludedNeighborsList);
+
+    UniboCGR_route_list cgrRoutes = NULL;
+    UniboCGR_Error error = UniboCGR_routing(instance->uniboCgr,
+                                            instance->uniboCgrBundle,
+                                            instance->uniboCgrExcludedNeighborsList,
+                                            &cgrRoutes);
+
+    if (UniboCGR_check_error(error)) {
+        UniboCGR_routing_close(instance->uniboCgr);
+        if (UniboCGR_check_fatal_error(error)) {
+            UniboCGR_log_write(instance->uniboCgr, "%s", UniboCGR_get_error_string(error));
+            return -1;
+        }
+        // route not found
+        *res = "";
+    } else {
+        convert_routes_from_cgr_to_dtn2(instance->uniboCgr, cgrRoutes, res);
+        UniboCGR_routing_close(instance->uniboCgr);
+    }
+    
+    return 0;
 }
 
 /******************************************************************************
@@ -1064,28 +674,76 @@ int callUniboCGR(time_t time, dtn::Bundle *bundle, std::string *res)
  *  -------- | --------------- | -----------------------------------------------
  *  20/07/20 | G. Gori         |  Initial Implementation and documentation.
  *  10/08/20 | G. Gori		   |  Fixed oasys::Lock bug
+ *  03/11/22 | L. Persampieri  |  Adapted to new Unibo-CGR version (2.0).
  *****************************************************************************/
-int computeApplicableBacklog(unsigned long long neighbor, int priority, unsigned int ordinal, CgrScalar *CgrApplicableBacklog,
-		CgrScalar *CgrTotalBacklog)
-{
+static int computeApplicableBacklog(uint64_t neighbor,
+                                    UniboCGR_BundlePriority priority,
+                                    uint8_t ordinal,
+                                    uint64_t *applicableBacklog,
+                                    uint64_t *totalBacklog,
+                                    void* userArg) {
+    DTNME_UniboCGR* sap = (DTNME_UniboCGR*) userArg;
 	int result = -1;
 	UNUSED(ordinal);
 	long int byteTot; long int byteApp;
-	if (CgrApplicableBacklog != NULL && CgrTotalBacklog != NULL)
+	if (applicableBacklog && totalBacklog)
 	{
 		byteTot=0; byteApp=0;
-		result = uniborouter->getBacklogForNode(neighbor,priority,&byteApp,&byteTot);
-		loadCgrScalar(CgrTotalBacklog, byteTot);
-		loadCgrScalar(CgrApplicableBacklog, byteApp);
+		result = sap->uniborouter->getBacklogForNode(neighbor,priority,&byteApp,&byteTot);
 		if(result >= 0)
 		{
-			debugLog("found %d bundle in queue on neighbor %llu.", result, neighbor);
+            *applicableBacklog = (uint64_t) byteApp;
+            *totalBacklog = (uint64_t) byteTot;
+			// debugLog("found %d bundle in queue on neighbor %llu.", result, neighbor);
 			result=0;
 		}
 
 	}
 	else result = -1;
 	return result;
+}
+/**
+ * \retval 0 success
+ * \retval "< 0" error
+ */
+static int enable_UniboCGR_default_features(UniboCGR uniboCgr, time_t current_time, const char* log_directory) {
+    UniboCGR_Error error;
+    // suppress unused warning with (void)
+    (void) error;
+    (void) uniboCgr;
+    (void) log_directory;
+
+    UniboCGR_feature_open(uniboCgr, current_time);
+
+#if UNIBO_CGR_FEATURE_LOG
+    error = UniboCGR_feature_logger_enable(uniboCgr, log_directory);
+    if (UniboCGR_check_error(error)) {
+        UniboCGR_feature_close(uniboCgr);
+        std::cerr << "Cannot enable Unibo-CGR logger feature" << std::endl;
+        return -1;
+    }
+#endif
+#if UNIBO_CGR_FEATURE_ONE_ROUTE_PER_NEIGHBOR
+    uint32_t limitNeighbors = UNIBO_CGR_FEATURE_ONE_ROUTE_PER_NEIGHBOR_LIMIT;
+    error = UniboCGR_feature_OneRoutePerNeighbor_enable(uniboCgr, limitNeighbors);
+    if (UniboCGR_check_error(error)) {
+        UniboCGR_feature_close(uniboCgr);
+        std::cerr << "Cannot enable Unibo-CGR one-route-per-neighbor feature" << std::endl;
+        return -1;
+    }
+#endif
+#if UNIBO_CGR_FEATURE_QUEUE_DELAY
+    error = UniboCGR_feature_QueueDelay_enable(uniboCgr);
+    if (UniboCGR_check_error(error)) {
+        UniboCGR_feature_close(uniboCgr);
+        std::cerr << "Cannot enable Unibo-CGR queue-delay feature" << std::endl;
+        return -1;
+    }
+#endif
+    
+    UniboCGR_feature_close(uniboCgr);
+
+    return 0;
 }
 
 /******************************************************************************
@@ -1101,25 +759,19 @@ int computeApplicableBacklog(unsigned long long neighbor, int priority, unsigned
  *
  * \return  void
  *
- * \param[in]  time  The current time
+ * \param[in]  current_time  The current time
  *
  *
  * \par Revision History:
  *
  *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
  *  -------- | --------------- | -----------------------------------------------
- *  14/07/20 | G. Gori		    |  Initial Implementation and documentation.
+ *  14/07/20 | G. Gori		   |  Initial Implementation and documentation.
+ *  03/11/22 | L. Persampieri  |  Adapted to new Unibo-CGR version (2.0).
  *****************************************************************************/
-void destroy_contact_graph_routing(time_t time)
+void destroy_contact_graph_routing(time_t current_time)
 {
-	free_list(excludedNeighbors);
-	excludedNeighbors = NULL;
-	bundle_destroy(cgrBundle);
-	cgrBundle = NULL;
-	destroy_cgr(time - reference_time);
-	initialized = 0;
-	reference_time = -1;
-	return;
+    DTNME_UniboCGR_destroy(get_unibo_cgr_instance(), current_time);
 }
 
 /******************************************************************************
@@ -1147,104 +799,39 @@ void destroy_contact_graph_routing(time_t time)
  *
  * \par Revision History:
  *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  01/07/20 | G. Gori         |  Initial Implementation and documentation.
- *  20/03/22 | Federico Le Pera|  Now interface_unibocgr using the ContactPlanManager
- *  						   |  to read the contact-plan.txt and init the sturcts of CGR
+ *  DD/MM/YY |  AUTHOR             |   DESCRIPTION
+ *  -------- | ------------------- | -----------------------------------------------
+ *  01/07/20 | G. Gori             |  Initial Implementation and documentation.
+ *  20/03/22 | Federico Le Pera    |  Now interface_unibocgr using the ContactPlanManager
+ *  						       |  to read the contact-plan.txt and init the sturcts of CGR
+ *  03/11/22 | Lorenzo Persampieri |  Adapted to new Unibo-CGR version (2.0).
  *****************************************************************************/
-
-int initialize_contact_graph_routing(unsigned long long ownNode, time_t time, dtn::UniboCGRBundleRouter *router)
+int initialize_contact_graph_routing(const uint64_t ownNode, const time_t current_time, dtn::UniboCGRBundleRouter *router)
 {
-	planManager = new dtn::ContactPlanManager("uniboCGR");
-	int result = 1;
-	char fileName[100] = CONTACT_FILE;
-	if(!(ownNode != 0 && time >= 0))
-	{
-		printf("Initialize CGR arguments error\n");
-		result = -5;
-	}
-	if (initialized != 1)
-	{
-		excludedNeighbors = list_create(NULL, NULL, NULL, free);
-		cgrBundle = bundle_create();
+    if (get_unibo_cgr_instance()) { return 1; } // already initialized
 
-		if (excludedNeighbors != NULL && cgrBundle != NULL)
-		{
-			printf("own Node: %lld\n", ownNode);//CCaini modified from %d to %lld
-			result = initialize_cgr(0, ownNode);//CCaini del core di Unibo-CGR
+#if UNIBO_CGR_RELATIVE_TIME
+    const time_t reference_time = ContactPlanManager::instance()->get_time_zero();
+#else
+    const time_t reference_time = 0;
+#endif
 
-			if (result == 1)
-			{
-				initialized = 1;
-				reference_time = time;
-				localIpn = ownNode;
-				writeLog("Reference time (Unix time): %ld s.", (long int) reference_time);
-				if(planManager->read_contact_plan(fileName)< 0)
-				{
-					printf("Cannot update contact plan in Unibo-CGR: can't open file");
-					result = -2;
-				}
-				if(result == 1)
-				printCurrentState();
-				uniborouter = router;
-				printf("CGR initialized. \n");
-			}
-			else
-			{
-				printf("CGR initialize error: %d\n", result);
-			}
-		}
-		else
-		{
-			free_list(excludedNeighbors);
-			bundle_destroy(cgrBundle);
-			excludedNeighbors = NULL;
-			cgrBundle = NULL;
-			result = -2;
-		}
-	}
+    DTNME_UniboCGR* instance = DTNME_UniboCGR_create(current_time, reference_time, ownNode, router);
+    if (!instance) {
+        std::cerr << "Cannot initialize Unibo-CGR." << std::endl;
+        return -1;
+    }
 
-	return result;
+    if (enable_UniboCGR_default_features(instance->uniboCgr, current_time, "cgr_log") < 0) {
+        std::cerr << "Cannot initialize Unibo-CGR features." << std::endl;
+        DTNME_UniboCGR_destroy(instance, current_time);
+        return -1;
+    }
+
+    update_contact_plan(instance, current_time);
+
+    (void) get_unibo_cgr_instance(instance); // save
+
+    // success
+    return 1;
 }
-/******************************************************************************
- *
- * \par Function Name:
- *      get_CPManager
- *
- * \brief return the current CPManager
- *
- *
- * \par Date Written:
- *      2/05/22
- *
- * \return int
- *
- * \retval  *ContactPlanManager
- *
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  02/05/22 | Federico le Pera|  Initial Implementation and documentation.
- *****************************************************************************/
-dtn::ContactPlanManager* get_CPManager()
-{
-	return planManager;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

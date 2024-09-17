@@ -42,11 +42,26 @@
 #include "../time_analysis/time.h"
 
 /**
- * \brief Used to keep in one place all the data used by phase one.
+ * \brief Not ordered queue used during Dijkstra's second loop.
  */
 typedef struct {
+    /**
+     * \brief The first contact in the queue
+     */
+    Contact *firstContact;
+    /**
+     * \brief The last contact in the queue
+     */
+    Contact *lastContact;
+} DijkstraQueue;
+
+
+/**
+ * \brief Used to keep in one place all the data used by phase one.
+ */
+struct PhaseOneSAP {
 	/**
-	 * \brief List of unsigned long long, for each neighbor in this list we already have a computed
+	 * \brief List of uint64_t, for each neighbor in this list we already have a computed
 	 *        route (selectedRoutes)
 	 */
 	List excludedNeighbors;
@@ -81,26 +96,10 @@ typedef struct {
 	/**
 	 * \brief The destination of the current bundle
 	 */
-	unsigned long long destination;
-    /**
-     * \brief The region in which resides the bundle's destination
-     */
-	unsigned long regionNbr;
-} PhaseOneSAP;
+	uint64_t destination;
 
-/**
- * \brief Not ordered queue used during Dijkstra's second loop.
- */
-typedef struct {
-	/**
-	 * \brief The first contact in the queue
-	 */
-	Contact *firstContact;
-	/**
-	 * \brief The last contact in the queue
-	 */
-	Contact *lastContact;
-} DijkstraQueue;
+    DijkstraQueue dijkstraQueue;
+};
 
 typedef enum
 {
@@ -130,7 +129,7 @@ typedef enum
                                       // caused by the toNode field
 } SuppressedFlag;
 
-static int computeOneRoutePerNeighbor(Node *terminusNode, long unsigned int missingNeighbors);
+static int computeOneRoutePerNeighbor(UniboCGRSAP* uniboCgrSap, Node *terminusNode, uint32_t missingNeighbors);
 
 
 /******************************************************************************
@@ -155,10 +154,8 @@ static int computeOneRoutePerNeighbor(Node *terminusNode, long unsigned int miss
  *  -------- | --------------- | -----------------------------------------------
  *  02/07/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static DijkstraQueue *get_dijkstra_queue() {
-	static DijkstraQueue dq;
-
-	return &dq;
+static DijkstraQueue *get_dijkstra_queue(PhaseOneSAP* phaseOneSap) {
+	return &phaseOneSap->dijkstraQueue;
 }
 
 
@@ -185,8 +182,8 @@ static DijkstraQueue *get_dijkstra_queue() {
  *  -------- | --------------- | -----------------------------------------------
  *  02/07/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static Contact *get_first_contact_from_queue() {
-	DijkstraQueue *dq = get_dijkstra_queue();
+static Contact *get_first_contact_from_queue(PhaseOneSAP* phaseOneSap) {
+	DijkstraQueue *dq = get_dijkstra_queue(phaseOneSap);
 
 	return dq->firstContact;
 }
@@ -211,8 +208,8 @@ static Contact *get_first_contact_from_queue() {
  *  -------- | --------------- | -----------------------------------------------
  *  02/07/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static void reset_dijkstra_queue() {
-	DijkstraQueue *dq = get_dijkstra_queue();
+static void reset_dijkstra_queue(PhaseOneSAP* phaseOneSap) {
+	DijkstraQueue *dq = get_dijkstra_queue(phaseOneSap);
 	dq->firstContact = NULL;
 	dq->lastContact = NULL;
 }
@@ -236,14 +233,14 @@ static void reset_dijkstra_queue() {
  *  -------- | --------------- | -----------------------------------------------
  *  02/07/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static void add_contact_in_queue(Contact *last) {
+static void add_contact_in_queue(PhaseOneSAP* phaseOneSap, Contact *last) {
 	DijkstraQueue *dq;
 
 	// if not NULL (safety check) and if is not already in queue
 	if (last != NULL &&
 			last->routingObject->nextContactInDijkstraQueue == NULL)
 	{
-		dq = get_dijkstra_queue();
+		dq = get_dijkstra_queue(phaseOneSap);
 
 		if (dq->lastContact == NULL) //empty queue
 		{
@@ -258,47 +255,12 @@ static void add_contact_in_queue(Contact *last) {
 			dq->lastContact = last;
 		}
 	}
-
-	return;
-
 }
 
 /******************************************************************************
  *
  * \par Function Name:
- * 		get_phase_one_sap
- *
- * \brief Get the PhaseOneSAP with all the values stored by phase one for the current call
- *
- *
- * \par Date Written:
- * 	    02/07/20
- *
- * \return PhaseOneSAP*
- *
- * \retval  PhaseOneSAP*   The reference to the struct with all values used by phase one for the current call.
- *
- *
- * \par Revision History:
- *
- *  DD/MM/YY | AUTHOR          |  DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  02/07/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-static PhaseOneSAP *get_phase_one_sap(PhaseOneSAP * newSap) {
-	static PhaseOneSAP sap;
-
-	if(newSap != NULL) {
-		sap = *newSap;
-	}
-
-	return &sap;
-}
-
-/******************************************************************************
- *
- * \par Function Name:
- * 		initialize_phase_one
+ * 		PhaseOneSAP_open
  *
  * \brief Initialize all the data used by the phase one
  *
@@ -307,15 +269,8 @@ static PhaseOneSAP *get_phase_one_sap(PhaseOneSAP * newSap) {
  *
  * \return int
  *
- * \retval   1   Success case: initialized
+ * \retval   0   Success case: initialized
  * \retval  -2   MWITHDRAW error
- *
- * \param[in]	ownNode   The local node
- *
- * \par Notes:
- * 			1.	Initialize:
- * 				-	The contacts graph's root
- * 				-	The excludedNeighbors list
  *
  *
  * \par Revision History:
@@ -323,45 +278,46 @@ static PhaseOneSAP *get_phase_one_sap(PhaseOneSAP * newSap) {
  *  DD/MM/YY | AUTHOR          |   DESCRIPTION
  *  -------- | --------------- |  -----------------------------------------------
  *  30/01/20 | L. Persampieri  |   Initial Implementation and documentation.
+ *  21/10/22 | L. Persampieri  |   Renamed function
  *****************************************************************************/
-int initialize_phase_one(unsigned long long ownNode)
+int PhaseOneSAP_open(UniboCGRSAP* uniboCgrSap)
 {
-	int result = 1;
-	PhaseOneSAP *sap = get_phase_one_sap(NULL);
+    if (UniboCGRSAP_get_PhaseOneSAP(uniboCgrSap)) return 0; // already initialized
+
+    PhaseOneSAP* sap = MWITHDRAW(sizeof(PhaseOneSAP));
+    if (!sap) {
+        return -2;
+    }
+    UniboCGRSAP_set_PhaseOneSAP(uniboCgrSap, sap);
+    memset(sap, 0, sizeof(PhaseOneSAP));
 
 	sap->alreadyExcluded = 0;
 	sap->knownRoutesUpdated = 0;
 	sap->graphCleaned = 0;
 
-	if (sap->excludedNeighbors == NULL)
-	{
-		//don't set delete_data_elt in this list !
-		// We get the pointer to the neighbor with &(route->neighbor)
-		sap->excludedNeighbors = list_create(NULL, NULL, NULL, NULL);
+    //don't set delete_data_elt in this list !
+    // We get the pointer to the neighbor with &(route->neighbor)
+    sap->excludedNeighbors = list_create(NULL, NULL, NULL, NULL);
+	if (sap->excludedNeighbors == NULL) {
+        PhaseOneSAP_close(uniboCgrSap);
+		return -2;
 	}
-	if (sap->excludedNeighbors == NULL)
-	{
-		result = -2;
-	}
-	else
-	{
-		free_list_elts(sap->excludedNeighbors);
-		memset(&(sap->graphRoot), 0, sizeof(Contact));
-		sap->graphRoot.fromNode = ownNode;
-		sap->graphRoot.toNode = ownNode;
-		sap->graphRoot.type = TypeScheduled;
-		sap->graphRoot.toTime = MAX_POSIX_TIME;
-		memset(&(sap->graphRootWork), 0, sizeof(ContactNote));
-		sap->graphRoot.routingObject = &(sap->graphRootWork);
-		sap->graphRoot.routingObject->arrivalConfidence = 1.0F;
-	}
+    free_list_elts(sap->excludedNeighbors);
+    memset(&(sap->graphRoot), 0, sizeof(Contact));
+    sap->graphRoot.fromNode = UniboCGRSAP_get_local_node(uniboCgrSap);
+    sap->graphRoot.toNode = UniboCGRSAP_get_local_node(uniboCgrSap);
+    sap->graphRoot.type = TypeScheduled;
+    sap->graphRoot.toTime = MAX_POSIX_TIME;
+    memset(&(sap->graphRootWork), 0, sizeof(ContactNote));
+    sap->graphRoot.routingObject = &(sap->graphRootWork);
+    sap->graphRoot.routingObject->arrivalConfidence = 1.0F;
 
-	return result;
+	return 0;
 }
 
 /******************************************************************************
  *
- * \par Function Name: destroy_phase_one
+ * \par Function Name: PhaseOneSAP_close
  *
  * \brief Destroy all the data used by the phase one (memory areas will be deallocated)
  *
@@ -378,19 +334,16 @@ int initialize_phase_one(unsigned long long ownNode)
  *  DD/MM/YY | AUTHOR          |   DESCRIPTION
  *  -------- | --------------- |  -----------------------------------------------
  *  30/01/20 | L. Persampieri  |   Initial Implementation and documentation.
+ *  21/10/22 | L. Persampieri  |   Renamed function
  *****************************************************************************/
-void destroy_phase_one()
+void PhaseOneSAP_close(UniboCGRSAP* uniboCgrSap)
 {
-	PhaseOneSAP *sap  = get_phase_one_sap(NULL);
+	PhaseOneSAP *sap  = UniboCGRSAP_get_PhaseOneSAP(uniboCgrSap);
+    if (!sap) return;
 	free_list(sap->excludedNeighbors);
-	sap->excludedNeighbors = NULL;
-	sap->alreadyExcluded = 0;
-	sap->knownRoutesUpdated = 0;
-	sap->graphCleaned = 0;
-	sap->destination = 0;
-	sap->regionNbr = 0;
-
-	return;
+    memset(sap, 0, sizeof(PhaseOneSAP));
+    MDEPOSIT(sap);
+    UniboCGRSAP_set_PhaseOneSAP(uniboCgrSap, NULL);
 }
 
 /******************************************************************************
@@ -419,17 +372,14 @@ void destroy_phase_one()
  *  -------- | --------------- |  -----------------------------------------------
  *  30/01/20 | L. Persampieri  |   Initial Implementation and documentation.
  *****************************************************************************/
-void reset_phase_one()
+void reset_phase_one(UniboCGRSAP* uniboCgrSap)
 {
-	PhaseOneSAP *sap = get_phase_one_sap(NULL);
+	PhaseOneSAP *sap = UniboCGRSAP_get_PhaseOneSAP(uniboCgrSap);
 	free_list_elts(sap->excludedNeighbors);
 	sap->alreadyExcluded = 0;
 	sap->knownRoutesUpdated = 0;
 	sap->graphCleaned = 0;
 	sap->destination = 0;
-	sap->regionNbr = 0;
-
-	return;
 }
 
 /******************************************************************************
@@ -461,14 +411,14 @@ void reset_phase_one()
  *  -------- | --------------- |  -----------------------------------------------
  *  30/01/20 | L. Persampieri  |   Initial Implementation and documentation.
  *****************************************************************************/
-static void clear_work_areas(ClearRule rule)
+static void clear_work_areas(UniboCGRSAP* uniboCgrSap, ClearRule rule)
 {
 	Contact *current;
 	RbtNode *node;
 	ContactNote *work;
-	PhaseOneSAP *sap;
+	PhaseOneSAP *phaseOneSap = UniboCGRSAP_get_PhaseOneSAP(uniboCgrSap);
 
-	current = get_first_contact(&node);
+	current = get_first_contact(uniboCgrSap, &node);
 	while (current != NULL)
 	{
 		work = current->routingObject;
@@ -497,13 +447,10 @@ static void clear_work_areas(ClearRule rule)
 
 	if(rule == ClearTotally)
 	{
-		sap = get_phase_one_sap(NULL);
-		sap->graphCleaned = 1;
+		phaseOneSap->graphCleaned = 1;
 	}
 
-	reset_dijkstra_queue(); //initialize queue
-
-	return;
+	reset_dijkstra_queue(phaseOneSap); //initialize queue
 }
 
 /******************************************************************************
@@ -533,18 +480,17 @@ static void clear_work_areas(ClearRule rule)
  *  -------- | --------------- |  -----------------------------------------------
  *  30/01/20 | L. Persampieri  |   Initial Implementation and documentation.
  *****************************************************************************/
-static int neighbor_is_excluded(unsigned long long neighbor)
+static int neighbor_is_excluded(PhaseOneSAP* phaseOneSap, uint64_t neighbor)
 {
 	int result = 0;
 	ListElt *elt;
-	unsigned long long *current;
-	PhaseOneSAP *sap = get_phase_one_sap(NULL);
+	uint64_t *current;
 
-	for (elt = sap->excludedNeighbors->first; elt != NULL && result == 0; elt = elt->next)
+	for (elt = phaseOneSap->excludedNeighbors->first; elt != NULL && result == 0; elt = elt->next)
 	{
 		if (elt->data != NULL)
 		{
-			current = (unsigned long long*) elt->data;
+			current = (uint64_t*) elt->data;
 			if (*current == neighbor)
 			{
 				result = 1;
@@ -586,15 +532,13 @@ static int neighbor_is_excluded(unsigned long long neighbor)
  *  -------- | --------------- |  -----------------------------------------------
  *  30/01/20 | L. Persampieri  |   Initial Implementation and documentation.
  *****************************************************************************/
-static int exclude_current_neighbor(Route *route)
+static int exclude_current_neighbor(PhaseOneSAP* phaseOneSap, Route *route)
 {
 	int result = -1;
-	PhaseOneSAP *sap;
 
 	if(route != NULL)
 	{
-		sap = get_phase_one_sap(NULL);
-		if (list_insert_first(sap->excludedNeighbors, &(route->neighbor)) != NULL)
+		if (list_insert_first(phaseOneSap->excludedNeighbors, &(route->neighbor)) != NULL)
 		{
 			result = 0;
 		}
@@ -636,7 +580,7 @@ static int exclude_current_neighbor(Route *route)
  *  -------- | --------------- |  -----------------------------------------------
  *  30/01/20 | L. Persampieri  |   Initial Implementation and documentation.
  *****************************************************************************/
-static int exclude_all_neighbors_from_computed_routes(List computedRoutes)
+static int exclude_all_neighbors_from_computed_routes(PhaseOneSAP* phaseOneSap, List computedRoutes)
 {
 	int stop = 0, result = 0;
 	Route *route;
@@ -646,9 +590,9 @@ static int exclude_all_neighbors_from_computed_routes(List computedRoutes)
 	{
 		result++; //count the routes added by the add_route
 		route = (Route*) elt->data;
-		if (!neighbor_is_excluded(route->neighbor))
+		if (!neighbor_is_excluded(phaseOneSap, route->neighbor))
 		{
-			if (exclude_current_neighbor(route) < 0)
+			if (exclude_current_neighbor(phaseOneSap, route) < 0)
 			{
 				result = -2;
 				stop = 1;
@@ -880,27 +824,28 @@ static int compare_dijkstra_edges(ContactNote *first, ContactNote *second)
  *  -------- | --------------- |  -----------------------------------------------
  *  30/01/20 | L. Persampieri  |   Initial Implementation and documentation.
  *****************************************************************************/
-static void compute_new_distances(PhaseOneSAP *sap, time_t current_time, Contact *current)
+static void compute_new_distances(UniboCGRSAP *uniboCgrSap, time_t current_time, Contact *current)
 {
 	int go_to_next = 0;
 	Contact *contact;
 	RbtNode *rbtNode;
-	unsigned int owlt;
-	unsigned int owltMargin;
+	uint64_t owlt;
+	uint64_t owltMargin;
 	time_t earliestTransmissionTime;
 	ContactNote *work, *currentWork, tempWork;
+    PhaseOneSAP* phaseOneSap = UniboCGRSAP_get_PhaseOneSAP(uniboCgrSap);
 
 	currentWork = current->routingObject;
 
-	for (contact = get_first_contact_from_node(sap->regionNbr, current->toNode, &rbtNode); contact != NULL;
+	for (contact = get_first_contact_from_node(uniboCgrSap, current->toNode, &rbtNode); contact != NULL;
 			contact = get_next_contact(&rbtNode))
 	{
-		if (contact->fromNode != current->toNode || contact->regionNbr != sap->regionNbr)
+		if (contact->fromNode != current->toNode)
 		{
 			rbtNode = NULL; //I leave the loop
 		}
 		else if ((contact->toNode != current->fromNode && contact->fromNode != contact->toNode)
-				|| (current == &(sap->graphRoot)))
+				|| (current == &(phaseOneSap->graphRoot)))
 		{
 			//don't route back and permits loopback
 			//only for the local node (SABR)
@@ -919,13 +864,13 @@ static void compute_new_distances(PhaseOneSAP *sap, time_t current_time, Contact
 			else if (!work->suppressed && !work->visited)
 			{
 				earliestTransmissionTime = contact->fromTime;
-				if (current == &(sap->graphRoot))
+				if (current == &(phaseOneSap->graphRoot))
 				{
 					if (contact->fromTime < current_time) //SABR 3.2.4.1.1
 					{
 						earliestTransmissionTime = current_time;
 					}
-					if (neighbor_is_excluded(contact->toNode))
+					if (neighbor_is_excluded(phaseOneSap, contact->toNode))
 					{
 						//helpful for "one route per neighbor"
 						work->suppressed = DijkstraSuppressed;
@@ -960,7 +905,7 @@ static void compute_new_distances(PhaseOneSAP *sap, time_t current_time, Contact
 
 					if (work->rangeFlag == RangeNotFound
 							|| (work->rangeFlag == RangeNotSearched
-									&& get_applicable_range(contact->fromNode, contact->toNode, contact->fromTime, &owlt) < 0))
+									&& get_applicable_range(uniboCgrSap, contact->fromNode, contact->toNode, contact->fromTime, &owlt) < 0))
 					{
 						work->rangeFlag = RangeNotFound; //range not found at start time, this contact cannot be used to compute a route
 						work->suppressed = DijkstraSuppressed;
@@ -975,7 +920,7 @@ static void compute_new_distances(PhaseOneSAP *sap, time_t current_time, Contact
 						owltMargin = ((MAX_SPEED_MPH / 3600) * owlt) / 186282;
 						owlt += owltMargin;
 
-						tempWork.arrivalTime = earliestTransmissionTime + owlt;
+						tempWork.arrivalTime = earliestTransmissionTime + (time_t) owlt;
 
 						tempWork.owltSum = owlt + currentWork->owltSum;
 						tempWork.hopCount = currentWork->hopCount;
@@ -997,7 +942,7 @@ static void compute_new_distances(PhaseOneSAP *sap, time_t current_time, Contact
 							work->arrivalConfidence = tempWork.arrivalConfidence;
 
 							// insert in queue (if not present)
-							add_contact_in_queue(contact);
+							add_contact_in_queue(phaseOneSap, contact);
 						}
 					}
 				}
@@ -1006,8 +951,6 @@ static void compute_new_distances(PhaseOneSAP *sap, time_t current_time, Contact
 	}
 
 	currentWork->visited = 1;
-
-	return;
 }
 
 /******************************************************************************
@@ -1048,11 +991,12 @@ static void compute_new_distances(PhaseOneSAP *sap, time_t current_time, Contact
  *  30/01/20 | L. Persampieri  |   Initial Implementation and documentation.
  *  20/06/20 | L. Persampieri  |   Added queue (code optimization)
  *****************************************************************************/
-static Contact* find_best_contact(unsigned long long toNode, unsigned long long localNode)
+static Contact* find_best_contact(UniboCGRSAP* uniboCgrSap, uint64_t toNode, uint64_t localNode)
 {
 	Contact *contact;
 //	RbtNode *rbtNode = NULL;
 	ContactNote *work, tempWork;
+    PhaseOneSAP* phaseOneSap = UniboCGRSAP_get_PhaseOneSAP(uniboCgrSap);
 
 	tempWork.arrivalTime = MAX_POSIX_TIME;
 	tempWork.hopCount = UINT_MAX;
@@ -1061,7 +1005,7 @@ static Contact* find_best_contact(unsigned long long toNode, unsigned long long 
 	tempWork.arrivalConfidence = 0.0F;
 
 	// currently the queue is unordered, so we have to compare all contacts
-	contact = get_first_contact_from_queue();
+	contact = get_first_contact_from_queue(phaseOneSap);
 
 	while(contact != NULL)
 	{
@@ -1119,22 +1063,22 @@ static Contact* find_best_contact(unsigned long long toNode, unsigned long long 
  *  -------- | --------------- |  -----------------------------------------------
  *  30/01/20 | L. Persampieri  |   Initial Implementation and documentation.
  *****************************************************************************/
-static int dijkstra_search(Contact *rootContact, unsigned long long toNode, Route *resultRoute)
+static int dijkstra_search(UniboCGRSAP* uniboCgrSap, Contact *rootContact, uint64_t toNode, Route *resultRoute)
 {
 	int result = 0, stop = 0;
 	Contact *current;
 	Contact *finalContact = NULL;
-	PhaseOneSAP *sap = get_phase_one_sap(NULL);
-	time_t current_time = get_current_time();
-	unsigned long long localNode = get_local_node();
+	PhaseOneSAP *phaseOneSap = UniboCGRSAP_get_PhaseOneSAP(uniboCgrSap);
+	time_t current_time = UniboCGRSAP_get_current_time(uniboCgrSap);
+	uint64_t localNode = UniboCGRSAP_get_local_node(uniboCgrSap);
 
 	current = rootContact;
 
 	while (!stop)
 	{
-		compute_new_distances(sap, current_time, current);
+		compute_new_distances(uniboCgrSap, current_time, current);
 
-		current = find_best_contact(toNode, localNode);
+		current = find_best_contact(uniboCgrSap, toNode, localNode);
 
 		if (current != NULL)
 		{
@@ -1152,7 +1096,7 @@ static int dijkstra_search(Contact *rootContact, unsigned long long toNode, Rout
 
 	if (finalContact != NULL) //route found
 	{
-		result = populate_route(sap, current_time, finalContact, rootContact, resultRoute);
+		result = populate_route(phaseOneSap, current_time, finalContact, rootContact, resultRoute);
 	}
 	else
 	{
@@ -1191,12 +1135,12 @@ static int dijkstra_search(Contact *rootContact, unsigned long long toNode, Rout
  *  -------- | --------------- |  -----------------------------------------------
  *  30/01/20 | L. Persampieri  |   Initial Implementation and documentation.
  *****************************************************************************/
-static int update_cost_values(time_t current_time, Route *route)
+static int update_cost_values(UniboCGRSAP* uniboCgrSap, time_t current_time, Route *route)
 {
 	ListElt *elt, *first;
 	Contact *contact;
 	time_t arrivalTime, earliestTransmissionTime;
-	unsigned int owlt, owltMargin, owltSum;
+	uint64_t owlt, owltMargin, owltSum;
 	int result = 0;
 
 	first = route->hops->first;
@@ -1227,7 +1171,7 @@ static int update_cost_values(time_t current_time, Route *route)
 		}
 		// in phase one we search the range ALWAYS at the start time of the contact
 		// this depends on the destination's neighbors management.
-		else if (get_applicable_range(contact->fromNode, contact->toNode,
+		else if (get_applicable_range(uniboCgrSap, contact->fromNode, contact->toNode,
 				contact->fromTime, &owlt) < 0)
 		{
 			//Range not found
@@ -1247,7 +1191,7 @@ static int update_cost_values(time_t current_time, Route *route)
 			owlt += owltMargin;
 			owltSum += owlt;
 
-			arrivalTime = earliestTransmissionTime + owlt;
+			arrivalTime = earliestTransmissionTime + (time_t) owlt;
 		}
 
 	}
@@ -1289,14 +1233,12 @@ static int update_cost_values(time_t current_time, Route *route)
  *  -------- | --------------- |  -----------------------------------------------
  *  30/01/20 | L. Persampieri  |   Initial Implementation and documentation.
  *****************************************************************************/
-static Route* get_best_known_route(RtgObject *rtgObj, unsigned long long neighbor)
+static Route* get_best_known_route(UniboCGRSAP* uniboCgrSap, RtgObject *rtgObj, uint64_t neighbor)
 {
 	Route *bestRoute = NULL, *current;
 	ListElt *elt;
-
-#if (MAX_DIJKSTRA_ROUTES == 1)
-    (void) neighbor; /* unused */
-#endif
+    uint32_t one_route_per_neighbor_limit = 0;
+    UniboCGRSAP_check_one_route_per_neighbor(uniboCgrSap, &one_route_per_neighbor_limit);
 
 	for (elt = rtgObj->knownRoutes->first; elt != NULL; elt = elt->next)
 	{
@@ -1304,51 +1246,44 @@ static Route* get_best_known_route(RtgObject *rtgObj, unsigned long long neighbo
 		{
 			current = (Route*) elt->data;
 
-#if (MAX_DIJKSTRA_ROUTES != 1)
-			if (current->neighbor == neighbor)
-			{
-#endif
-				if (bestRoute == NULL)
-				{
-					bestRoute = current;
-				}
-				else if (bestRoute->arrivalTime > current->arrivalTime)
-				{
-					bestRoute = current;
-				}
-				else if (bestRoute->arrivalTime == current->arrivalTime)
-				{
-					if (bestRoute->hops->length > current->hops->length)
-					{
-						bestRoute = current;
-					}
-					else if (bestRoute->hops->length == current->hops->length)
-					{
-						if (bestRoute->owltSum > current->owltSum)
-						{
-							bestRoute = current;
-						}
-						else if (bestRoute->owltSum == current->owltSum)
-						{
-							if (bestRoute->arrivalConfidence < current->arrivalConfidence)
-							{
-								bestRoute = current;
-							}
-#if (MAX_DIJKSTRA_ROUTES == 1)
-							else if (bestRoute->arrivalConfidence == current->arrivalConfidence)
-							{
-								if (bestRoute->neighbor > current->neighbor)
-								{
+            if (one_route_per_neighbor_limit != 1 && current->neighbor != neighbor) {
+                continue;
+            }
+
+            if (bestRoute == NULL)
+            {
+                bestRoute = current;
+            }
+            else if (bestRoute->arrivalTime > current->arrivalTime)
+            {
+                bestRoute = current;
+            }
+            else if (bestRoute->arrivalTime == current->arrivalTime)
+            {
+                if (bestRoute->hops->length > current->hops->length)
+                {
+                    bestRoute = current;
+                }
+                else if (bestRoute->hops->length == current->hops->length)
+                {
+                    if (bestRoute->owltSum > current->owltSum)
+                    {
+                        bestRoute = current;
+                    }
+                    else if (bestRoute->owltSum == current->owltSum)
+                    {
+                        if (bestRoute->arrivalConfidence < current->arrivalConfidence)
+                        {
+                            bestRoute = current;
+                        } else if (one_route_per_neighbor_limit == 1 && bestRoute->arrivalConfidence == current->arrivalConfidence) {
+                            if (bestRoute->neighbor > current->neighbor) {
 									bestRoute = current;
-								}
-							}
-#endif
-						}
-					}
-				}
-#if (MAX_DIJKSTRA_ROUTES != 1)
-			}
-#endif
+                            }
+                        }
+                    }
+                }
+            }
+
 		}
 	}
 
@@ -1395,14 +1330,13 @@ static Route* get_best_known_route(RtgObject *rtgObj, unsigned long long neighbo
  *  -------- | --------------- |  -----------------------------------------------
  *  04/05/20 | L. Persampieri  |   Initial Implementation and documentation.
  *****************************************************************************/
-static void suppress_root_path_ipn_node(unsigned long long fromNode)
+static void suppress_root_path_ipn_node(UniboCGRSAP* uniboCgrSap, uint64_t fromNode)
 {
 	int stop = 0;
 	Contact *contact;
 	RbtNode *rbtNode;
-	PhaseOneSAP *sap = get_phase_one_sap(NULL);
 
-	for (contact = get_first_contact_from_node(sap->regionNbr, fromNode, &rbtNode);
+	for (contact = get_first_contact_from_node(uniboCgrSap, fromNode, &rbtNode);
 			contact != NULL && !stop; contact = get_next_contact(&rbtNode))
 	{
 		if (contact->fromNode != fromNode)
@@ -1417,8 +1351,6 @@ static void suppress_root_path_ipn_node(unsigned long long fromNode)
 			contact->routingObject->suppressed = SuppressedFromNodeForYenLoop;
 		}
 	}
-
-	return;
 }
 
 /******************************************************************************
@@ -1456,20 +1388,20 @@ static void suppress_root_path_ipn_node(unsigned long long fromNode)
  *  -------- | --------------- |  -----------------------------------------------
  *  30/01/20 | L. Persampieri  |   Initial Implementation and documentation.
  *****************************************************************************/
-static int initialize_root_path(time_t current_time, ListElt *rootOfSpur, int isFirstSpurRoute)
+static int initialize_root_path(UniboCGRSAP* uniboCgrSap, time_t current_time, ListElt *rootOfSpur, int isFirstSpurRoute)
 {
 	Contact *contact, *rootOfSpurContact, *prevContact;
 	ListElt *elt, *first;
 	ContactNote *work = NULL;
-	unsigned int owlt = 0, owltSum = 0;
+	uint64_t owlt = 0, owltSum = 0;
 	float arrivalConfidence = 1.0F;
 	time_t transmitTime;
-	unsigned int hop = 0;
+	uint32_t hop = 0;
 	int result = 0;
-	PhaseOneSAP *sap = get_phase_one_sap(NULL);
+	PhaseOneSAP *phaseOneSap = UniboCGRSAP_get_PhaseOneSAP(uniboCgrSap);
 
 	rootOfSpurContact = (Contact*) rootOfSpur->data;
-	prevContact = &(sap->graphRoot);
+	prevContact = &(phaseOneSap->graphRoot);
 	first = rootOfSpur->list->first;
 
 	elt = first;
@@ -1508,7 +1440,7 @@ static int initialize_root_path(time_t current_time, ListElt *rootOfSpur, int is
 		// this depends on the destination's neighbors management.
 		// Search the range only if you haven't searched it previously.
 		else if (work->rangeFlag == RangeNotFound ||
-				(work->rangeFlag == RangeNotSearched && get_applicable_range(contact->fromNode, contact->toNode, contact->fromTime, &owlt) < 0))
+				(work->rangeFlag == RangeNotSearched && get_applicable_range(uniboCgrSap, contact->fromNode, contact->toNode, contact->fromTime, &owlt) < 0))
 		{
 			work->rangeFlag = RangeNotFound;
 			result = -1;
@@ -1522,7 +1454,7 @@ static int initialize_root_path(time_t current_time, ListElt *rootOfSpur, int is
 			work->rangeFlag = RangeFound;
 
 			owlt += ((MAX_SPEED_MPH / 3600) * owlt) / 186282;
-			work->arrivalTime = transmitTime + owlt;
+			work->arrivalTime = transmitTime + (time_t) owlt;
 			owltSum += owlt;
 			work->owltSum = owltSum;
 			arrivalConfidence *= contact->confidence;
@@ -1543,14 +1475,14 @@ static int initialize_root_path(time_t current_time, ListElt *rootOfSpur, int is
 					// Only for the first spur route, for the other spur routes
 					// the root path ipn nodes are already excluded (except the root vertex
 					// that we exclude in the "else" condition)
-					suppress_root_path_ipn_node(contact->fromNode);
+					suppress_root_path_ipn_node(uniboCgrSap, contact->fromNode);
 				}
 			}
 			else
 			{
 				elt = NULL;
 				// suppress the root vertex node
-				suppress_root_path_ipn_node(contact->fromNode);
+				suppress_root_path_ipn_node(uniboCgrSap, contact->fromNode);
 			}
 		}
 
@@ -1650,8 +1582,6 @@ static void avoid_duplicate_routes(Node *terminusNode, ListElt *rootOfSpur)
 		}
 
 	}
-
-	return;
 }
 
 /******************************************************************************
@@ -1680,7 +1610,7 @@ static void avoid_duplicate_routes(Node *terminusNode, ListElt *rootOfSpur)
  *  -------- | --------------- |  -----------------------------------------------
  *  06/05/20 | L. Persampieri  |   Initial Implementation and documentation.
  *****************************************************************************/
-void remove_neighbor_from_known_routes(List knownRoutes, unsigned long long neighbor)
+void remove_neighbor_from_known_routes(List knownRoutes, uint64_t neighbor)
 {
 	Route *route;
 	ListElt *elt, *next;
@@ -1701,8 +1631,6 @@ void remove_neighbor_from_known_routes(List knownRoutes, unsigned long long neig
 
 		elt = next;
 	}
-
-	return;
 }
 
 /******************************************************************************
@@ -1748,40 +1676,42 @@ void remove_neighbor_from_known_routes(List knownRoutes, unsigned long long neig
  *  -------- | --------------- |  -----------------------------------------------
  *  30/01/20 | L. Persampieri  |   Initial Implementation and documentation.
  *****************************************************************************/
-static int compute_spur_route(time_t current_time, Route *fromRoute, int isFirstSpurRoute, ListElt *rootOfSpur, Node *terminusNode,
-		Route *resultRoute)
+static int compute_spur_route(UniboCGRSAP* uniboCgrSap, time_t current_time, Route *fromRoute, int isFirstSpurRoute, ListElt *rootOfSpur, Node *terminusNode,
+                              Route *resultRoute)
 {
 	int result = 0;
 	Contact *rootOfSpurContact;
-	PhaseOneSAP *sap = get_phase_one_sap(NULL);
+	PhaseOneSAP *phaseOneSap = UniboCGRSAP_get_PhaseOneSAP(uniboCgrSap);
+    uint32_t one_route_per_neighbor_limit = 0;
+    UniboCGRSAP_check_one_route_per_neighbor(uniboCgrSap, &one_route_per_neighbor_limit);
 
 	if(isFirstSpurRoute)
 	{
-		if(!sap->graphCleaned)
+		if(!phaseOneSap->graphCleaned)
 		{
 			// first time in the current call
-			clear_work_areas(ClearTotally);
+			clear_work_areas(uniboCgrSap, ClearTotally);
 		}
 		else
 		{
 			// first time in the current Yen's algorithm
-			clear_work_areas(ClearPartially);
+			clear_work_areas(uniboCgrSap, ClearPartially);
 		}
 	}
 	else
 	{
-		clear_work_areas(ClearYen);
+		clear_work_areas(uniboCgrSap, ClearYen);
 	}
 
 	if (rootOfSpur == NULL)
 	{
-		rootOfSpurContact = &(sap->graphRoot);
+		rootOfSpurContact = &(phaseOneSap->graphRoot);
 	}
 	else
 	{
 		rootOfSpurContact = (Contact*) rootOfSpur->data;
 
-		if (initialize_root_path(current_time, rootOfSpur, isFirstSpurRoute) < 0)
+		if (initialize_root_path(uniboCgrSap, current_time, rootOfSpur, isFirstSpurRoute) < 0)
 		{
 			result = -3; //the root path can't be used
 		}
@@ -1791,29 +1721,22 @@ static int compute_spur_route(time_t current_time, Route *fromRoute, int isFirst
 	{
 		avoid_duplicate_routes(terminusNode, rootOfSpur);
 
-		result = dijkstra_search(rootOfSpurContact, terminusNode->nodeNbr, resultRoute);
+		result = dijkstra_search(uniboCgrSap, rootOfSpurContact, terminusNode->nodeNbr, resultRoute);
 
 		if (result == 0)
 		{
-#if (MAX_DIJKSTRA_ROUTES != 1)
-			if (resultRoute->neighbor == fromRoute->neighbor)
+            if (one_route_per_neighbor_limit == 1 || resultRoute->neighbor == fromRoute->neighbor)
 			{
-#endif
 				resultRoute->citationToFather = list_insert_last(fromRoute->children, resultRoute);
 				if (resultRoute->citationToFather == NULL)
 				{
 					result = -2;
 				}
-
-#if (MAX_DIJKSTRA_ROUTES != 1)
 			}
-#endif
-
 		}
 	}
 
 	return result;
-
 }
 
 /******************************************************************************
@@ -1860,7 +1783,7 @@ static int compute_spur_route(time_t current_time, Route *fromRoute, int isFirst
  *  -------- | --------------- |  -----------------------------------------------
  *  30/01/20 | L. Persampieri  |   Initial Implementation and documentation.
  *****************************************************************************/
-static int compute_all_spurs(Route *fromRoute, Node *terminusNode, ListElt *upperBound, int *allNeighborsFound)
+static int compute_all_spurs(UniboCGRSAP* uniboCgrSap, Route *fromRoute, Node *terminusNode, ListElt *upperBound, int *allNeighborsFound)
 {
 
 	int result = 0, stop = 0;
@@ -1869,11 +1792,13 @@ static int compute_all_spurs(Route *fromRoute, Node *terminusNode, ListElt *uppe
 	ListElt *rootOfNextSpur, *rootOfSpur, *elt = NULL;
 	Route *last_computed_route = NULL;
 	RtgObject *rtgObj = NULL;
-	unsigned long long *current = NULL;
+	uint64_t *current = NULL;
 	ListElt *foundElt = NULL;
 	int otherNeighbor = 0;
-	PhaseOneSAP *sap = get_phase_one_sap(NULL);
-	time_t current_time = get_current_time();
+	PhaseOneSAP *phaseOneSap = UniboCGRSAP_get_PhaseOneSAP(uniboCgrSap);
+	time_t current_time = UniboCGRSAP_get_current_time(uniboCgrSap);
+    uint32_t one_route_per_neighbor_limit = 0;
+    UniboCGRSAP_check_one_route_per_neighbor(uniboCgrSap, &one_route_per_neighbor_limit);
 
 	stop = 0;
 	*allNeighborsFound = 0;
@@ -1883,9 +1808,9 @@ static int compute_all_spurs(Route *fromRoute, Node *terminusNode, ListElt *uppe
 	if (fromRoute->rootOfSpur == NULL)
 	{
 		// Only for a route computed from the graph root (so rootOfSpur is NULL)
-		for (elt = sap->excludedNeighbors->first; elt != NULL && !stop; elt = elt->next)
+		for (elt = phaseOneSap->excludedNeighbors->first; elt != NULL && !stop; elt = elt->next)
 		{
-			current = (unsigned long long*) elt->data;
+			current = (uint64_t*) elt->data;
 			if(current != NULL && *current == fromRoute->neighbor)
 			{
 				//remove temporarily the neighbor from the excluded list
@@ -1924,52 +1849,52 @@ static int compute_all_spurs(Route *fromRoute, Node *terminusNode, ListElt *uppe
 		{
 			otherNeighbor = 0;
 
-			ok = compute_spur_route(current_time, fromRoute, isFirstSpurRoute, rootOfSpur, terminusNode, last_computed_route);
+			ok = compute_spur_route(uniboCgrSap, current_time, fromRoute, isFirstSpurRoute, rootOfSpur, terminusNode, last_computed_route);
 			isFirstSpurRoute = 0;
 
 			if (ok == 0)
 			{
 				result++;
-#if (MAX_DIJKSTRA_ROUTES == 1)
-				if (insert_known_route(rtgObj, last_computed_route) < 0)
-				{
-					result = -2;
-					stop = 1;
-				}
+                if (one_route_per_neighbor_limit == 1) {
+                    if (insert_known_route(rtgObj, last_computed_route) < 0)
+                    {
+                        result = -2;
+                        stop = 1;
+                    }
 
-#else
-				if (last_computed_route->neighbor == fromRoute->neighbor)
-				{
-					if (insert_known_route(rtgObj, last_computed_route) < 0)
-					{
-						result = -2;
-						stop = 1;
-					}
-				}
-				else
-				{
-					// --------- DISCOVERED ROUTE FROM NEW NEIGHBOR ---------
-					//New neighbor, add route directly in Yen's "list A"
-					//Always insert as first in selectedRoutes
-					if (insert_selected_route(rtgObj, last_computed_route) == 0)
-					{
-						debug_printf("Discovered route from new neighbor (%llu).", last_computed_route->neighbor);
-						otherNeighbor = 1;
-						if (exclude_current_neighbor(last_computed_route) < 0)
-						{
-							result = -2;
-							stop = 1;
-						}
-						// just to avoid future duplicate routes
-						remove_neighbor_from_known_routes(rtgObj->knownRoutes, last_computed_route->neighbor);
-					}
-					else
-					{
-						result = -2;
-						stop = 1;
-					}
-				}
-#endif
+                } else {
+                    if (last_computed_route->neighbor == fromRoute->neighbor)
+                    {
+                        if (insert_known_route(rtgObj, last_computed_route) < 0)
+                        {
+                            result = -2;
+                            stop = 1;
+                        }
+                    }
+                    else
+                    {
+                        // --------- DISCOVERED ROUTE FROM NEW NEIGHBOR ---------
+                        //New neighbor, add route directly in Yen's "list A"
+                        //Always insert as first in selectedRoutes
+                        if (insert_selected_route(rtgObj, last_computed_route) == 0)
+                        {
+                            debug_printf("Discovered route from new neighbor (%" PRIu64 ").", last_computed_route->neighbor);
+                            otherNeighbor = 1;
+                            if (exclude_current_neighbor(phaseOneSap, last_computed_route) < 0)
+                            {
+                                result = -2;
+                                stop = 1;
+                            }
+                            // just to avoid future duplicate routes
+                            remove_neighbor_from_known_routes(rtgObj->knownRoutes, last_computed_route->neighbor);
+                        }
+                        else
+                        {
+                            result = -2;
+                            stop = 1;
+                        }
+                    }
+                }
 
 				if (result != -2) //Success case
 				{
@@ -1989,7 +1914,7 @@ static int compute_all_spurs(Route *fromRoute, Node *terminusNode, ListElt *uppe
 			else if(rootOfSpur == NULL)
 			{
 				//We have a route for all neighbors
-				//Here we done a search from the graph's root and
+				//Here we have done a search from the graph's root, and
 				//we didn't find a new route, so we are sure
 				//that there aren't route for other neighbors
 				*allNeighborsFound = 1;
@@ -2067,7 +1992,7 @@ static int compute_all_spurs(Route *fromRoute, Node *terminusNode, ListElt *uppe
  *  -------- | --------------- |  -----------------------------------------------
  *  30/01/20 | L. Persampieri  |   Initial Implementation and documentation.
  *****************************************************************************/
-static int compute_another_route(Route *fromRoute, Node *terminusNode, int *allNeighborsFound)
+static int compute_another_route(UniboCGRSAP* uniboCgrSap, Route *fromRoute, Node *terminusNode, int *allNeighborsFound)
 {
 	int result = -4, totComputed = 0, computedNow = 0;
 	Route *route;
@@ -2082,7 +2007,7 @@ static int compute_another_route(Route *fromRoute, Node *terminusNode, int *allN
 		{
 
 			//Only if this route hasn't children alive
-			totComputed = compute_all_spurs(fromRoute, terminusNode, NULL, allNeighborsFound);
+			totComputed = compute_all_spurs(uniboCgrSap, fromRoute, terminusNode, NULL, allNeighborsFound);
 			computedNow = 1;
 		}
 
@@ -2091,7 +2016,7 @@ static int compute_another_route(Route *fromRoute, Node *terminusNode, int *allN
 			fromRoute->spursComputed = 1;
 			result = 0;
 
-			route = get_best_known_route(rtgObj, fromRoute->neighbor);
+			route = get_best_known_route(uniboCgrSap, rtgObj, fromRoute->neighbor);
 
 			if(route == NULL && fromRoute->rootOfSpur != NULL)
 			{
@@ -2100,12 +2025,12 @@ static int compute_another_route(Route *fromRoute, Node *terminusNode, int *allN
 				// Remember that this is time-dependent graph
 				tempRootOfSpur = fromRoute->rootOfSpur;
 				fromRoute->rootOfSpur = NULL;
-				result = compute_all_spurs(fromRoute, terminusNode, tempRootOfSpur, allNeighborsFound);
+				result = compute_all_spurs(uniboCgrSap, fromRoute, terminusNode, tempRootOfSpur, allNeighborsFound);
 				fromRoute->rootOfSpur = tempRootOfSpur;
 
 				if(result > 0)
 				{
-					route = get_best_known_route(rtgObj, fromRoute->neighbor);
+					route = get_best_known_route(uniboCgrSap, rtgObj, fromRoute->neighbor);
 				}
 			}
 
@@ -2170,7 +2095,7 @@ static int compute_another_route(Route *fromRoute, Node *terminusNode, int *allN
  *  -------- | --------------- |  -----------------------------------------------
  *  30/01/20 | L. Persampieri  |   Initial Implementation and documentation.
  *****************************************************************************/
-static int computeOtherRoutes(Node *terminusNode, List subsetComputedRoutes, long unsigned int missingNeighbors)
+static int computeOtherRoutes(UniboCGRSAP* uniboCgrSap, Node *terminusNode, List subsetComputedRoutes, uint32_t missingNeighbors)
 {
 	int result = 0, computed = 0, stop = 0;
 	int yenPerformedCorrectly = 0, discoveredAllNeighbors = 0, updateNeighbors = 0;
@@ -2178,10 +2103,12 @@ static int computeOtherRoutes(Node *terminusNode, List subsetComputedRoutes, lon
 	RtgObject *rtgObj = terminusNode->routingObject;
 	ListElt *elt, *next;
 	Route *currentRoute;
-	PhaseOneSAP *sap = get_phase_one_sap(NULL);
-	time_t current_time = get_current_time();
+	PhaseOneSAP *phaseOneSap = UniboCGRSAP_get_PhaseOneSAP(uniboCgrSap);
+	time_t current_time = UniboCGRSAP_get_current_time(uniboCgrSap);
+    uint32_t one_route_per_neighbor_limit = 0;
+    UniboCGRSAP_check_one_route_per_neighbor(uniboCgrSap, &one_route_per_neighbor_limit);
 
-	if (!sap->knownRoutesUpdated && subsetComputedRoutes != NULL && subsetComputedRoutes->length > 0)
+	if (!phaseOneSap->knownRoutesUpdated && subsetComputedRoutes != NULL && subsetComputedRoutes->length > 0)
 	{
 		//Only one time for CGR call and only if I'm effectively calling the Yen's algorithm
 		//For all previously computed known routes
@@ -2192,26 +2119,26 @@ static int computeOtherRoutes(Node *terminusNode, List subsetComputedRoutes, lon
 			currentRoute = (Route*) elt->data;
 			if (currentRoute->computedAtTime != current_time)
 			{
-				update_cost_values(current_time, currentRoute);
+				update_cost_values(uniboCgrSap, current_time, currentRoute);
 			}
 
 			elt = next;
 		}
 
-		sap->knownRoutesUpdated = 1;
+		phaseOneSap->knownRoutesUpdated = 1;
 	}
 
-#if (MAX_DIJKSTRA_ROUTES != 1)
-	if (!sap->alreadyExcluded)
-	{
-		if(exclude_all_neighbors_from_computed_routes(rtgObj->selectedRoutes) < 0)
-		{
-			result = -2;
-		}
+    if (one_route_per_neighbor_limit != 1) {
+        if (!phaseOneSap->alreadyExcluded)
+        {
+            if(exclude_all_neighbors_from_computed_routes(phaseOneSap, rtgObj->selectedRoutes) < 0)
+            {
+                result = -2;
+            }
 
-		sap->alreadyExcluded = 1;
-	}
-#endif
+            phaseOneSap->alreadyExcluded = 1;
+        }
+    }
 
 	yenPerformedCorrectly = 0;
 	updateNeighbors = 0;
@@ -2227,7 +2154,7 @@ static int computeOtherRoutes(Node *terminusNode, List subsetComputedRoutes, lon
 			currentRoute = (Route*) elt->data;
 			if (currentRoute != NULL)
 			{
-				computed = compute_another_route(currentRoute, terminusNode, &discoveredAllNeighbors);
+				computed = compute_another_route(uniboCgrSap, currentRoute, terminusNode, &discoveredAllNeighbors);
 
 				if (computed == -2)
 				{
@@ -2254,7 +2181,7 @@ static int computeOtherRoutes(Node *terminusNode, List subsetComputedRoutes, lon
 
 			if(updateNeighbors)
 			{
-				exclude_all_neighbors_from_computed_routes(rtgObj->selectedRoutes);
+				exclude_all_neighbors_from_computed_routes(phaseOneSap, rtgObj->selectedRoutes);
 			}
 		}
 
@@ -2262,173 +2189,16 @@ static int computeOtherRoutes(Node *terminusNode, List subsetComputedRoutes, lon
 
 	if(result != -2 && missingNeighbors > 0 && !yenPerformedCorrectly)
 	{
-		// Yen doesn't performed and missing neighbors
+		// Yen doesn't perform and missing neighbors
 
 		//phase two want a route for each "missing" neighbor
 		//get at most one route for each "missing" neighbor
-		debug_printf("Try Dijkstra's algorithm to find a route for %lu neighbors", missingNeighbors);
-		result = computeOneRoutePerNeighbor(terminusNode, missingNeighbors);
+		debug_printf("Try Dijkstra's algorithm to find a route for %" PRIu32 " neighbors", missingNeighbors);
+		result = computeOneRoutePerNeighbor(uniboCgrSap, terminusNode, missingNeighbors);
 	}
 
 	return result;
 }
-
-#if (ADD_COMPUTED_ROUTE_TO_INTERMEDIATE_NODES == 1)
-/******************************************************************************
- *
- * \par Function Name:
- * 		add_route
- *
- * \brief Add a route to a node only if there isn't already a route
- *        for this node from the same neighbor of the route that
- *        we want to add.
- *
- *
- * \par Date Written:
- * 		30/01/20
- *
- * \return int
- *
- * \retval   0	Success case: route added
- * \retval  -1	There is already a route with the same neighbor
- * \retval  -2	MWITHDRAW error
- *
- * \param[in]   *node           The Node to which we want to add the Route
- * \param[in]   *lastHopTonode  The last hop of the hops list that has
- *                              as receiver node the "node"
- * \param[in]   neighbor        The route's neighbor
- *
- * \warning node doesn't have to be NULL.
- * \warning lastHopToNode doesn't have to be NULL:
- *
- * \par Revision History:
- *
- *  DD/MM/YY | AUTHOR          |   DESCRIPTION
- *  -------- | --------------- |  -----------------------------------------------
- *  30/01/20 | L. Persampieri  |   Initial Implementation and documentation.
- *****************************************************************************/
-static int add_route(Node *node, ListElt *lastHopToNode, unsigned long long neighbor)
-{
-	int result = -1, found;
-	Contact *finalContact;
-	Route *route;
-	RtgObject *rtgObj = node->routingObject;
-	ListElt *elt;
-
-	found = 0;
-	for (elt = rtgObj->selectedRoutes->first; elt != NULL && !found; elt = elt->next)
-	{
-		route = (Route*) elt->data;
-
-		if (route->neighbor == neighbor)
-		{
-			found = 1;
-		}
-	}
-
-	if (!found)
-	{
-		route = create_cgr_route();
-
-		if (route != NULL)
-		{
-			finalContact = (Contact*) lastHopToNode->data;
-			result = populate_route(finalContact, &graphRoot, route);
-
-			if (result == 0)
-			{
-				//Always insert as first in selectedRoutes!!!
-				if(insert_selected_route(rtgObj, route) < 0)
-				{
-					result = -2;
-				}
-			}
-
-			if (result != 0)
-			{
-				delete_cgr_route(route);
-			}
-		}
-		else
-		{
-			result = -2;
-		}
-	}
-
-	return result;
-}
-
-/******************************************************************************
- *
- * \par Function Name:
- * 		add_computed_route_to_intermediate_nodes
- *
- * \brief Add the route to all receiver nodes in the hops list of the route
- *
- *
- * \par Date Written:
- * 		30/01/20
- *
- * \return int
- *
- * \retval  ">= 0"  Success case: number of routes added
- * \retval     -2   MWITHDRAW error
- *
- * \param[in]   *route   The route from which we get the hops list
- *                       to add a route for each hop receiver node
- *
- * \warning route doesn't have to be NULL.
- *
- * \par Notes:
- *             1.  This function should be used only after than
- *                 a "pure" Dijkstra's search (no Yen's algorithm).
- *                 If we compute the shortest path for a node we have computed
- *                 the shortest path for all the nodes in the hops list.
- *
- * \par Revision History:
- *
- *  DD/MM/YY | AUTHOR          |   DESCRIPTION
- *  -------- | --------------- |  -----------------------------------------------
- *  30/01/20 | L. Persampieri  |   Initial Implementation and documentation.
- *****************************************************************************/
-static int add_computed_route_to_intermediate_nodes(Route *route)
-{
-	ListElt *elt, *last;
-	Contact *current;
-	Node *currentNode;
-	int result = 0, count = 0;
-	unsigned long long neighbor;
-
-	last = route->hops->last;
-	current = (Contact*) route->hops->first->data;
-	neighbor = current->toNode;
-
-	for (elt = route->hops->first; elt != last && result != -2; elt = elt->next)
-	{
-		current = (Contact*) elt->data;
-		currentNode = add_node(current->toNode);
-		if (currentNode != NULL)
-		{
-			result = add_route(currentNode, elt, neighbor);
-			if (result == 0)
-			{
-				count++;
-			}
-		}
-		else
-		{
-			result = -2;
-		}
-	}
-
-	if (result != -2)
-	{
-		result = count;
-	}
-
-	return result;
-}
-#endif
 
 /******************************************************************************
  *
@@ -2458,14 +2228,16 @@ static int add_computed_route_to_intermediate_nodes(Route *route)
  *  30/01/20 | L. Persampieri  |   Initial Implementation and documentation.
  *  27/04/20 | L. Persampieri  |   Refactoring
  *****************************************************************************/
-static int computeOneRoutePerNeighbor(Node *terminusNode, long unsigned int missingNeighbors)
+static int computeOneRoutePerNeighbor(UniboCGRSAP* uniboCgrSap, Node *terminusNode, uint32_t missingNeighbors)
 {
 	int result, stop = 0;
 	int ok;
 	Route *route;
 	RtgObject *rtgObj;
 	ClearRule rule;
-	PhaseOneSAP *sap = get_phase_one_sap(NULL);
+	PhaseOneSAP *phaseOneSap = UniboCGRSAP_get_PhaseOneSAP(uniboCgrSap);
+    uint32_t one_route_per_neighbor_limit = 0;
+    UniboCGRSAP_check_one_route_per_neighbor(uniboCgrSap, &one_route_per_neighbor_limit);
 
 	/*
 	 * Every time we compute a route we add the neighbor to the excluded list,
@@ -2480,9 +2252,9 @@ static int computeOneRoutePerNeighbor(Node *terminusNode, long unsigned int miss
 	// Only for the first time that we compute routes for the destination
 	// Note: the computeOtherRoutes function excluded all the neighbors
 	// for which we already have a route and set alreadyExcluded to 1
-	if(!(sap->alreadyExcluded))
+	if(!(phaseOneSap->alreadyExcluded))
 	{
-		result = exclude_all_neighbors_from_computed_routes(rtgObj->selectedRoutes);
+		result = exclude_all_neighbors_from_computed_routes(phaseOneSap, rtgObj->selectedRoutes);
 
 		if(result < 0)
 		{
@@ -2493,7 +2265,7 @@ static int computeOneRoutePerNeighbor(Node *terminusNode, long unsigned int miss
 			result = 0;
 		}
 
-		sap->alreadyExcluded = 1;
+		phaseOneSap->alreadyExcluded = 1;
 
 	}
 	/*
@@ -2504,7 +2276,7 @@ static int computeOneRoutePerNeighbor(Node *terminusNode, long unsigned int miss
 	 */
 
 	ok = 0;
-	if(!(sap->graphCleaned))
+	if(!(phaseOneSap->graphCleaned))
 	{
 		// first time during the current call
 		rule = ClearTotally;
@@ -2521,9 +2293,9 @@ static int computeOneRoutePerNeighbor(Node *terminusNode, long unsigned int miss
 			route = create_cgr_route();
 			if (route != NULL)
 			{
-				clear_work_areas(rule);
+				clear_work_areas(uniboCgrSap, rule);
 
-				ok = dijkstra_search(&(sap->graphRoot), terminusNode->nodeNbr, route);
+				ok = dijkstra_search(uniboCgrSap, &(phaseOneSap->graphRoot), terminusNode->nodeNbr, route);
 
 				rule = ClearPartially; //for each following Dijkstra's search
 
@@ -2536,18 +2308,18 @@ static int computeOneRoutePerNeighbor(Node *terminusNode, long unsigned int miss
 						result++;
 						remove_neighbor_from_known_routes(rtgObj->knownRoutes, route->neighbor);
 
-						if ((long unsigned int) result >= missingNeighbors)
+						if ((uint64_t) result >= missingNeighbors)
 						{
 							stop = 1;
 						}
 						// Necessarily a new neighbor
-						if (exclude_current_neighbor(route) < 0)
+						if (exclude_current_neighbor(phaseOneSap, route) < 0)
 						{
 							result = -2;
 							stop = 1; //I leave the loop
 						}
 #if (ADD_COMPUTED_ROUTE_TO_INTERMEDIATE_NODES == 1)
-						if(add_computed_route_to_intermediate_nodes(route) < 0)
+						if(add_computed_route_to_intermediate_nodes(uniboCgrSap, route) < 0)
 						{
 							result = -2;
 							stop = 1; //I leave the loop
@@ -2585,9 +2357,9 @@ static int computeOneRoutePerNeighbor(Node *terminusNode, long unsigned int miss
 		verbose_debug_printf("0 missing neighbors...");
 	}
 
-#if (MAX_DIJKSTRA_ROUTES == 1)
-	free_list_elts(sap->excludedNeighbors);
-#endif
+    if (one_route_per_neighbor_limit == 1) {
+        free_list_elts(phaseOneSap->excludedNeighbors);
+    }
 
 	return result;
 }
@@ -2622,14 +2394,14 @@ static int computeOneRoutePerNeighbor(Node *terminusNode, long unsigned int miss
  *  -------- | --------------- |  -----------------------------------------------
  *  30/01/20 | L. Persampieri  |   Initial Implementation and documentation.
  *****************************************************************************/
-int computeRoutes(unsigned long regionNbr, Node *terminusNode, List subsetComputedRoutes, long unsigned int missingNeighbors)
+int computeRoutes(UniboCGRSAP* uniboCgrSap, Node *terminusNode, List subsetComputedRoutes, uint32_t missingNeighbors)
 {
 
 	int result = -1;
 	RtgObject *rtgObj = NULL;
-	PhaseOneSAP *sap = get_phase_one_sap(NULL);
+	PhaseOneSAP *phaseOneSap = UniboCGRSAP_get_PhaseOneSAP(uniboCgrSap);
 
-	record_phases_start_time(phaseOne);
+	record_phases_start_time(uniboCgrSap, phaseOne);
 
 	debug_printf("Entry point phase one.");
 
@@ -2637,27 +2409,25 @@ int computeRoutes(unsigned long regionNbr, Node *terminusNode, List subsetComput
 	{
 		// Assumption: terminusNode is correctly initialized
 
-		sap->regionNbr = regionNbr;
-		sap->destination = terminusNode->nodeNbr;
+		phaseOneSap->destination = terminusNode->nodeNbr;
 
 		rtgObj = terminusNode->routingObject;
 
 			if (rtgObj->selectedRoutes->length == 0)
 			{
-				sap = get_phase_one_sap(NULL);
-				sap->knownRoutesUpdated = 1;
+				phaseOneSap->knownRoutesUpdated = 1;
 
 				//reset knownRoutes, all the selectedRoutes are expired
 				//I can't know who are the shortest path looking only
 				//in knownRoutes
 				clear_routes_list(rtgObj->knownRoutes); //reset the list
 
-				result = computeOneRoutePerNeighbor(terminusNode, missingNeighbors);
+				result = computeOneRoutePerNeighbor(uniboCgrSap, terminusNode, missingNeighbors);
 
 			}
 			else //Compute the next shortest path for each route in the subset
 			{
-				result = computeOtherRoutes(terminusNode, subsetComputedRoutes, missingNeighbors);
+				result = computeOtherRoutes(uniboCgrSap, terminusNode, subsetComputedRoutes, missingNeighbors);
 			}
 
 		if (result != -2 && rtgObj->selectedRoutes->length == 0)
@@ -2683,12 +2453,11 @@ int computeRoutes(unsigned long regionNbr, Node *terminusNode, List subsetComput
 		debug_printf("Result -> %d", result);
 	}
 
-	record_phases_stop_time(phaseOne);
+	record_phases_stop_time(uniboCgrSap, phaseOne);
 
 	return result;
 }
 
-#if (LOG == 1)
 /******************************************************************************
  *
  * \par Function Name:
@@ -2738,7 +2507,7 @@ static void print_phase_one_route(FILE *file, Route *route, unsigned int num)
 				"\n%u) ComputedAtTime: %ld\n%-15s %-15s %-15s %-15s %-15s %-15s %-15s %-15s %s\n",
 				route->num, (long int) route->computedAtTime, "Neighbor", "FromTime", "ToTime",
 				"ArrivalTime", "OwltSum", "Confidence", "Children", "Father", "Hops");
-		fprintf(file, "%-15llu %-15ld %-15ld %-15ld %-15u %-15.2f %-15lu %-15s ", route->neighbor,
+		fprintf(file, "%-15" PRIu64 " %-15ld %-15ld %-15ld %-15" PRIu64 " %-15.2f %-15lu %-15s ", route->neighbor,
 				(long int) route->fromTime, (long int) route->toTime, (long int) route->arrivalTime,
 				route->owltSum, route->arrivalConfidence, route->children->length,
 				(father != NULL) ? temp : "no");
@@ -2758,7 +2527,7 @@ static void print_phase_one_route(FILE *file, Route *route, unsigned int num)
 				{
 					contact = (Contact*) elt->data;
 					fprintf(file,
-							"%-15llu %-15llu %-15ld %-15ld %-15lu %-10.2f%-5s %-15g %-15g %g\n",
+							"%-15" PRIu64 " %-15" PRIu64 " %-15ld %-15ld %-15" PRIu64 " %-10.2f%-5s %-15g %-15g %g\n",
 							contact->fromNode, contact->toNode, (long int) contact->fromTime,
 							(long int) contact->toTime, contact->xmitRate, contact->confidence,
 							(elt == route->rootOfSpur) ? " x" : "", contact->mtv[0],
@@ -2821,6 +2590,4 @@ void print_phase_one_routes(FILE *file, List computedRoutes)
 		debug_fflush(file);
 	}
 }
-
-#endif
 

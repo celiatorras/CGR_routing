@@ -55,8 +55,13 @@ typedef struct {
 	/**
 	 * \brief 1 if has been performed the search of the local node's neighbors.
 	 */
-	int neighbors_list_builded;
-} NeighborsSAP;
+	int neighbors_list_built;
+} NeighborSAP;
+
+struct NodeSAP {
+    Rbt* nodes;
+    NeighborSAP neighborSap;
+};
 
 static int compare_nodes(void*, void*);
 static void free_node(void*);
@@ -69,41 +74,7 @@ static void remove_citation(void*);
 /******************************************************************************
  *
  * \par Function Name:
- *      get_node_graph
- *
- * \brief Get the node graph
- *
- *
- * \par Date Written:
- *      02/07/20
- *
- * \return Rbt*
- *
- * \retval  Rbt*   The node graph
- *
- * \param[in] *newNodes   Set to NULL if you just want to get the node graph.
- *                        Otherwise, set != NULL and the node graph will be overwritten.
- *
- * \par Revision History:
- *
- *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
- *  -------- | --------------- | -----------------------------------------------
- *  02/07/20 | L. Persampieri  |  Initial Implementation and documentation.
- *****************************************************************************/
-static Rbt *get_node_graph(Rbt *newNodes) {
-	static Rbt* nodes;
-
-	if(newNodes != NULL) {
-		nodes = newNodes;
-	}
-
-	return nodes;
-}
-
-/******************************************************************************
- *
- * \par Function Name:
- *      get_neighbors_sap
+ *      NeighborSAP_get
  *
  * \brief Get the reference to NeighborsSAP struct
  *
@@ -115,8 +86,7 @@ static Rbt *get_node_graph(Rbt *newNodes) {
  *
  * \retval  NeighborsSAP*   The reference to NeighborsSAP struct
  *
- * \param[in] *newSap     Set to NULL if you just want to get the reference to NeighborsSAP.
- *                        Otherwise, set != NULL and the NeighborsSAP will be overwritten.
+ * \param[in] *nodeSap     Contains NeighborsSAP
  *
  * \par Revision History:
  *
@@ -124,14 +94,8 @@ static Rbt *get_node_graph(Rbt *newNodes) {
  *  -------- | --------------- | -----------------------------------------------
  *  02/07/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static NeighborsSAP *get_neighbors_sap(NeighborsSAP *newSap) {
-	static NeighborsSAP sap;
-
-	if(newSap != NULL) {
-		sap = *newSap;
-	}
-
-	return &sap;
+static NeighborSAP *NeighborSAP_get(NodeSAP *nodeSap) {
+	return &nodeSap->neighborSap;
 }
 
 /******************************************************************************
@@ -282,8 +246,6 @@ static void erase_node(Node *node)
 {
 	node->nodeNbr = 0;
 	node->routingObject = NULL;
-
-	return;
 }
 
 /******************************************************************************
@@ -320,13 +282,11 @@ static void free_node(void *node)
 		erase_node(temp);
 		MDEPOSIT(temp);
 	}
-
-	return;
 }
 /******************************************************************************
  *
  * \par Function Name:
- *      create_NodesTree
+ *      NodeSAP_open
  *
  * \brief  Allocate memory for the nodes tree (rbt)
  *
@@ -336,7 +296,7 @@ static void free_node(void *node)
  *
  * \return int
  *
- * \retval   1   Success case: The tree now exists
+ * \retval   0   Success case: The tree now exists
  * \retval  -2   MWITHDRAW error
  *
  *
@@ -345,30 +305,28 @@ static void free_node(void *node)
  *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
  *  -------- | --------------- | -----------------------------------------------
  *  15/01/20 | L. Persampieri  |  Initial Implementation and documentation.
+ *  21/10/22 | L. Persampieri  |  Renamed function
  *****************************************************************************/
-int create_NodesTree()
+int NodeSAP_open(UniboCGRSAP* uniboCgrSap)
 {
-	int result = 1;
-	Rbt *nodes = get_node_graph(NULL);
-	NeighborsSAP *sap = get_neighbors_sap(NULL);
+    if (UniboCGRSAP_get_NodeSAP(uniboCgrSap)) return 0;
 
-	if (nodes == NULL)
-	{
-		nodes = rbt_create(free_node, compare_nodes);
-		sap->local_node_neighbors = list_create(NULL, NULL, NULL, free_neighbor);
+    NodeSAP* sap = MWITHDRAW(sizeof(NodeSAP));
+    if (!sap) { return -2; }
+    UniboCGRSAP_set_NodeSAP(uniboCgrSap, sap);
+    memset(sap, 0, sizeof(NodeSAP));
 
-		if (nodes != NULL && sap->local_node_neighbors != NULL)
-		{
-			result = 1;
-			get_node_graph(nodes); // save
-		}
-		else
-		{
-			result = -2;
-		}
-	}
+	NeighborSAP *neighborSap = NeighborSAP_get(sap);
 
-	return result;
+    sap->nodes = rbt_create(free_node, compare_nodes);
+    neighborSap->local_node_neighbors = list_create(NULL, NULL, NULL, free_neighbor);
+
+    if (!sap->nodes || !neighborSap->local_node_neighbors) {
+        NodeSAP_close(uniboCgrSap);
+        return -2;
+    }
+
+    return 0;
 }
 
 /******************************************************************************
@@ -400,7 +358,6 @@ static void discardRoute(void *data)
 	free_list(route->hops); 	//hops list has NULL as delete function
 	free_list(route->children); //children list has NULL as delete function
 	MDEPOSIT(route);
-	return;
 }
 
 /******************************************************************************
@@ -429,13 +386,13 @@ static void discardRoute(void *data)
  *  -------- | --------------- | -----------------------------------------------
  *  15/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void discardAllRoutesFromNodesTree()
+void discardAllRoutesFromNodesTree(UniboCGRSAP* uniboCgrSap)
 {
 	Node *node;
 	RtgObject *rtgObj;
 	RbtNode *elt;
 	delete_function deleteFn;
-	Rbt *nodes = get_node_graph(NULL);
+	Rbt *nodes = UniboCGRSAP_get_NodeSAP(uniboCgrSap)->nodes;
 
 	for (elt = rbt_first(nodes); elt != NULL; elt = rbt_next(elt))
 	{
@@ -479,20 +436,20 @@ void discardAllRoutesFromNodesTree()
  *  -------- | --------------- | -----------------------------------------------
  *  15/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void reset_NodesTree()
+void reset_NodesTree(UniboCGRSAP* uniboCgrSap)
 {
-	Rbt *nodes = get_node_graph(NULL);
-	NeighborsSAP *sap = get_neighbors_sap(NULL);
-	free_list_elts(sap->local_node_neighbors);
-	rbt_clear(nodes);
-	sap->neighbors_list_builded = 0;
-	sap->timeNeighborToRemove = MAX_POSIX_TIME;
+    NodeSAP* nodeSap = UniboCGRSAP_get_NodeSAP(uniboCgrSap);
+    NeighborSAP* neighborSap = NeighborSAP_get(nodeSap);
+	free_list_elts(neighborSap->local_node_neighbors);
+	rbt_clear(nodeSap->nodes);
+	neighborSap->neighbors_list_built = 0;
+	neighborSap->timeNeighborToRemove = MAX_POSIX_TIME;
 }
 
 /******************************************************************************
  *
  * \par Function Name:
- *      destroy_NodesTree
+ *      NodeSAP_close
  *
  * \brief  Delete all the nodes from the nodes tree, and the tree itself
  *
@@ -511,18 +468,20 @@ void reset_NodesTree()
  *  DD/MM/YY |  AUTHOR         |   DESCRIPTION
  *  -------- | --------------- | -----------------------------------------------
  *  15/01/20 | L. Persampieri  |  Initial Implementation and documentation.
+ *  21/10/22 | L. Persampieri  |  Renamed function.
  *****************************************************************************/
-void destroy_NodesTree()
+void NodeSAP_close(UniboCGRSAP* uniboCgrSap)
 {
-	Rbt *nodes = get_node_graph(NULL);
-	NeighborsSAP *sap = get_neighbors_sap(NULL);
-	free_list(sap->local_node_neighbors);
-	rbt_destroy(nodes);
-	sap->neighbors_list_builded = 0;
-	sap->timeNeighborToRemove = MAX_POSIX_TIME;
-	sap->local_node_neighbors = NULL;
-	nodes = NULL;
-	get_node_graph(nodes); // save
+    if (!UniboCGRSAP_get_NodeSAP(uniboCgrSap)) return;
+
+    NodeSAP* nodeSap = UniboCGRSAP_get_NodeSAP(uniboCgrSap);
+	NeighborSAP *neighborSap = NeighborSAP_get(nodeSap);
+	free_list(neighborSap->local_node_neighbors);
+	rbt_destroy(nodeSap->nodes);
+
+    memset(nodeSap, 0, sizeof(NodeSAP));
+    MDEPOSIT(nodeSap);
+    UniboCGRSAP_set_NodeSAP(uniboCgrSap, NULL);
 }
 
 /******************************************************************************
@@ -607,14 +566,15 @@ static RtgObject* create_rtg_object(Node *node)
  *  -------- | --------------- | -----------------------------------------------
  *  15/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-static Node* create_node(unsigned long long nodeNbr)
+static Node* create_node(uint64_t nodeNbr)
 {
-	Node *result = (Node*) MWITHDRAW(sizeof(Node));
+	Node* result = MWITHDRAW(sizeof(Node));
 
 	if (result != NULL)
 	{
 		result->nodeNbr = nodeNbr;
-		result->routingObject = create_rtg_object(result);
+        RtgObject* rtgObj = create_rtg_object(result);
+		result->routingObject = rtgObj;
 		if (result->routingObject == NULL)
 		{
 			free_node(result);
@@ -654,21 +614,20 @@ static Node* create_node(unsigned long long nodeNbr)
  *  -------- | --------------- | -----------------------------------------------
  *  15/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-Node* add_node(unsigned long long nodeNbr)
+Node* add_node(UniboCGRSAP* uniboCgrSap, uint64_t nodeNbr)
 {
 	RbtNode *elt;
 	Node *node;
-	Rbt *nodes;
+    NodeSAP* nodeSap = UniboCGRSAP_get_NodeSAP(uniboCgrSap);
 
-	node = get_node(nodeNbr);
+	node = get_node(uniboCgrSap, nodeNbr);
 
 	if (node == NULL)
 	{
 		node = create_node(nodeNbr);
 		if (node != NULL)
 		{
-			nodes = get_node_graph(NULL);
-			elt = rbt_insert(nodes, node);
+			elt = rbt_insert(nodeSap->nodes, node);
 			if (elt == NULL)
 			{
 				free_node(node);
@@ -702,15 +661,14 @@ Node* add_node(unsigned long long nodeNbr)
  *  -------- | --------------- | -----------------------------------------------
  *  15/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-void remove_node_from_graph(unsigned long long nodeNbr)
+void remove_node_from_graph(UniboCGRSAP* uniboCgrSap, uint64_t nodeNbr)
 {
 	Node node;
-	Rbt *nodes = get_node_graph(NULL);
+    NodeSAP* nodeSap = UniboCGRSAP_get_NodeSAP(uniboCgrSap);
 
 	node.nodeNbr = nodeNbr;
 	node.routingObject = NULL;
-	rbt_delete(nodes, &node);
-	return;
+	rbt_delete(nodeSap->nodes, &node);
 }
 
 /******************************************************************************
@@ -738,12 +696,12 @@ void remove_node_from_graph(unsigned long long nodeNbr)
  *  -------- | --------------- | -----------------------------------------------
  *  15/01/20 | L. Persampieri  |  Initial Implementation and documentation.
  *****************************************************************************/
-int add_node_to_graph(unsigned long long nodeNbr)
+int add_node_to_graph(UniboCGRSAP* uniboCgrSap, uint64_t nodeNbr)
 {
 	int result;
 	Node *node;
 
-	node = add_node(nodeNbr);
+	node = add_node(uniboCgrSap, nodeNbr);
 
 	if (node != NULL)
 	{
@@ -788,12 +746,13 @@ int add_node_to_graph(unsigned long long nodeNbr)
  *  --------  ---------------  -----------------------------------------------
  *  15/01/20  L. Persampieri    Initial Implementation and documentation.
  *****************************************************************************/
-Node* get_node(unsigned long long nodeNbr)
+Node* get_node(UniboCGRSAP* uniboCgrSap, uint64_t nodeNbr)
 {
 	Node arg;
 	Node *result = NULL;
 	RbtNode *currentNode = NULL;
-	Rbt *nodes = get_node_graph(NULL);
+    NodeSAP* nodeSap = UniboCGRSAP_get_NodeSAP(uniboCgrSap);
+	Rbt *nodes = nodeSap->nodes;
 
 	if (nodeNbr > 0)
 	{
@@ -879,7 +838,7 @@ static void remove_citation(void *data)
  *  --------  ---------------  -----------------------------------------------
  *  28/04/20  L. Persampieri    Initial Implementation and documentation.
  *****************************************************************************/
-static Neighbor* create_neighbor(unsigned long long node_number, time_t to_time)
+static Neighbor* create_neighbor(uint64_t node_number, time_t to_time)
 {
 	Neighbor *result = NULL;
 
@@ -939,8 +898,6 @@ static void free_neighbor(void *data)
 		memset(neighbor, 0 ,sizeof(Neighbor));
 		MDEPOSIT(neighbor);
 	}
-
-	return;
 }
 
 /******************************************************************************
@@ -968,16 +925,17 @@ static void free_neighbor(void *data)
  *  --------  ---------------  -----------------------------------------------
  *  28/04/20  L. Persampieri    Initial Implementation and documentation.
  *****************************************************************************/
-Neighbor * get_neighbor(unsigned long long node_number)
+Neighbor * get_neighbor(UniboCGRSAP* uniboCgrSap, uint64_t node_number)
 {
 	ListElt *elt;
 	Neighbor *result = NULL;
 	Neighbor *current;
-	NeighborsSAP *sap = get_neighbors_sap(NULL);
+    NodeSAP* nodeSap = UniboCGRSAP_get_NodeSAP(uniboCgrSap);
+	NeighborSAP *neighborSap = NeighborSAP_get(nodeSap);
 
-	if(sap->local_node_neighbors!= NULL)
+	if(neighborSap->local_node_neighbors!= NULL)
 	{
-		for(elt = sap->local_node_neighbors->first; elt != NULL && result == NULL; elt = elt->next)
+		for(elt = neighborSap->local_node_neighbors->first; elt != NULL && result == NULL; elt = elt->next)
 		{
 			if(elt->data != NULL)
 			{
@@ -1023,7 +981,7 @@ Neighbor * get_neighbor(unsigned long long node_number)
  *  --------  ---------------  -----------------------------------------------
  *  28/04/20  L. Persampieri    Initial Implementation and documentation.
  *****************************************************************************/
-static int insert_citation_to_neighbor(RtgObject *rtgObj, unsigned long long neighbor_ipn_number)
+static int insert_citation_to_neighbor(UniboCGRSAP* uniboCgrSap, RtgObject *rtgObj, uint64_t neighbor_ipn_number)
 {
 	int result = -3;
 	Neighbor *neighbor;
@@ -1032,7 +990,7 @@ static int insert_citation_to_neighbor(RtgObject *rtgObj, unsigned long long nei
 	if(rtgObj != NULL)
 	{
 		result = -1;
-		neighbor = get_neighbor(neighbor_ipn_number);
+		neighbor = get_neighbor(uniboCgrSap, neighbor_ipn_number);
 
 		if(neighbor != NULL)
 		{
@@ -1061,7 +1019,7 @@ static int insert_citation_to_neighbor(RtgObject *rtgObj, unsigned long long nei
 		}
 		else
 		{
-			verbose_debug_printf("Neighbor %llu not found...", neighbor_ipn_number);
+			verbose_debug_printf("Neighbor %" PRIu64 "not found...", neighbor_ipn_number);
 		}
 	}
 
@@ -1097,7 +1055,7 @@ static int insert_citation_to_neighbor(RtgObject *rtgObj, unsigned long long nei
  *  --------  ---------------  -----------------------------------------------
  *  28/04/20  L. Persampieri    Initial Implementation and documentation.
  *****************************************************************************/
-int is_node_in_destination_neighbors_list(Node *destination, unsigned long long node)
+int is_node_in_destination_neighbors_list(UniboCGRSAP* uniboCgrSap, Node *destination, uint64_t node)
 {
 	int result = 0;
 	ListElt *elt, *current;
@@ -1131,7 +1089,7 @@ int is_node_in_destination_neighbors_list(Node *destination, unsigned long long 
 				}
 			}
 		}
-		else if(get_neighbor(node) != NULL)
+		else if(get_neighbor(uniboCgrSap, node) != NULL)
 		{
 			result = 1;
 		}
@@ -1178,16 +1136,17 @@ int is_node_in_destination_neighbors_list(Node *destination, unsigned long long 
  *  --------  ---------------  -----------------------------------------------
  *  28/04/20  L. Persampieri    Initial Implementation and documentation.
  *****************************************************************************/
-int insert_neighbors_to_reach_destination(List neighbors, Node *destination)
+int insert_neighbors_to_reach_destination(UniboCGRSAP* uniboCgrSap, List neighbors, Node *destination)
 {
 	int result = -3, stop = 0;
 	int temp_result;
 	ListElt *elt;
-	unsigned long long *current;
+	uint64_t *current;
 	RtgObject *rtgObj;
-	NeighborsSAP *sap = get_neighbors_sap(NULL);
+    NodeSAP* nodeSap = UniboCGRSAP_get_NodeSAP(uniboCgrSap);
+	NeighborSAP *neighborSap = NeighborSAP_get(nodeSap);
 
-	if(sap->local_node_neighbors == NULL)
+	if(neighborSap->local_node_neighbors == NULL)
 	{
 		result = -5;
 	}
@@ -1202,15 +1161,15 @@ int insert_neighbors_to_reach_destination(List neighbors, Node *destination)
 		}
 		else
 		{
-			debug_printf("Discovered new total neighbors number (%lu) to reach destination %llu. Previous total number (%lu)", neighbors->length, destination->nodeNbr, rtgObj->citations->length);
+			debug_printf("Discovered new total neighbors number (%lu) to reach destination %" PRIu64 ". Previous total number (%lu)", neighbors->length, destination->nodeNbr, rtgObj->citations->length);
 			free_list_elts(rtgObj->citations); //remove previous citations
 			result = 0;
 			for(elt = neighbors->first; elt != NULL && !stop; elt = elt->next)
 			{
-				current = (unsigned long long *) elt->data;
+				current = (uint64_t *) elt->data;
 				if(current != NULL)
 				{
-					temp_result = insert_citation_to_neighbor(destination->routingObject, *current);
+					temp_result = insert_citation_to_neighbor(uniboCgrSap, destination->routingObject, *current);
 					if(temp_result == -2)
 					{
 						verbose_debug_printf("MWITHDRAW error");
@@ -1269,18 +1228,19 @@ int insert_neighbors_to_reach_destination(List neighbors, Node *destination)
  *  --------  ---------------  -----------------------------------------------
  *  28/04/20  L. Persampieri    Initial Implementation and documentation.
  *****************************************************************************/
-static int add_neighbor(unsigned long long node_number, time_t to_time)
+static int add_neighbor(UniboCGRSAP* uniboCgrSap, uint64_t node_number, time_t to_time)
 {
 	int result = -1;
 	Neighbor *neighbor;
-	NeighborsSAP *sap = get_neighbors_sap(NULL);
+    NodeSAP* nodeSap = UniboCGRSAP_get_NodeSAP(uniboCgrSap);
+	NeighborSAP *neighborSap = NeighborSAP_get(nodeSap);
 
-	if(node_number <= 0 || to_time < 0 || sap->local_node_neighbors == NULL)
+	if(node_number <= 0 || to_time < 0 || neighborSap->local_node_neighbors == NULL)
 	{
 		return -3;
 	}
 
-	neighbor = get_neighbor(node_number);
+	neighbor = get_neighbor(uniboCgrSap, node_number);
 	if (neighbor != NULL) {
 	    if (neighbor->toTime < to_time) {
 	        neighbor->toTime = to_time;
@@ -1294,12 +1254,12 @@ static int add_neighbor(unsigned long long node_number, time_t to_time)
 		neighbor = create_neighbor(node_number, to_time);
 		if(neighbor != NULL)
 		{
-			if(list_insert_last(sap->local_node_neighbors, neighbor) != NULL)
+			if(list_insert_last(neighborSap->local_node_neighbors, neighbor) != NULL)
 			{
 				result = 0;
-				if(to_time < sap->timeNeighborToRemove)
+				if(to_time < neighborSap->timeNeighborToRemove)
 				{
-					sap->timeNeighborToRemove = to_time;
+					neighborSap->timeNeighborToRemove = to_time;
 				}
 			}
 			else
@@ -1310,7 +1270,7 @@ static int add_neighbor(unsigned long long node_number, time_t to_time)
 		}
 		else
 		{
-			verbose_debug_printf("Can't create neighbor %llu (toTime: %ld)", node_number, (long int) to_time);
+			verbose_debug_printf("Can't create neighbor %" PRIu64 " (toTime: %ld)", node_number, (long int) to_time);
 		}
 	}
 
@@ -1339,14 +1299,15 @@ static int add_neighbor(unsigned long long node_number, time_t to_time)
  *  --------  ---------------  -----------------------------------------------
  *  28/04/20  L. Persampieri    Initial Implementation and documentation.
  *****************************************************************************/
-long unsigned int get_local_node_neighbors_count()
+uint64_t get_local_node_neighbors_count(UniboCGRSAP* uniboCgrSap)
 {
-	unsigned long int result = 0;
-	NeighborsSAP *sap = get_neighbors_sap(NULL);
+	uint64_t result = 0;
+    NodeSAP* nodeSap = UniboCGRSAP_get_NodeSAP(uniboCgrSap);
+	NeighborSAP *neighborSap = NeighborSAP_get(nodeSap);
 
-	if(sap->local_node_neighbors != NULL)
+	if(neighborSap->local_node_neighbors != NULL)
 	{
-		result = sap->local_node_neighbors->length;
+		result = neighborSap->local_node_neighbors->length;
 	}
 
 	return result;
@@ -1372,15 +1333,16 @@ long unsigned int get_local_node_neighbors_count()
  *  --------  ---------------  -----------------------------------------------
  *  28/04/20  L. Persampieri    Initial Implementation and documentation.
  *****************************************************************************/
-void reset_neighbors_temporary_fields()
+void reset_neighbors_temporary_fields(UniboCGRSAP* uniboCgrSap)
 {
 	ListElt *elt;
 	Neighbor *current;
-	NeighborsSAP *sap = get_neighbors_sap(NULL);
+    NodeSAP* nodeSap = UniboCGRSAP_get_NodeSAP(uniboCgrSap);
+	NeighborSAP *neighborSap = NeighborSAP_get(nodeSap);
 
-	if(sap->local_node_neighbors != NULL)
+	if(neighborSap->local_node_neighbors != NULL)
 	{
-		for(elt = sap->local_node_neighbors->first; elt != NULL; elt = elt->next)
+		for(elt = neighborSap->local_node_neighbors->first; elt != NULL; elt = elt->next)
 		{
 			if(elt->data != NULL)
 			{
@@ -1413,11 +1375,13 @@ void reset_neighbors_temporary_fields()
  *  --------  ---------------  -----------------------------------------------
  *  28/04/20  L. Persampieri    Initial Implementation and documentation.
  *****************************************************************************/
-void removeOldNeighbors(time_t current_time)
+void removeOldNeighbors(UniboCGRSAP* uniboCgrSap)
 {
 	ListElt *elt, *next;
 	Neighbor *current;
-	NeighborsSAP *sap = get_neighbors_sap(NULL);
+    const time_t current_time = UniboCGRSAP_get_current_time(uniboCgrSap);
+    NodeSAP* nodeSap = UniboCGRSAP_get_NodeSAP(uniboCgrSap);
+	NeighborSAP *sap = NeighborSAP_get(nodeSap);
 
 	if(current_time >= sap->timeNeighborToRemove && sap->local_node_neighbors != NULL)
 	{
@@ -1429,7 +1393,7 @@ void removeOldNeighbors(time_t current_time)
 			next = elt->next;
 			if(current->toTime <= current_time)
 			{
-				debug_printf("Deleted neighbor %llu...", current->ipn_number);
+				debug_printf("Deleted neighbor %" PRIu64 "...", current->ipn_number);
 				list_remove_elt(elt); //remove the citations to destination node
 			}
 			else if(current->toTime < sap->timeNeighborToRemove)
@@ -1468,90 +1432,68 @@ void removeOldNeighbors(time_t current_time)
  *  --------  ---------------  -----------------------------------------------
  *  28/04/20  L. Persampieri    Initial Implementation and documentation.
  *****************************************************************************/
-int build_local_node_neighbors_list(unsigned long long localNode)
+int build_local_node_neighbors_list(UniboCGRSAP* uniboCgrSap)
 {
 	int result = 0, stop = 0;
 	Contact *contact, *prevContact = NULL;
 	RbtNode *node;
-	NeighborsSAP *sap = get_neighbors_sap(NULL);
+    const uint64_t localNode = UniboCGRSAP_get_local_node(uniboCgrSap);
+    NodeSAP* nodeSap = UniboCGRSAP_get_NodeSAP(uniboCgrSap);
+	NeighborSAP *neighborSap = NeighborSAP_get(nodeSap);
 
-	if(!sap->neighbors_list_builded)
+	if(!neighborSap->neighbors_list_built)
 	{
 		debug_printf("Building local node's neighbors list...");
 
-		sap->neighbors_list_builded = 1;
-		free_list(sap->local_node_neighbors);
-		sap->local_node_neighbors = list_create(NULL, NULL, NULL, free_neighbor);
-		if(sap->local_node_neighbors != NULL)
+		neighborSap->neighbors_list_built = 1;
+		free_list(neighborSap->local_node_neighbors);
+		neighborSap->local_node_neighbors = list_create(NULL, NULL, NULL, free_neighbor);
+		if(neighborSap->local_node_neighbors != NULL)
 		{
+            prevContact = NULL;
+            stop = 0;
 
-		    List regions = get_known_regions();
-
-		    if (regions == NULL) {
-		        result = -2;
-                verbose_debug_printf("MWITHDRAW error.");
-                return result;
-		    }
-
-		    ListElt * elt;
-
-		    for ( elt = list_get_first_elt(regions) ; elt != NULL ; elt = list_get_next_elt(elt))
-		    {
-		        unsigned long * currentRegion =  elt->data;
-
-		        if ( currentRegion == NULL) {
-		            continue;
-		        }
-
-		        prevContact = NULL;
-		        stop = 0;
-
-                for(contact = get_first_contact_from_node(*currentRegion, localNode, &node); contact != NULL && !stop; contact = get_next_contact(&node))
+            for(contact = get_first_contact_from_node(uniboCgrSap, localNode, &node); contact != NULL && !stop; contact = get_next_contact(&node))
+            {
+                if(prevContact != NULL)
                 {
-                    if(prevContact != NULL)
+                    if(contact->fromNode != localNode || contact->toNode != prevContact->toNode)
                     {
-                        if(contact->regionNbr != *currentRegion || contact->fromNode != localNode || contact->toNode != prevContact->toNode)
+                        if(contact->fromNode != localNode)
                         {
-                            if(contact->regionNbr != *currentRegion || contact->fromNode != localNode)
-                            {
-                                // Found all neighbors in this region.
-                                stop = 1;
-                            }
+                            // Found all neighbors
+                            stop = 1;
+                        }
 
-                            if(add_neighbor(prevContact->toNode, prevContact->toTime) == -2)
-                            {
-                                // MWITHDRAW error
-                                stop = 1;
-                                result = -2;
-                                verbose_debug_printf("MWITHDRAW error.");
+                        if(add_neighbor(uniboCgrSap, prevContact->toNode, prevContact->toTime) == -2)
+                        {
+                            // MWITHDRAW error
+                            stop = 1;
+                            result = -2;
+                            verbose_debug_printf("MWITHDRAW error.");
 
-                            }
                         }
                     }
-
-                    prevContact = contact;
                 }
 
-                if(!stop && prevContact != NULL && prevContact->fromNode == localNode)
+                prevContact = contact;
+            }
+
+            if(!stop && prevContact != NULL && prevContact->fromNode == localNode)
+            {
+                //Last contact in the graph
+                if(add_neighbor(uniboCgrSap, prevContact->toNode, prevContact->toTime) == -2)
                 {
-                    //Last contact in the graph
-                    if(add_neighbor(prevContact->toNode, prevContact->toTime) == -2)
-                    {
-                        verbose_debug_printf("MWITHDRAW error.");
-                        result = -2;
-                    }
+                    verbose_debug_printf("MWITHDRAW error.");
+                    result = -2;
                 }
+            }
 
-                if (result == -2) { /* unrecoverable error */
-                    free_list(regions);
-                    return result;
-                }
+            if (result == -2) { /* unrecoverable error */
+                return result;
+            }
 
-		    }
-
-            free_list(regions);
-
-			debug_printf("Found %lu neighbors.", sap->local_node_neighbors->length);
+			debug_printf("Found %lu neighbors.", neighborSap->local_node_neighbors->length);
 		}
 		else
 		{
