@@ -115,7 +115,7 @@ function mv_unibo_cgr_to_ion() {
 	cp -rpf "$UNIBO_CGR" "$ION_BPV7/cgr/Unibo-CGR"
 
 	echo "Moving auxiliary files for bpv7..."
-  "$AUX_BPV7/mv_unibo_cgr_ion_bpv7_aux_files.sh" "$AUX_BPV7" "$ION"
+	"$AUX_BPV7/mv_unibo_cgr_ion_bpv7_aux_files.sh" "$AUX_BPV7" "$ION"
 
 	echo "Moving extensions for bpv7..."
 	"$EXT_BPV7/mv_unibo_cgr_ion_bpv7_extensions.sh" "$EXT_BPV7" "$ION"

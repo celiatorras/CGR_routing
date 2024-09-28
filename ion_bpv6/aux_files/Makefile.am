@@ -222,14 +222,16 @@ stuffdir = $(bindir)
 stuff_SCRIPTS =	$(srcdir)/killm \
 		$(srcdir)/ionstart \
 		$(srcdir)/ionstop \
-		$(srcdir)/ionscript
+		$(srcdir)/ionscript \
+		$(srcdir)/demos/ionlauncher/ionlauncher \
+		$(srcdir)/demos/ionlauncher/net_model_gen
 
 otherstuffdir = $(pkgdatadir)
 otherstuff_DATA = \
 	$(srcdir)/ionstart.awk \
 	$(srcdir)/ION.pdf \
 	$(srcdir)/ION-LTP-configuration.pdf \
-	$(srcdir)/ION-LTP-configuration.xls
+	$(srcdir)/ION-LTP-configuration_tool.xlsm
 
 #################
 #
@@ -899,8 +901,10 @@ bpbin = \
 	bplist \
 	bpnmtest \
 	bprecvfile \
+	bprecvtest \
 	bpsecadmin \
 	bpsendfile \
+	bpsendtest \
 	bpsink \
 	bpsource \
 	bpstats \
@@ -993,8 +997,10 @@ bpextra = \
 	bpv6/doc/pod1/bplist.pod \
 	bpv6/doc/pod1/bpnmtest.pod \
 	bpv6/doc/pod1/bprecvfile.pod \
+	bpv6/doc/pod1/bprecvtest.pod \
 	bpv6/doc/pod1/bpsecadmin.pod \
 	bpv6/doc/pod1/bpsendfile.pod \
+	bpv6/doc/pod1/bpsendtest.pod \
 	bpv6/doc/pod1/bpsink.pod \
 	bpv6/doc/pod1/bpsource.pod \
 	bpv6/doc/pod1/bpstats.pod \
@@ -1080,8 +1086,10 @@ bpmans = \
 	$(top_builddir)/bpv6/doc/bplist.1 \
 	$(top_builddir)/bpv6/doc/bpnmtest.1 \
 	$(top_builddir)/bpv6/doc/bprecvfile.1 \
+	$(top_builddir)/bpv6/doc/bprecvtest.1 \
 	$(top_builddir)/bpv6/doc/bpsecadmin.1 \
 	$(top_builddir)/bpv6/doc/bpsendfile.1 \
+	$(top_builddir)/bpv6/doc/bpsendtest.1 \
 	$(top_builddir)/bpv6/doc/bpsink.1 \
 	$(top_builddir)/bpv6/doc/bpsource.1 \
 	$(top_builddir)/bpv6/doc/bpstats.1 \
@@ -1530,9 +1538,17 @@ bprecvfile_SOURCES = bpv6/utils/bprecvfile.c
 bprecvfile_LDADD = libbp.la libici.la $(LIBOBJS)
 bprecvfile_CFLAGS = $(bpcflags) $(AM_CFLAGS)
 
+bprecvtest_SOURCES = bpv6/utils/bprecvtest.c
+bprecvtest_LDADD = libbp.la libici.la $(LIBOBJS)
+bprecvtest_CFLAGS = $(bpcflags) $(AM_CFLAGS)
+
 bpsendfile_SOURCES = bpv6/utils/bpsendfile.c
 bpsendfile_LDADD = libbp.la libici.la $(LIBOBJS)
 bpsendfile_CFLAGS = $(bpcflags) $(AM_CFLAGS)
+
+bpsendtest_SOURCES = bpv6/utils/bpsendtest.c
+bpsendtest_LDADD = libbp.la libici.la $(LIBOBJS)
+bpsendtest_CFLAGS = $(bpcflags) $(AM_CFLAGS)
 
 bpsink_SOURCES = bpv6/test/bpsink.c
 bpsink_LDADD = libbp.la libici.la $(LIBOBJS)
@@ -1744,11 +1760,11 @@ bpPODM5 = pod2man -s 5 -c "BP configuration files"
 if UNIBO_CGR
 ### UNIBO CGR EXTENSIONS RGR AND CGRR ###
 
-bpcflags = -I$(BP_SRC_DIR)/library -I$(BP_SRC_DIR)/library/ext -I$(BP_SRC_DIR)/library/ext/meb -I$(BP_SRC_DIR)/library/ext/bae -I$(BP_SRC_DIR)/include -I$(BP_SRC_DIR)/ipn -I$(BP_SRC_DIR)/ipnd -I$(srcdir)/ici/libbloom-master -I$(srcdir)/ici/libbloom-master/murmur2 -I$(BP_SRC_DIR)/dtn2 -I$(BP_SRC_DIR)/library/crypto -I$(BP_SRC_DIR)/tcp -I$(BP_SRC_DIR)/udp -I$(srcdir)/ici/include -I$(srcdir)/ici/library -I$(BP_SRC_DIR)/library/ext/snw -I$(BP_SRC_DIR)/bibe -I$(BP_SRC_DIR)/imc -DBP_EXTENDED -I$(BP_SRC_DIR)/saga -I$(BP_SRC_DIR)/library/ext/bpsec -I$(BP_SRC_DIR)/library/ext/hcb -I$(BP_SRC_DIR)/library/ext/pnb -I$(BP_SRC_DIR)/library/ext/bpq -I$(BP_SRC_DIR)/library/ext/rgr -I$(BP_SRC_DIR)/library/ext/cgrr
+bpcflags = -I$(BP_SRC_DIR)/bpsec/instr -I$(BP_SRC_DIR)/bpsec/policy -I$(BP_SRC_DIR)/bpsec/sci -I$(BP_SRC_DIR)/bpsec/utils -I$(BP_SRC_DIR)/library -I$(BP_SRC_DIR)/library/ext -I$(BP_SRC_DIR)/library/ext/meb -I$(BP_SRC_DIR)/library/ext/bae -I$(BP_SRC_DIR)/include -I$(BP_SRC_DIR)/ipn -I$(BP_SRC_DIR)/ipnd -I$(srcdir)/ici/libbloom-master -I$(srcdir)/ici/libbloom-master/murmur2 -I$(BP_SRC_DIR)/dtn2 -I$(BP_SRC_DIR)/library/crypto -I$(BP_SRC_DIR)/tcp -I$(BP_SRC_DIR)/udp -I$(srcdir)/ici/include -I$(srcdir)/ici/library -I$(BP_SRC_DIR)/library/ext/snw -I$(BP_SRC_DIR)/bibe -I$(BP_SRC_DIR)/imc -DBP_EXTENDED -I$(BP_SRC_DIR)/saga -I$(BP_SRC_DIR)/library/ext/bpsec -I$(BP_SRC_DIR)/library/ext/hcb -I$(BP_SRC_DIR)/library/ext/pnb -I$(BP_SRC_DIR)/library/ext/bpq -I$(BP_SRC_DIR)/library/ext/rgr -I$(BP_SRC_DIR)/library/ext/cgrr -I$(srcdir)/bpv7/metadata  -I$(srcdir)/ici/crypto/NULL_SUITES
 
 #########################################
 else
-bpcflags = -I$(BP_SRC_DIR)/library -I$(BP_SRC_DIR)/library/ext -I$(BP_SRC_DIR)/library/ext/meb -I$(BP_SRC_DIR)/library/ext/bae -I$(BP_SRC_DIR)/include -I$(BP_SRC_DIR)/ipn -I$(BP_SRC_DIR)/ipnd -I$(srcdir)/ici/libbloom-master -I$(srcdir)/ici/libbloom-master/murmur2 -I$(BP_SRC_DIR)/dtn2 -I$(BP_SRC_DIR)/library/crypto -I$(BP_SRC_DIR)/tcp -I$(BP_SRC_DIR)/udp -I$(srcdir)/ici/include -I$(srcdir)/ici/library -I$(BP_SRC_DIR)/library/ext/snw -I$(BP_SRC_DIR)/bibe -I$(BP_SRC_DIR)/imc -DBP_EXTENDED -I$(BP_SRC_DIR)/saga -I$(BP_SRC_DIR)/library/ext/bpsec -I$(BP_SRC_DIR)/library/ext/hcb -I$(BP_SRC_DIR)/library/ext/pnb -I$(BP_SRC_DIR)/library/ext/bpq
+bpcflags = -I$(BP_SRC_DIR)/bpsec/instr -I$(BP_SRC_DIR)/bpsec/policy -I$(BP_SRC_DIR)/bpsec/sci -I$(BP_SRC_DIR)/bpsec/utils -I$(BP_SRC_DIR)/library -I$(BP_SRC_DIR)/library/ext -I$(BP_SRC_DIR)/library/ext/meb -I$(BP_SRC_DIR)/library/ext/bae -I$(BP_SRC_DIR)/include -I$(BP_SRC_DIR)/ipn -I$(BP_SRC_DIR)/ipnd -I$(srcdir)/ici/libbloom-master -I$(srcdir)/ici/libbloom-master/murmur2 -I$(BP_SRC_DIR)/dtn2 -I$(BP_SRC_DIR)/library/crypto -I$(BP_SRC_DIR)/tcp -I$(BP_SRC_DIR)/udp -I$(srcdir)/ici/include -I$(srcdir)/ici/library -I$(BP_SRC_DIR)/library/ext/snw -I$(BP_SRC_DIR)/bibe -I$(BP_SRC_DIR)/imc -DBP_EXTENDED -I$(BP_SRC_DIR)/saga -I$(BP_SRC_DIR)/library/ext/bpsec -I$(BP_SRC_DIR)/library/ext/hcb -I$(BP_SRC_DIR)/library/ext/pnb -I$(BP_SRC_DIR)/library/ext/bpq -I$(srcdir)/bpv7/metadata  -I$(srcdir)/ici/crypto/NULL_SUITES
 endif
 
 if ENABLE_IMC
@@ -1770,8 +1786,10 @@ bpbin = \
 	bplist \
 	bpnmtest \
 	bprecvfile \
+	bprecvtest \
 	bpsecadmin \
 	bpsendfile \
+	bpsendtest \
 	bpsink \
 	bpsource \
 	bpstats \
@@ -1798,6 +1816,8 @@ bpbin = \
 	lgsend \
 	ltpcli \
 	ltpclo \
+	recvfile \
+	sendfile \
 	stcpcli \
 	stcpclo \
 	tcpcli \
@@ -1822,18 +1842,28 @@ endif # end ENABLE_IMC
 bplib = \
 	libbp.la \
 	libcgr.la \
+	libmetadata.la \
+	libsecrypt.la \
 	libstcpcla.la \
 	libudpcla.la
 
 bpinclude = \
 	bpv7/include/bp.h \
-	bpv7/include/eureka.h
+	bpv7/include/eureka.h \
+	bpv7/bpsec/sci/sci.h \
+	bpv7/bpsec/sci/ion_test_sc.h \
+	bpv7/bpsec/sci/bib_hmac_sha2_sc.h \
+	bpv7/bpsec/sci/bcb_aes_gcm_sc.h \
+	bpv7/bpsec/sci/rfc9173_utils.h \
+	bpv7/bpsec/utils/bpsec_util.h \
+	bpv7/bpsec/utils/bpsec_asb.h \
+	bpv7/bpsec/instr/bpsec_instr.h
+
 
 bpnoinst = \
 	bpv7/brs/brscla.h \
 	bpv7/dccp/dccpcla.h \
 	bpv7/dtn2/dtn2fw.h \
-	bpv7/include/bpsec.h \
 	bpv7/ipn/ipnfw.h \
 	bpv7/ipnd/ipndP.h \
 	bpv7/library/bpP.h \
@@ -1845,6 +1875,22 @@ bpnoinst = \
 bpextra = \
 	bpv7/README.txt \
 	bpv7/bibe/bibe.h \
+	bpv7/bpsec/instr/bpsec_instr.h \
+	bpv7/bpsec/policy/bpsec_policy.h \
+	bpv7/bpsec/policy/bpsec_policy_eventset.h \
+	bpv7/bpsec/policy/bpsec_policy_event.h \
+	bpv7/bpsec/policy/bpsec_policy_rule.h \
+	bpv7/bpsec/policy/bpsec_policy.c \
+	bpv7/bpsec/policy/bpsec_policy_eventset.c \
+	bpv7/bpsec/policy/bpsec_policy_event.c \
+	bpv7/bpsec/policy/bpsec_policy_rule.c \
+	bpv7/bpsec/sci/sci.h \
+	bpv7/bpsec/sci/ion_test_sc.h \
+	bpv7/bpsec/sci/bib_hmac_sha2_sc.h \
+	bpv7/bpsec/sci/bcb_aes_gcm_sc.h \
+	bpv7/bpsec/sci/rfc9173_utils.h \
+	bpv7/bpsec/utils/bpsec_util.h \
+	bpv7/bpsec/utils/bpsec_asb.h \
 	bpv7/doc/pod1/bibeadmin.pod \
 	bpv7/doc/pod1/bibeclo.pod \
 	bpv7/doc/pod1/bpadmin.pod \
@@ -1859,17 +1905,22 @@ bpextra = \
 	bpv7/doc/pod1/bplist.pod \
 	bpv7/doc/pod1/bpnmtest.pod \
 	bpv7/doc/pod1/bprecvfile.pod \
+	bpv7/doc/pod1/bprecvtest.pod \
 	bpv7/doc/pod1/bpsecadmin.pod \
 	bpv7/doc/pod1/bpsendfile.pod \
+	bpv7/doc/pod1/bpsendtest.pod \
 	bpv7/doc/pod1/bpsink.pod \
 	bpv7/doc/pod1/bpsource.pod \
 	bpv7/doc/pod1/bpstats.pod \
 	bpv7/doc/pod1/bpstats2.pod \
 	bpv7/doc/pod1/bptrace.pod \
 	bpv7/doc/pod1/bptransit.pod \
+	bpv7/doc/pod1/bpversion.pod \
+	bpv7/doc/pod1/bpcrash.pod \
 	bpv7/doc/pod1/brsccla.pod \
 	bpv7/doc/pod1/brsscla.pod \
 	bpv7/doc/pod1/cgrfetch.pod \
+	bpv7/doc/pod1/cpsd.pod \
 	bpv7/doc/pod1/dccpcli.pod \
 	bpv7/doc/pod1/dccpclo.pod \
 	bpv7/doc/pod1/dgrcli.pod \
@@ -1886,6 +1937,8 @@ bpextra = \
 	bpv7/doc/pod1/lgsend.pod \
 	bpv7/doc/pod1/ltpcli.pod \
 	bpv7/doc/pod1/ltpclo.pod \
+	bpv7/doc/pod1/recvfile.pod \
+	bpv7/doc/pod1/sendfile.pod \
 	bpv7/doc/pod1/stcpcli.pod \
 	bpv7/doc/pod1/stcpclo.pod \
 	bpv7/doc/pod1/tcpcli.pod \
@@ -1894,32 +1947,21 @@ bpextra = \
 	bpv7/doc/pod1/udpclo.pod \
 	bpv7/doc/pod3/bp.pod \
 	bpv7/doc/pod3/bpextensions.pod \
+	bpv7/doc/pod3/metadata.pod \
+	bpv7/doc/pod3/secrypt.pod \
 	bpv7/doc/pod5/biberc.pod \
 	bpv7/doc/pod5/bprc.pod \
 	bpv7/doc/pod5/bpsecrc.pod \
 	bpv7/doc/pod5/dtn2rc.pod \
 	bpv7/doc/pod5/ipnrc.pod \
 	bpv7/doc/pod5/lgfile.pod \
-	bpv7/include/bpsec.h \
 	bpv7/library/bei.c \
-	bpv7/library/bpsec.c \
 	bpv7/library/saga.h \
 	bpv7/library/saga.c \
 	bpv7/library/ext/bpextensions.c \
 	bpv7/library/ext/noextensions.c \
 	bpv7/library/ext/bpsec/bcb.h \
 	bpv7/library/ext/bpsec/bib.h \
-	bpv7/library/ext/bpsec/bpsec_instr.h \
-	bpv7/library/ext/bpsec/bpsec_util.h \
-	bpv7/library/ext/bpsec/bpsec_policy.h \
-	bpv7/library/ext/bpsec/bpsec_policy_eventset.h \
-	bpv7/library/ext/bpsec/bpsec_policy_event.h \
-	bpv7/library/ext/bpsec/bpsec_policy_rule.h \
-	bpv7/library/ext/bpsec/profiles.h \
-	bpv7/library/ext/bpsec/bpsec_policy.c \
-	bpv7/library/ext/bpsec/bpsec_policy_eventset.c \
-	bpv7/library/ext/bpsec/bpsec_policy_event.c \
-	bpv7/library/ext/bpsec/bpsec_policy_rule.c \
 	bpv7/library/ext/ecos/ecos.h \
 	bpv7/library/ext/ecos/ecos.c \
 	bpv7/library/ext/hcb/hcb.h \
@@ -1950,8 +1992,10 @@ bpmans = \
 	$(top_builddir)/bpv7/doc/bplist.1 \
 	$(top_builddir)/bpv7/doc/bpnmtest.1 \
 	$(top_builddir)/bpv7/doc/bprecvfile.1 \
+	$(top_builddir)/bpv7/doc/bprecvtest.1 \
 	$(top_builddir)/bpv7/doc/bpsecadmin.1 \
 	$(top_builddir)/bpv7/doc/bpsendfile.1 \
+	$(top_builddir)/bpv7/doc/bpsendtest.1 \
 	$(top_builddir)/bpv7/doc/bpsink.1 \
 	$(top_builddir)/bpv7/doc/bpsource.1 \
 	$(top_builddir)/bpv7/doc/bpstats.1 \
@@ -1977,6 +2021,8 @@ bpmans = \
 	$(top_builddir)/bpv7/doc/lgsend.1 \
 	$(top_builddir)/bpv7/doc/ltpcli.1 \
 	$(top_builddir)/bpv7/doc/ltpclo.1 \
+	$(top_builddir)/bpv7/doc/recvfile.1 \
+	$(top_builddir)/bpv7/doc/sendfile.1 \
 	$(top_builddir)/bpv7/doc/stcpcli.1 \
 	$(top_builddir)/bpv7/doc/stcpclo.1 \
 	$(top_builddir)/bpv7/doc/tcpcli.1 \
@@ -2018,6 +2064,21 @@ if UNIBO_CGR
 ### UNIBO CGR EXTENSIONS RGR AND CGRR ###
 
 libbp_la_SOURCES = \
+    bpv7/bpsec/instr/bpsec_instr.c \
+    bpv7/bpsec/policy/bpsec_policy.c \
+	bpv7/bpsec/policy/bpsec_policy_eventset.c \
+	bpv7/bpsec/policy/bpsec_policy_event.c \
+	bpv7/bpsec/policy/bpsec_policy_rule.c \
+	bpv7/bpsec/sci/ion_test_sc.c \
+	bpv7/bpsec/sci/bib_hmac_sha2_sc.c \
+	bpv7/bpsec/sci/bcb_aes_gcm_sc.c \
+	bpv7/bpsec/sci/rfc9173_utils.c \
+	bpv7/bpsec/sci/sc_util.c \
+	bpv7/bpsec/sci/sci.c \
+	bpv7/bpsec/sci/sci_valmap.c \
+	bpv7/bpsec/sci/sc_value.c \
+	bpv7/bpsec/utils/bpsec_util.c \
+	bpv7/bpsec/utils/bpsec_asb.c \
 	bpv7/bibe/bibe.c \
 	bpv7/dtn2/libdtn2fw.c \
 	bpv7/library/libbp.c \
@@ -2025,18 +2086,10 @@ libbp_la_SOURCES = \
 	bpv7/library/libbpnm.c \
 	bpv7/library/eureka.c \
 	bpv7/library/bei.c \
-	bpv7/library/bpsec.c \
 	bpv7/library/ext/bae/bae.c \
 	bpv7/library/ext/bpq/bpq.c \
 	bpv7/library/ext/bpsec/bcb.c \
 	bpv7/library/ext/bpsec/bib.c \
-	bpv7/library/ext/bpsec/bpsec_instr.c \
-	bpv7/library/ext/bpsec/bpsec_util.c \
-	bpv7/library/ext/bpsec/bpsec_policy.c \
-	bpv7/library/ext/bpsec/bpsec_policy_eventset.c \
-	bpv7/library/ext/bpsec/bpsec_policy_event.c \
-	bpv7/library/ext/bpsec/bpsec_policy_rule.c \
-	bpv7/library/ext/bpsec/profiles.c \
 	bpv7/library/ext/hcb/hcb.c \
 	bpv7/library/ext/meb/meb.c \
 	bpv7/library/ext/pnb/pnb.c \
@@ -2062,6 +2115,21 @@ libbp_la_SOURCES = \
 #########################################
 else
 libbp_la_SOURCES = \
+    bpv7/bpsec/instr/bpsec_instr.c \
+    bpv7/bpsec/policy/bpsec_policy.c \
+	bpv7/bpsec/policy/bpsec_policy_eventset.c \
+	bpv7/bpsec/policy/bpsec_policy_event.c \
+	bpv7/bpsec/policy/bpsec_policy_rule.c \
+	bpv7/bpsec/sci/ion_test_sc.c \
+	bpv7/bpsec/sci/bib_hmac_sha2_sc.c \
+	bpv7/bpsec/sci/bcb_aes_gcm_sc.c \
+	bpv7/bpsec/sci/rfc9173_utils.c \
+	bpv7/bpsec/sci/sc_util.c \
+	bpv7/bpsec/sci/sci.c \
+	bpv7/bpsec/sci/sci_valmap.c \
+	bpv7/bpsec/sci/sc_value.c \
+	bpv7/bpsec/utils/bpsec_util.c \
+	bpv7/bpsec/utils/bpsec_asb.c \
 	bpv7/bibe/bibe.c \
 	bpv7/dtn2/libdtn2fw.c \
 	bpv7/library/libbp.c \
@@ -2069,18 +2137,10 @@ libbp_la_SOURCES = \
 	bpv7/library/libbpnm.c \
 	bpv7/library/eureka.c \
 	bpv7/library/bei.c \
-	bpv7/library/bpsec.c \
 	bpv7/library/ext/bae/bae.c \
 	bpv7/library/ext/bpq/bpq.c \
 	bpv7/library/ext/bpsec/bcb.c \
 	bpv7/library/ext/bpsec/bib.c \
-	bpv7/library/ext/bpsec/bpsec_instr.c \
-	bpv7/library/ext/bpsec/bpsec_util.c \
-	bpv7/library/ext/bpsec/bpsec_policy.c \
-	bpv7/library/ext/bpsec/bpsec_policy_eventset.c \
-	bpv7/library/ext/bpsec/bpsec_policy_event.c \
-	bpv7/library/ext/bpsec/bpsec_policy_rule.c \
-	bpv7/library/ext/bpsec/profiles.c \
 	bpv7/library/ext/hcb/hcb.c \
 	bpv7/library/ext/meb/meb.c \
 	bpv7/library/ext/pnb/pnb.c \
@@ -2154,6 +2214,14 @@ libstcpcla_la_LIBADD = libbp.la libici.la
 libudpcla_la_SOURCES = bpv7/udp/libudpcla.c
 libudpcla_la_CFLAGS = $(bpcflags) $(AM_CFLAGS)
 libudpcla_la_LIBADD = libbp.la libici.la
+
+libmetadata_la_SOURCES = bpv7/metadata/metadata.c
+libmetadata_la_CFLAGS = $(bpcflags) $(AM_CFLAGS)
+#libmetadata_la_LIBADD = libbp.la libici.la
+
+libsecrypt_la_SOURCES = ici/crypto/NULL_SUITES/secrypt.c
+libsecrypt_la_CFLAGS = $(bpcflags) $(AM_CFLAGS)
+#libsecrypt_la_LIBADD = libbp.la libici.la
 
 # --- Utility Programs --- #
 
@@ -2369,9 +2437,17 @@ bprecvfile_SOURCES = bpv7/utils/bprecvfile.c
 bprecvfile_LDADD = libici.la $(bplib)
 bprecvfile_CFLAGS = $(bpcflags) $(AM_CFLAGS)
 
+bprecvtest_SOURCES = bpv7/utils/bprecvtest.c
+bprecvtest_LDADD = libici.la $(bplib)
+bprecvtest_CFLAGS = $(bpcflags) $(AM_CFLAGS)
+
 bpsendfile_SOURCES = bpv7/utils/bpsendfile.c
 bpsendfile_LDADD = libici.la $(bplib)
 bpsendfile_CFLAGS = $(bpcflags) $(AM_CFLAGS)
+
+bpsendtest_SOURCES = bpv7/utils/bpsendtest.c
+bpsendtest_LDADD = libici.la $(bplib)
+bpsendtest_CFLAGS = $(bpcflags) $(AM_CFLAGS)
 
 bpsink_SOURCES = bpv7/test/bpsink.c
 bpsink_LDADD = libici.la $(bplib)
@@ -2388,6 +2464,14 @@ bpstats2_CFLAGS = $(bpcflags) $(AM_CFLAGS)
 cgrfetch_SOURCES = bpv7/utils/cgrfetch.c
 cgrfetch_LDADD = libici.la $(bplib)
 cgrfetch_CFLAGS = $(bpcflags) $(AM_CFLAGS)
+
+recvfile_SOURCES = bpv7/utils/recvfile.c
+recvfile_LDADD = libici.la $(bplib) libsecrypt.la libmetadata.la
+recvfile_CFLAGS = $(bpcflags) $(AM_CFLAGS)
+
+sendfile_SOURCES = bpv7/utils/sendfile.c
+sendfile_LDADD = libici.la $(bplib) libsecrypt.la libmetadata.la
+sendfile_CFLAGS = $(bpcflags) $(AM_CFLAGS)
 
 # --- Daemon Executables --- #
 
@@ -2599,7 +2683,7 @@ nm_shared_src = \
 	$(nm_cbor_src)
 
 libamp_la_SOURCES = $(nm_shared_src)
-libamp_la_CFLAGS = -I/usr/include -I$(srcdir)/ici/library -I$(srcdir)/bpv7/library -I$(srcdir)/ltp/library -I$(srcdir)/nm  \
+libamp_la_CFLAGS = -I/usr/include -I$(srcdir)/ici/library -I$(srcdir)/bpv7/library -I$(srcdir)/bpv7/bpsec/utils -I$(srcdir)/bpv7/sci -I$(srcdir)/ltp/library -I$(srcdir)/nm  \
                   -I$(srcdir)/nm/agent $(AM_CFLAGS) $(NO_UNUSED_VARIABLE) \
                   $(NM_CBOR_CFLAGS)
 # Note: ici reference is used here only for memory management.  If -DUSE_MALLOC is used for NM (not recommended), this dependency would be unneeded.
@@ -2618,7 +2702,7 @@ nm_agent_SOURCES = \
 	nm/agent/adm_amp_agent_agent.c \
 	nm/shared/adm/adm_init.c
 
-NM_ADM_INCLUDES = -I$(srcdir)/nm/shared/adm -I$(BP_SRC_DIR)/adm -I$(BP_SRC_DIR)
+NM_ADM_INCLUDES = -I$(srcdir)/nm/shared/adm -I$(BP_SRC_DIR)/adm -I$(BP_SRC_DIR) -I$(srcdir)/bpv7/bpsec/utils -I$(srcdir)/bpv7/sci 
 
 nm_agent_ADM_SOURCES = \
 	bpv7/adm/adm_bp_agent_impl.c \
@@ -3379,7 +3463,8 @@ check_PROGRAMS = tests/1000.loopback/dotest \
 	tests/nm-unit/utils/vector/dotest \
 	tests/nm-unit/utils/rhht/dotest \
 	tests/nm-unit/utils/radix_pt/dotest \
-	tests/nm-unit/utils/radix_ut/dotest 	 	
+	tests/nm-unit/utils/radix_ut/dotest \
+	tests/sm_subsystem/dotest
 #	tests/nm-unit/primitives/ari/dotest
 
 if BUILD_BPv6
@@ -3413,7 +3498,6 @@ tests_nm_unit_utils_radix_ut_dotest_CFLAGS = $(libamp_la_CFLAGS) $(TESTUNITYCFLA
 #tests_nm_unit_primitives_ari_dotest_SOURCES = tests/nm-unit/primitives/ari.c $(nm_agent_SOURCES)
 #tests_nm_unit_primitives_ari_dotest_LDADD = $(nm_agent_LDADD) -lm $(TESTUTILOBJS) $(TESTUNITYOBJS)
 #tests_nm_unit_primitives_ari_dotest_CFLAGS = $(nm_agent_CFLAGS) $(TESTUTILCFLAGS) $(TESTUNITYCFLAGS)
-
 
 tests_1000_loopback_dotest_SOURCES = tests/1000.loopback/dotest.c
 tests_1000_loopback_dotest_LDADD = libici.la -lm $(bplib) $(ltplib) $(TESTUTILOBJS)
@@ -3456,11 +3540,16 @@ tests_bug_0015_tcpclo_bpcp_sig_handling_test_CFLAGS=$(bpcflags) $(icicflags) $(A
 
 tests_issue_330_cfdpclock_FDU_removal_cfdplisten_SOURCES = tests/issue-330-cfdpclock-FDU-removal/cfdplisten.c
 tests_issue_330_cfdpclock_FDU_removal_cfdplisten_LDADD = libcfdp.la libici.la -lm $(bplib) 
-tests_issue_330_cfdpclock_FDU_removal_cfdplisten_CFLAGS = $(cfdpcflags) $(AM_CFLAGS)
+tests_issue_330_cfdpclock_FDU_removal_cfdplisten_CFLAGS = $(bpcflags) $(icicflags) $(cfdpcflags) $(AM_CFLAGS)
 
 tests_issue_334_cfdp_transaction_id_dotest_SOURCES = tests/issue-334-cfdp-transaction-id/dotest.c
 tests_issue_334_cfdp_transaction_id_dotest_LDADD = libcfdp.la libici.la -lm $(TESTUTILOBJS)
 tests_issue_334_cfdp_transaction_id_dotest_CFLAGS = $(icicflags) $(cfdpcflags) $(AM_CFLAGS) $(TESTUTILCFLAGS)
+
+tests_sm_subsystem_dotest_SOURCES = tests/sm_subsystem/dotest.c
+tests_sm_subsystem_dotest_LDADD = libici.la -lm $(bplib) $(TESTUTILOBJS)
+tests_sm_subsystem_dotest_CFLAGS = $(bpcflags) $(AM_CFLAGS) $(TESTUTILCFLAGS) $(icicflags) 
+
 
 
 ##########################
@@ -3541,31 +3630,3 @@ ION.pdf: doc/ION-beginning.pdf
 	cp $^ $@
 
 endif #ENABLE_AUTODOC
-
-##########################
-#
-# DISTRIBUTION SECTION
-#
-##########################
-
-DOC_VERSION_NUMBER := "4.1.1"
-DOC_VERSION_MAJOR := "4"
-DOC_VERSION_MINOR := "1.1"
-DOC_DATE := $(shell date '+%Y-%m-%d')
-
-distribution: doc/ION-beginning.pdf doc/ION-manpages.ps
-	@echo ""
-	@echo "UPDATING VERSION NUMBER IN:"
-	@echo "configure.ac"
-	sed -r -i.bak 's/ion, open source [0-9]+\.[0-9]+\.[0-9]+[a-Z]*/ion, open source $(DOC_VERSION_NUMBER)/' configure.ac
-	@echo "arch-uClib/ion.package/ion.mk"
-	sed -r -i.bak 's/ION_VERSION_MAJOR=[0-9]+/ION_VERSION_MAJOR=$(DOC_VERSION_MAJOR)/' ./arch-uClibc/ion.package/ion.mk
-	sed -r -i.bak 's/ION_VERSION_MINOR=[0-9]+\.[0-9]+[a-Z]*+/ION_VERSION_MINOR=$(DOC_VERSION_MINOR)/' ./arch-uClibc/ion.package/ion.mk
-	@echo ""
-	@echo "Archiving the directory to ~/releases/ion-$(DOC_VERSION_NUMBER)."
-	@echo ""
-	hg archive ~/releases/ion-$(DOC_VERSION_NUMBER)
-	@echo "Now creating ION.pdf"
-	$(PS2PDF) doc/ION-manpages.ps
-	gs -dBATCH -dNOPAUSE -q -sDEVICE=pdfwrite -sOutputFile=ION.pdf doc/ION-beginning.pdf ION-manpages.pdf
-	rm ION-manpages.pdf
