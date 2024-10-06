@@ -95,6 +95,8 @@ extern bool UniboCGRSAP_check_reactive_anti_loop(UniboCGRSAP* uniboCgrSap);
 extern bool UniboCGRSAP_check_proactive_anti_loop(UniboCGRSAP* uniboCgrSap);
 extern bool UniboCGRSAP_check_moderate_source_routing(UniboCGRSAP* uniboCgrSap);
 
+extern void UniboCGRSAP_tweak_one_route_per_neighbor(UniboCGRSAP *uniboCgrSap, bool featureFlag, uint32_t limit);
+
 extern void         UniboCGRSAP_set_PhaseOneSAP(UniboCGRSAP* uniboCgrSap, PhaseOneSAP* phaseOneSap);
 extern PhaseOneSAP* UniboCGRSAP_get_PhaseOneSAP(UniboCGRSAP* uniboCgrSap);
 

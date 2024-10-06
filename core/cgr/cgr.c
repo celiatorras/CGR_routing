@@ -691,6 +691,15 @@ int getBestRoutes(UniboCGRSAP* uniboCgrSap, CgrBundle *bundle, List excludedNeig
 
             reset_cgr(uniboCgrSap);
 
+			bool originalOneRoutePerNeighborFeatureFlag = false;
+			uint32_t originalOneRoutePerNeighborLimit = 1;
+
+			if (IS_CRITICAL(bundle))
+			{
+				originalOneRoutePerNeighborFeatureFlag = UniboCGRSAP_check_one_route_per_neighbor(uniboCgrSap, &originalOneRoutePerNeighborLimit);
+				UniboCGRSAP_tweak_one_route_per_neighbor(uniboCgrSap, true, 0U);
+			}
+
             if (UniboCGRSAP_handle_updates(uniboCgrSap) < 0) {
                 //writeLog(uniboCgrSap, "Need to discard all routes.");
                 verbose_debug_printf("Error...");
@@ -755,6 +764,11 @@ int getBestRoutes(UniboCGRSAP* uniboCgrSap, CgrBundle *bundle, List excludedNeig
 				}
 
 				closeBundleFile(&(currentCallSap->file_call));
+			}
+
+			if (IS_CRITICAL(bundle))
+			{
+				UniboCGRSAP_tweak_one_route_per_neighbor(uniboCgrSap, originalOneRoutePerNeighborFeatureFlag, originalOneRoutePerNeighborLimit);
 			}
 		}
 

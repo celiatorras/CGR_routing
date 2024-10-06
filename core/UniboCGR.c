@@ -568,6 +568,10 @@ bool UniboCGRSAP_check_proactive_anti_loop(UniboCGRSAP* uniboCgrSap) {
 bool UniboCGRSAP_check_moderate_source_routing(UniboCGRSAP* uniboCgrSap) {
     return uniboCgrSap->feature_moderate_source_routing;
 }
+void UniboCGRSAP_tweak_one_route_per_neighbor(UniboCGRSAP* uniboCgrSap, bool featureFlag, uint32_t limit) {
+    uniboCgrSap->feature_one_route_per_neighbor = featureFlag;
+    uniboCgrSap->feature_one_route_per_neighbor_limit = limit;
+}
 void UniboCGRSAP_set_PhaseOneSAP(UniboCGRSAP* uniboCgrSap, PhaseOneSAP* phaseOneSap) {
     uniboCgrSap->phaseOneSap = phaseOneSap;
 }
