@@ -92,36 +92,17 @@ function mv_unibo_cgr_to_ion() {
 	echo "Moving Unibo-CGR into ION..."
 	echo ""
 
-	echo "Moving Unibo-CGR into bpv6..."
-	rm -rf "$ION_BPV6/cgr/Unibo-CGR"
-	cp -rpf "$UNIBO_CGR" "$ION_BPV6/cgr/Unibo-CGR"
-
-	echo "Moving auxiliary files for bpv6..."
-	"$AUX_BPV6/mv_unibo_cgr_ion_bpv6_aux_files.sh" "$AUX_BPV6" "$ION"
-	echo "Moving extensions for bpv6..."
-	"$EXT_BPV6/mv_unibo_cgr_ion_bpv6_extensions.sh" "$EXT_BPV6" "$ION"
-
-	echo "Removing unnecessary files from Unibo-CGR for bpv6..."
-	rm -rf "$ION_BPV6/cgr/Unibo-CGR/ion_bpv7"
-	rm -rf "$ION_BPV6/cgr/Unibo-CGR/dtnme"
-	rm -f "$ION_BPV6/cgr/Unibo-CGR/mv_unibo_cgr.sh"
-	rm -f "$ION_BPV6/cgr/Unibo-CGR/.gitlab-ci.yml"
-	rm -rf "$ION_BPV6/cgr/Unibo-CGR/docs/.doxygen"
-#	rm -rf "$ION_BPV6/cgr/Unibo-CGR/ion_bpv6/aux_files"
-#	rm -rf "$ION_BPV6/cgr/Unibo-CGR/ion_bpv6/extensions"
-
 	echo "Moving Unibo-CGR into bpv7..."
 	rm -rf "$ION_BPV7/cgr/Unibo-CGR"
 	cp -rpf "$UNIBO_CGR" "$ION_BPV7/cgr/Unibo-CGR"
 
 	echo "Moving auxiliary files for bpv7..."
-  "$AUX_BPV7/mv_unibo_cgr_ion_bpv7_aux_files.sh" "$AUX_BPV7" "$ION"
+	"$AUX_BPV7/mv_unibo_cgr_ion_bpv7_aux_files.sh" "$AUX_BPV7" "$ION"
 
 	echo "Moving extensions for bpv7..."
 	"$EXT_BPV7/mv_unibo_cgr_ion_bpv7_extensions.sh" "$EXT_BPV7" "$ION"
 
 	echo "Removing unnecessary files from Unibo-CGR for bpv7..."
-	rm -rf "$ION_BPV7/cgr/Unibo-CGR/ion_bpv6"
 	rm -rf "$ION_BPV7/cgr/Unibo-CGR/dtnme"
 	rm -f "$ION_BPV7/cgr/Unibo-CGR/mv_unibo_cgr.sh"
 	rm -f "$ION_BPV7/cgr/Unibo-CGR/.gitlab-ci.yml"

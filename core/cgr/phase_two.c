@@ -794,6 +794,7 @@ static int computePBAT(UniboCGRSAP* uniboCgrSap, time_t current_time, uint64_t l
 	time_t lastByteArrivalTime;
 	if (UniboCGRSAP_compute_applicable_backlog(uniboCgrSap, route->neighbor, bundle->priority_level, bundle->ordinal,
                                                &applicableBacklog, &totalBacklog) < 0) {
+		debug_printf("Candidate route failure reason: no applicable backlog");
 		result = -2;
 	}
 	else
@@ -803,6 +804,7 @@ static int computePBAT(UniboCGRSAP* uniboCgrSap, time_t current_time, uint64_t l
 
 		if (computeResidualBacklog(uniboCgrSap, current_time, localNode, route, &allotment, &volume, &residualBacklog) < 0)
 		{
+			debug_printf("Candidate route failure reason: no residual backlog");
 			result = -3;
 		}
 		else
@@ -826,6 +828,7 @@ static int computePBAT(UniboCGRSAP* uniboCgrSap, time_t current_time, uint64_t l
 			{
 				if (lastByteArrivalTime > bundle->expiration_time)
 				{
+					debug_printf("Candidate route failure reason: lastByteArrivalTime > bundle->expiration_time");
 					result = -4;
 				}
 				else
@@ -1485,32 +1488,39 @@ int checkRoute(UniboCGRSAP* uniboCgrSap, CgrBundle *bundle, List excludedNeighbo
 
 		if (route->toTime <= current_time)
 		{
+			debug_printf("Candidate route failure reason: route->toTime <= current_time");
 			result = -3;
 		}
 		else if (route->arrivalTime > bundle->expiration_time) //SABR 3.2.6.9 a)
 		{
+			debug_printf("Candidate route failure reason: route->arrivalTime > bundle->expiration_time");
 			result = -4;
 		}
 #if (NEGLECT_CONFIDENCE == 0)
 		else if (firstContact->confidence < 1.0F) //(no SABR) first contact must be certain (confidence == 1.0F)
 		{
+			debug_printf("Candidate route failure reason: firstContact->confidence < 1.0F");
 			result = -5;
 		}
 		else if (lowDlvConfidence(bundle->dlvConfidence, route->arrivalConfidence)) // (no SABR)
 		{
+			debug_printf("Candidate route failure reason: lowDlvConfidence(bundle->dlvConfidence, route->arrivalConfidence)");
 			result = -6;
 		}
 #endif
 		else if (route->neighbor == localNode && bundle->terminus_node != localNode) //SABR 3.2.6.9 c)
 		{
+			debug_printf("Candidate route failure reason: route->neighbor == localNode && bundle->terminus_node != localNode");
 			result = -7;
 		}
 		else if (isExcluded(route->neighbor, excludedNeighbors)) //SABR 3.2.6.9 b)
 		{
+			debug_printf("Candidate route failure reason: isExcluded(route->neighbor, excludedNeighbors)");
 			result = -8;
 		}
 		else if (computePBAT(uniboCgrSap, current_time, localNode, route, bundle) < 0)
 		{
+			debug_printf("Candidate route failure reason: computePBAT(uniboCgrSap, current_time, localNode, route, bundle) < 0");
 			result = -9;
 		}
 		else //viable route
@@ -1520,6 +1530,7 @@ int checkRoute(UniboCGRSAP* uniboCgrSap, CgrBundle *bundle, List excludedNeighbo
 
                 if (result > 0)
                 {
+                    debug_printf("Candidate route failure reason: loop identified (type %d)", result);
                     result = 0;
                 }
             } else {

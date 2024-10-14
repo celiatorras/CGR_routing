@@ -376,6 +376,13 @@ int decode_rgr(unsigned int bytesBuffered, unsigned char *bufferToDecode, GeoRou
 		if(cbor_decode_text_string(geoRoute->nodes, &size, &cursor, &unparsedBytes) < 1)
 		{
 			writeMemo("[?] [decode_rgr] Text string not decoded...");
+
+			if (TODO_MTAKE_nodes)
+			{
+				MRELEASE(geoRoute->nodes);
+				geoRoute->nodes = NULL;
+			}
+
 			return -1;
 		}
 
