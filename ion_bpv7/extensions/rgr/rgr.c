@@ -356,9 +356,17 @@ int rgr_acquire(AcqExtBlock *blk, AcqWorkArea *wk)
 
 	cursor = (blk->bytes) + (blk->length - blk->dataLength);
 
-	if(decode_rgr(blk->dataLength, cursor, &rgrBlk, 1) < 0)
+	const int decodingResult = decode_rgr(blk->dataLength, cursor, &rgrBlk, 1);
+
+	if (decodingResult == 0 || decodingResult == -1)
 	{
-		writeMemo("[?] [rgr_acquire] Decoding error...");
+		writeMemo("[?] [rgr_acquire] Malformed block...");
+		discardAcqExtensionBlock(blk);
+		return 0;
+	}
+	if(decodingResult < 0)
+	{
+		writeMemo("[?] [rgr_acquire] System error...");
 		return -1;
 	}
 
