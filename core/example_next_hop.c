@@ -48,7 +48,9 @@ static void print_all_contacts(UniboCGR cgr) {
         uint64_t r = UniboCGR_Contact_get_receiver(ct);
         time_t start = UniboCGR_Contact_get_start_time(cgr, ct);
         time_t end = UniboCGR_Contact_get_end_time(cgr, ct);
-        printf("  %llu -> %llu   start=%ld  end=%ld   \n", (unsigned long long)s, (unsigned long long)r, (long)start, (long)end);
+        int xmit = UniboCGR_Contact_get_xmit_rate(ct);
+        float c = UniboCGR_Contact_get_confidence(ct);
+        printf("  %llu -> %llu   start=%ld  end=%ld   xmit=%u   conf=%.2f\n", (unsigned long long)s, (unsigned long long)r, (long)start, (long)end, xmit, c);
 
         rc = UniboCGR_get_next_contact(cgr, &ct);
     } while (rc == UniboCGR_NoError);
@@ -57,84 +59,119 @@ static void print_all_contacts(UniboCGR cgr) {
 int main(void)
 {
     time_t now = time(NULL);
-    time_t reference_time = 0; //current_time = now - reference_time -> posem 0
+    time_t reference_time = 0; //current_time = now - reference_time -> 0
     uint64_t local_node = 1;
 
     UniboCGR cgr = NULL;
     UniboCGR_Error rc;
 
-    /* 2) Obrim la instància Unibo-CGR */
-    rc = UniboCGR_open(&cgr,
-                       now,
-                       reference_time,
-                       local_node,
-                       PhaseThreeCostFunction_default, /* cost function per fase 3: la per defecte */
-                       my_compute_applicable_backlog,  /* callback backlog */
-                       NULL);                           /* userArg per callback */
+    rc = UniboCGR_open(&cgr, now, reference_time, local_node, PhaseThreeCostFunction_default, my_compute_applicable_backlog, NULL);                          
     check_and_exit_if_error(rc, "UniboCGR_open");
 
-    /* ---------- Contact plan: afegim un parell de contactes perquè hi hagi camí ---------- */
     rc = UniboCGR_contact_plan_open(cgr, now);
     check_and_exit_if_error(rc, "UniboCGR_contact_plan_open");
 
-    //Exemple: nodes: 1 (local) -> 2 -> 3 (destí)
-
-    //Contacte 1 -> 2 
+    //Contact 1 -> 2 
     UniboCGR_Contact c1;
     rc = UniboCGR_Contact_create(&c1);
     check_and_exit_if_error(rc, "UniboCGR_Contact_create c1");
     UniboCGR_Contact_set_sender(c1, 1);
     UniboCGR_Contact_set_receiver(c1, 2);
-    UniboCGR_Contact_set_start_time(cgr, c1, now); //en segons
+    UniboCGR_Contact_set_start_time(cgr, c1, now); //in seconds
     UniboCGR_Contact_set_end_time(cgr, c1, now + 100000);
+    UniboCGR_Contact_set_xmit_rate(c1, 1000); // 1000 bytes/s
+    UniboCGR_Contact_set_confidence(c1, 1.0f);
+    UniboCGR_Contact_set_mtv_normal(c1, 1024.0 * 1024.0);
+    UniboCGR_Contact_set_mtv_bulk(c1,   1024.0 * 1024.0);
+    UniboCGR_Contact_set_mtv_expedited(c1, 1024.0 * 1024.0);
+
     rc = UniboCGR_contact_plan_add_contact(cgr, c1, true);
     check_and_exit_if_error(rc, "UniboCGR_contact_plan_add_contact c1");
     UniboCGR_Contact_destroy(&c1);
 
-    //Contacte 2 -> 3
+    //Contact 2 -> 3
     UniboCGR_Contact c2;
     rc = UniboCGR_Contact_create(&c2);
     check_and_exit_if_error(rc, "UniboCGR_Contact_create c2");
     UniboCGR_Contact_set_sender(c2, 2);
     UniboCGR_Contact_set_receiver(c2, 3);
-    UniboCGR_Contact_set_start_time(cgr, c2, now); //en segons
+    UniboCGR_Contact_set_start_time(cgr, c2, now);
     UniboCGR_Contact_set_end_time(cgr, c2, now + 100000);
+    UniboCGR_Contact_set_xmit_rate(c2, 1000);
+    UniboCGR_Contact_set_confidence(c2, 1.0f);
+    UniboCGR_Contact_set_mtv_normal(c2, 1024.0 * 1024.0);
+    UniboCGR_Contact_set_mtv_bulk(c2,   1024.0 * 1024.0);
+    UniboCGR_Contact_set_mtv_expedited(c2, 1024.0 * 1024.0);
+    
     rc = UniboCGR_contact_plan_add_contact(cgr, c2, true);
     check_and_exit_if_error(rc, "UniboCGR_contact_plan_add_contact c2");
     UniboCGR_Contact_destroy(&c2);
     
-    print_all_contacts(cgr); //fem un print per comprovar que s'han creat correctament els contactes a cgr
+    /* --- RANGES --- */
+    UniboCGR_Range r1;
+    rc = UniboCGR_Range_create(&r1);
+    check_and_exit_if_error(rc, "UniboCGR_Range_create r1");
+    UniboCGR_Range_set_sender(r1, 1);
+    UniboCGR_Range_set_receiver(r1, 2);
+    UniboCGR_Range_set_start_time(cgr, r1, now);
+    UniboCGR_Range_set_end_time(cgr, r1, now + 100000);
+    UniboCGR_Range_set_one_way_light_time(r1, 1); /* 1 second OWLT */
+    rc = UniboCGR_contact_plan_add_range(cgr, r1);
+    check_and_exit_if_error(rc, "UniboCGR_contact_plan_add_range r1");
+    UniboCGR_Range_destroy(&r1);
+
+    UniboCGR_Range r2;
+    rc = UniboCGR_Range_create(&r2);
+    check_and_exit_if_error(rc, "UniboCGR_Range_create r2");
+    UniboCGR_Range_set_sender(r2, 2);
+    UniboCGR_Range_set_receiver(r2, 3);
+    UniboCGR_Range_set_start_time(cgr, r2, now);
+    UniboCGR_Range_set_end_time(cgr, r2, now + 100000);
+    UniboCGR_Range_set_one_way_light_time(r2, 1); /* 1 second OWLT */
+    rc = UniboCGR_contact_plan_add_range(cgr, r2);
+    check_and_exit_if_error(rc, "UniboCGR_contact_plan_add_range r2");
+    UniboCGR_Range_destroy(&r2);
+    /* ---------------------------- */
+
+    print_all_contacts(cgr); //contacts print
 
     rc = UniboCGR_contact_plan_close(cgr);
     check_and_exit_if_error(rc, "UniboCGR_contact_plan_close");
 
-    /* ---------- Preparem el bundle i cridem routing ---------- */
+    //enable logger
+    rc = UniboCGR_feature_open(cgr, now);
+    check_and_exit_if_error(rc, "UniboCGR_feature_open");
+
+    rc = UniboCGR_feature_logger_enable(cgr, "/tmp/unibo_logs");
+    check_and_exit_if_error(rc, "UniboCGR_feature_logger_enable");
+
+    rc = UniboCGR_feature_close(cgr);
+    check_and_exit_if_error(rc, "UniboCGR_feature_close");
+
     rc = UniboCGR_routing_open(cgr, now);
     check_and_exit_if_error(rc, "UniboCGR_routing_open");
 
-    /* 3) Creem un bundle i li posem el destí = 3 */
-    UniboCGR_Bundle bundle;
+    UniboCGR_Bundle bundle; 
     rc = UniboCGR_Bundle_create(&bundle);
     check_and_exit_if_error(rc, "UniboCGR_Bundle_create");
 
     UniboCGR_Bundle_set_destination_node_id(bundle, 3); 
-    UniboCGR_Bundle_set_payload_length(bundle, 100000ULL);
-    UniboCGR_Bundle_set_total_application_data_unit_length(bundle, 100000ULL);
-    UniboCGR_Bundle_set_creation_time(bundle, (uint64_t) now * 1000ULL);
-    UniboCGR_Bundle_set_lifetime(bundle, 3600000ULL);
+    UniboCGR_Bundle_set_creation_time(bundle, (uint64_t) now * 1000); //in milliseconds
+    UniboCGR_Bundle_set_lifetime(bundle, 10000000000); //in milliseconds
     UniboCGR_Bundle_set_bundle_protocol_version(bundle, 7);
+    UniboCGR_Bundle_set_payload_length(bundle, 500); /* bytes */
+    UniboCGR_Bundle_set_total_application_data_unit_length(bundle, 500);
 
-    /* 4) Construïm la llista d'excluded neighbors (buida per ara) */
+    //excluded neighbors list is null
     UniboCGR_excluded_neighbors_list excluded = NULL;
     rc = UniboCGR_create_excluded_neighbors_list(&excluded);
     check_and_exit_if_error(rc, "UniboCGR_create_excluded_neighbors_list");
 
-    /* 5) Cridem UniboCGR_routing per obtenir la route_list */
     UniboCGR_route_list route_list = NULL;
     rc = UniboCGR_routing(cgr, bundle, excluded, &route_list);
     if (rc == UniboCGR_ErrorRouteNotFound) {
         fprintf(stderr, "No s'ha trobat ruta cap al destí.\n");
-        /* Neteja parcial i sortida neta */
+
         UniboCGR_destroy_excluded_neighbors_list(&excluded);
         UniboCGR_Bundle_destroy(&bundle);
         UniboCGR_routing_close(cgr);
@@ -143,28 +180,19 @@ int main(void)
     }
     check_and_exit_if_error(rc, "UniboCGR_routing");
 
-    /* 6) Extraiem la primera ruta i el neighbor (next hop) */
+
     UniboCGR_Route first_route;
     rc = UniboCGR_get_first_route(cgr, route_list, &first_route);
     if (rc != UniboCGR_NoError) {
         fprintf(stderr, "No s'ha pogut obtenir la primera ruta: %s\n", UniboCGR_get_error_string(rc));
     } else {
         uint64_t next_hop = UniboCGR_Route_get_neighbor(first_route);
-        printf("Next hop calculat per Unibo-CGR: %" PRIu64 "\n", next_hop);
-
-        /* Opcional: també pots llegir més propietats de la ruta */
-        float arrival_conf = UniboCGR_Route_get_arrival_confidence(first_route);
-        time_t best_arrival = UniboCGR_Route_get_best_case_arrival_time(cgr, first_route);
-        printf("  arrival_confidence=%f, best_case_arrival_time=%ld (unix)\n",
-               arrival_conf, (long) best_arrival);
+        printf("Next hop: %" PRIu64 "\n", next_hop);
     }
 
-    
-    /* 8) Alliberem recursos que hem creat */
     UniboCGR_destroy_excluded_neighbors_list(&excluded);
     UniboCGR_Bundle_destroy(&bundle);
 
-    /* Tanquem sessió routing i la instància */
     rc = UniboCGR_routing_close(cgr);
     check_and_exit_if_error(rc, "UniboCGR_routing_close");
 

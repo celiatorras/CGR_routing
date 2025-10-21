@@ -17,3 +17,4 @@
 ./time_analysis/time.c
 ./library_from_ion/scalar/scalar.c
 ./library_from_ion/rbt/rbt.c
+./cgr/cgr.c

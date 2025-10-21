@@ -731,12 +731,10 @@ int getBestRoutes(UniboCGRSAP* uniboCgrSap, CgrBundle *bundle, List excludedNeig
 				{
 					result = excludeNeighbor(excludedNeighbors, bundle->sender_node);
 				}
-
 				parse_excluded_nodes(excludedNeighbors);
 
 				currentCallSap->file_call = openBundleFile(uniboCgrSap);
 				print_bundle(uniboCgrSap, currentCallSap->file_call, bundle, excludedNeighbors, UniboCGRSAP_get_current_time(uniboCgrSap));
-
 
 				if (terminusNode != NULL && result >= 0)
 				{
@@ -747,13 +745,13 @@ int getBestRoutes(UniboCGRSAP* uniboCgrSap, CgrBundle *bundle, List excludedNeig
                         }
                         if (result <= 0 && result != -2) {
                             result = executeCGR(uniboCgrSap, bundle, terminusNode, excludedNeighbors, bestRoutes);
-                            if(result > 0) {
+							if(result > 0) {
                                 currentCallSap->algorithm = cgr;
                             }
                         }
                     } else {
                         result = executeCGR(uniboCgrSap, bundle, terminusNode, excludedNeighbors, bestRoutes);
-                        if(result > 0) {
+						if(result > 0) {
                             currentCallSap->algorithm = cgr;
                         }
                     }
