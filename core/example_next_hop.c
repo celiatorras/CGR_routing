@@ -7,14 +7,18 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <ctype.h>
 #include <inttypes.h>
 #include <time.h>
 #include <stdbool.h>
 
 #include "../include/UniboCGR.h"
 
-/* ------- Callback mínim per backlog (la UniboCGR_open exigeix un callback) ------- */
-/* Signatura segons l'API: retorna int, plenes els punters d'applicable i total backlog (en uint64_t). */
+#define LINE_MAX 1000
+
+// Minimun callback for backlog (UniboCGR_open needs a callback)
 static int my_compute_applicable_backlog(uint64_t neighbor,
                                          UniboCGR_BundlePriority priority,
                                          uint8_t ordinal,
@@ -39,10 +43,10 @@ static void print_all_contacts(UniboCGR cgr) {
     UniboCGR_Contact ct;
     UniboCGR_Error rc = UniboCGR_get_first_contact(cgr, &ct);
     if (rc != UniboCGR_NoError) {
-        printf("no hi ha contactes registrats o error get_first_contact\n");
+        printf("no contacts registered o error get_first_contact\n");
         return;
     }
-    printf("Contactes registrats:\n");
+    printf("Contacts:\n");
     do {
         uint64_t s = UniboCGR_Contact_get_sender(ct);
         uint64_t r = UniboCGR_Contact_get_receiver(ct);
@@ -54,6 +58,142 @@ static void print_all_contacts(UniboCGR cgr) {
 
         rc = UniboCGR_get_next_contact(cgr, &ct);
     } while (rc == UniboCGR_NoError);
+}
+
+static void trim_trailing_whitespace(char *s) {
+    size_t l = strlen(s);
+    while (l > 0 && (s[l-1] == '\n' || s[l-1] == '\r' || s[l-1] == ' ' || s[l-1] == '\t')) {
+        s[--l] = '\0';
+    }
+}
+
+static int load_contact_plan_from_file(UniboCGR cgr, const char *filename, time_t now) {
+    FILE *f = fopen(filename, "r");
+    if (!f) {
+        fprintf(stderr, "Cannot open contact plan file '%s': %s\n", filename, strerror(errno));
+        return -1;
+    }
+
+    char line[LINE_MAX];
+    int lineno = 0;
+    while (fgets(line, sizeof(line), f) != NULL) {
+        lineno++;
+        trim_trailing_whitespace(line);
+
+        /* skip empty lines and comments */
+        char *p = line;
+        while (*p && isspace((unsigned char)*p)) p++;
+        if (*p == '\0' || *p == '#') continue;
+
+        /* tokenize by comma -- modify copy because strtok/destructive */
+        char *save = NULL;
+        char *token = strtok_r(p, ",", &save);
+        if (!token) continue;
+
+        if (strcmp(token, "CONTACT") == 0) {
+            char *s_from = strtok_r(NULL, ",", &save);
+            char *s_to = strtok_r(NULL, ",", &save);
+            char *s_start = strtok_r(NULL, ",", &save);
+            char *s_end = strtok_r(NULL, ",", &save);
+            char *s_xmit = strtok_r(NULL, ",", &save);
+            char *s_conf = strtok_r(NULL, ",", &save);
+            char *s_mtv_bulk = strtok_r(NULL, ",", &save);
+            char *s_mtv_normal = strtok_r(NULL, ",", &save);
+            char *s_mtv_expedited = strtok_r(NULL, ",", &save);
+
+            if (!s_from || !s_to || !s_start || !s_end || !s_xmit || !s_conf || !s_mtv_bulk || !s_mtv_normal || !s_mtv_expedited) {
+                fprintf(stderr, "Parse error in %s:%d (CONTACT) -> not enough fields\n", filename, lineno);
+                fclose(f);
+                return -2;
+            }
+
+            uint64_t from = strtoull(s_from, NULL, 10);
+            uint64_t to = strtoull(s_to, NULL, 10);
+            long start = strtol(s_start, NULL, 10);
+            long end = strtol(s_end, NULL, 10);
+            uint64_t xmit = strtoull(s_xmit, NULL, 10);
+            float conf = strtof(s_conf, NULL);
+            double mtv_bulk = strtod(s_mtv_bulk, NULL);
+            double mtv_normal = strtod(s_mtv_normal, NULL);
+            double mtv_expedited = strtod(s_mtv_expedited, NULL);
+
+            UniboCGR_Contact c;
+            UniboCGR_Error rc = UniboCGR_Contact_create(&c);
+            if (rc != UniboCGR_NoError) {
+                fprintf(stderr, "Failed to create contact object (line %d)\n", lineno);
+                fclose(f);
+                return -2;
+            }
+            UniboCGR_Contact_set_sender(c, from);
+            UniboCGR_Contact_set_receiver(c, to);
+            UniboCGR_Contact_set_start_time(cgr, c, (time_t)start + now);
+            UniboCGR_Contact_set_end_time(cgr, c, (time_t)end + now);
+            UniboCGR_Contact_set_xmit_rate(c, (int)xmit);
+            UniboCGR_Contact_set_confidence(c, conf);
+            UniboCGR_Contact_set_mtv_bulk(c, mtv_bulk);
+            UniboCGR_Contact_set_mtv_normal(c, mtv_normal);
+            UniboCGR_Contact_set_mtv_expedited(c, mtv_expedited);
+
+            rc = UniboCGR_contact_plan_add_contact(cgr, c, true);
+            if (rc != UniboCGR_NoError) {
+                fprintf(stderr, "Failed to add contact (line %d): %s\n", lineno, UniboCGR_get_error_string(rc));
+                UniboCGR_Contact_destroy(&c);
+                fclose(f);
+                return -2;
+            }
+            UniboCGR_Contact_destroy(&c);
+
+        } else if (strcmp(token, "RANGE") == 0) {
+            char *s_from = strtok_r(NULL, ",", &save);
+            char *s_to = strtok_r(NULL, ",", &save);
+            char *s_start = strtok_r(NULL, ",", &save);
+            char *s_end = strtok_r(NULL, ",", &save);
+            char *s_owlt = strtok_r(NULL, ",", &save);
+
+            if (!s_from || !s_to || !s_start || !s_end || !s_owlt) {
+                fprintf(stderr, "Parse error in %s:%d (RANGE) -> not enough fields\n", filename, lineno);
+                fclose(f);
+                return -2;
+            }
+
+            uint64_t from = strtoull(s_from, NULL, 10);
+            uint64_t to = strtoull(s_to, NULL, 10);
+            long start = strtol(s_start, NULL, 10);
+            long end = strtol(s_end, NULL, 10);
+            long owlt = strtol(s_owlt, NULL, 10);
+
+            UniboCGR_Range r;
+            UniboCGR_Error rc = UniboCGR_Range_create(&r);
+            if (rc != UniboCGR_NoError) {
+                fprintf(stderr, "Failed to create range object (line %d)\n", lineno);
+                fclose(f);
+                return -2;
+            }
+            UniboCGR_Range_set_sender(r, from);
+            UniboCGR_Range_set_receiver(r, to);
+            UniboCGR_Range_set_start_time(cgr, r, (time_t)start + now);
+            UniboCGR_Range_set_end_time(cgr, r, (time_t)end + now);
+            UniboCGR_Range_set_one_way_light_time(r, (uint32_t)owlt);
+
+            rc = UniboCGR_contact_plan_add_range(cgr, r);
+
+            if (rc != UniboCGR_NoError) {
+                fprintf(stderr, "Failed to add range (line %d): %s\n", lineno, UniboCGR_get_error_string(rc));
+                UniboCGR_Range_destroy(&r);
+                fclose(f);
+                return -2;
+            }
+            UniboCGR_Range_destroy(&r);
+
+        } else {
+            /* línia desconeguda: ignora o avisa */
+            fprintf(stderr, "Warning: unknown record type '%s' in %s:%d -> ignored\n", token, filename, lineno);
+            continue;
+        }
+    }
+
+    fclose(f);
+    return 0;
 }
 
 int main(void)
@@ -71,67 +211,10 @@ int main(void)
     rc = UniboCGR_contact_plan_open(cgr, now);
     check_and_exit_if_error(rc, "UniboCGR_contact_plan_open");
 
-    //Contact 1 -> 2 
-    UniboCGR_Contact c1;
-    rc = UniboCGR_Contact_create(&c1);
-    check_and_exit_if_error(rc, "UniboCGR_Contact_create c1");
-    UniboCGR_Contact_set_sender(c1, 1);
-    UniboCGR_Contact_set_receiver(c1, 2);
-    UniboCGR_Contact_set_start_time(cgr, c1, now); //in seconds
-    UniboCGR_Contact_set_end_time(cgr, c1, now + 100000);
-    UniboCGR_Contact_set_xmit_rate(c1, 1000); // 1000 bytes/s
-    UniboCGR_Contact_set_confidence(c1, 1.0f);
-    UniboCGR_Contact_set_mtv_normal(c1, 1024.0 * 1024.0);
-    UniboCGR_Contact_set_mtv_bulk(c1,   1024.0 * 1024.0);
-    UniboCGR_Contact_set_mtv_expedited(c1, 1024.0 * 1024.0);
-
-    rc = UniboCGR_contact_plan_add_contact(cgr, c1, true);
-    check_and_exit_if_error(rc, "UniboCGR_contact_plan_add_contact c1");
-    UniboCGR_Contact_destroy(&c1);
-
-    //Contact 2 -> 3
-    UniboCGR_Contact c2;
-    rc = UniboCGR_Contact_create(&c2);
-    check_and_exit_if_error(rc, "UniboCGR_Contact_create c2");
-    UniboCGR_Contact_set_sender(c2, 2);
-    UniboCGR_Contact_set_receiver(c2, 3);
-    UniboCGR_Contact_set_start_time(cgr, c2, now);
-    UniboCGR_Contact_set_end_time(cgr, c2, now + 100000);
-    UniboCGR_Contact_set_xmit_rate(c2, 1000);
-    UniboCGR_Contact_set_confidence(c2, 1.0f);
-    UniboCGR_Contact_set_mtv_normal(c2, 1024.0 * 1024.0);
-    UniboCGR_Contact_set_mtv_bulk(c2,   1024.0 * 1024.0);
-    UniboCGR_Contact_set_mtv_expedited(c2, 1024.0 * 1024.0);
-    
-    rc = UniboCGR_contact_plan_add_contact(cgr, c2, true);
-    check_and_exit_if_error(rc, "UniboCGR_contact_plan_add_contact c2");
-    UniboCGR_Contact_destroy(&c2);
-    
-    /* --- RANGES --- */
-    UniboCGR_Range r1;
-    rc = UniboCGR_Range_create(&r1);
-    check_and_exit_if_error(rc, "UniboCGR_Range_create r1");
-    UniboCGR_Range_set_sender(r1, 1);
-    UniboCGR_Range_set_receiver(r1, 2);
-    UniboCGR_Range_set_start_time(cgr, r1, now);
-    UniboCGR_Range_set_end_time(cgr, r1, now + 100000);
-    UniboCGR_Range_set_one_way_light_time(r1, 1); /* 1 second OWLT */
-    rc = UniboCGR_contact_plan_add_range(cgr, r1);
-    check_and_exit_if_error(rc, "UniboCGR_contact_plan_add_range r1");
-    UniboCGR_Range_destroy(&r1);
-
-    UniboCGR_Range r2;
-    rc = UniboCGR_Range_create(&r2);
-    check_and_exit_if_error(rc, "UniboCGR_Range_create r2");
-    UniboCGR_Range_set_sender(r2, 2);
-    UniboCGR_Range_set_receiver(r2, 3);
-    UniboCGR_Range_set_start_time(cgr, r2, now);
-    UniboCGR_Range_set_end_time(cgr, r2, now + 100000);
-    UniboCGR_Range_set_one_way_light_time(r2, 1); /* 1 second OWLT */
-    rc = UniboCGR_contact_plan_add_range(cgr, r2);
-    check_and_exit_if_error(rc, "UniboCGR_contact_plan_add_range r2");
-    UniboCGR_Range_destroy(&r2);
-    /* ---------------------------- */
+    int err = load_contact_plan_from_file(cgr, "contact_plan.txt", now);
+    if (err != 0) {
+        fprintf(stderr, "Failed to load contact plan file (err=%d)\n", err);
+    }
 
     print_all_contacts(cgr); //contacts print
 
@@ -170,7 +253,7 @@ int main(void)
     UniboCGR_route_list route_list = NULL;
     rc = UniboCGR_routing(cgr, bundle, excluded, &route_list);
     if (rc == UniboCGR_ErrorRouteNotFound) {
-        fprintf(stderr, "No s'ha trobat ruta cap al destí.\n");
+        fprintf(stderr, "There's no route to destination.\n");
 
         UniboCGR_destroy_excluded_neighbors_list(&excluded);
         UniboCGR_Bundle_destroy(&bundle);
@@ -184,7 +267,7 @@ int main(void)
     UniboCGR_Route first_route;
     rc = UniboCGR_get_first_route(cgr, route_list, &first_route);
     if (rc != UniboCGR_NoError) {
-        fprintf(stderr, "No s'ha pogut obtenir la primera ruta: %s\n", UniboCGR_get_error_string(rc));
+        fprintf(stderr, "Could not open the first route %s\n", UniboCGR_get_error_string(rc));
     } else {
         uint64_t next_hop = UniboCGR_Route_get_neighbor(first_route);
         printf("Next hop: %" PRIu64 "\n", next_hop);

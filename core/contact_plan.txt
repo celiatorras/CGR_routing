@@ -1,0 +1,7 @@
+# TYPE, from, to, start_epoch_s, end_epoch_s, xmit_bytes_per_s, confidence, mtv_bulk, mtv_normal, mtv_expedited
+CONTACT,1,2,0,100000000,1000,1.0,1048576,1048576,1048576
+CONTACT,2,3,0,100000000,1000,1.0,1048576,1048576,1048576
+
+# TYPE, from, to, start_epoch_s, end_epoch_s, owlt_seconds
+RANGE,1,2,0,100000000,1
+RANGE,2,3,0,100000000,1

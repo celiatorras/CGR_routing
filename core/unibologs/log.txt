@@ -1,3 +1,0 @@
-[          1760437649]: Unibo-CGR Version 2.0.0.
-[          1760437649]: Local node number: 1.
-[          1760437649]: Reference time (Unix time): 0 s.
