@@ -1,8 +1,6 @@
 /*
  * example_next_hop.c
  *
- * Exemple d'ús mínim d'Unibo-CGR per obtenir el next hop d'un bundle.
- *
  */
 
 #include <stdio.h>
@@ -60,13 +58,6 @@ static void print_all_contacts(UniboCGR cgr) {
     } while (rc == UniboCGR_NoError);
 }
 
-static void trim_trailing_whitespace(char *s) {
-    size_t l = strlen(s);
-    while (l > 0 && (s[l-1] == '\n' || s[l-1] == '\r' || s[l-1] == ' ' || s[l-1] == '\t')) {
-        s[--l] = '\0';
-    }
-}
-
 static int load_contact_plan_from_file(UniboCGR cgr, const char *filename, time_t now) {
     FILE *f = fopen(filename, "r");
     if (!f) {
@@ -78,14 +69,14 @@ static int load_contact_plan_from_file(UniboCGR cgr, const char *filename, time_
     int lineno = 0;
     while (fgets(line, sizeof(line), f) != NULL) {
         lineno++;
-        trim_trailing_whitespace(line);
-
-        /* skip empty lines and comments */
+        size_t l = strlen(line);
+        while (l > 0 && (line[l-1] == '\n' || line[l-1] == '\r' || line[l-1] == ' ' || line[l-1] == '\t')) {
+            line[--l] = '\0';
+        }
         char *p = line;
         while (*p && isspace((unsigned char)*p)) p++;
         if (*p == '\0' || *p == '#') continue;
 
-        /* tokenize by comma -- modify copy because strtok/destructive */
         char *save = NULL;
         char *token = strtok_r(p, ",", &save);
         if (!token) continue;
@@ -148,9 +139,8 @@ static int load_contact_plan_from_file(UniboCGR cgr, const char *filename, time_
             char *s_to = strtok_r(NULL, ",", &save);
             char *s_start = strtok_r(NULL, ",", &save);
             char *s_end = strtok_r(NULL, ",", &save);
-            char *s_owlt = strtok_r(NULL, ",", &save);
 
-            if (!s_from || !s_to || !s_start || !s_end || !s_owlt) {
+            if (!s_from || !s_to || !s_start || !s_end) {
                 fprintf(stderr, "Parse error in %s:%d (RANGE) -> not enough fields\n", filename, lineno);
                 fclose(f);
                 return -2;
@@ -160,7 +150,6 @@ static int load_contact_plan_from_file(UniboCGR cgr, const char *filename, time_
             uint64_t to = strtoull(s_to, NULL, 10);
             long start = strtol(s_start, NULL, 10);
             long end = strtol(s_end, NULL, 10);
-            long owlt = strtol(s_owlt, NULL, 10);
 
             UniboCGR_Range r;
             UniboCGR_Error rc = UniboCGR_Range_create(&r);
@@ -173,8 +162,7 @@ static int load_contact_plan_from_file(UniboCGR cgr, const char *filename, time_
             UniboCGR_Range_set_receiver(r, to);
             UniboCGR_Range_set_start_time(cgr, r, (time_t)start + now);
             UniboCGR_Range_set_end_time(cgr, r, (time_t)end + now);
-            UniboCGR_Range_set_one_way_light_time(r, (uint32_t)owlt);
-
+            
             rc = UniboCGR_contact_plan_add_range(cgr, r);
 
             if (rc != UniboCGR_NoError) {
@@ -186,8 +174,7 @@ static int load_contact_plan_from_file(UniboCGR cgr, const char *filename, time_
             UniboCGR_Range_destroy(&r);
 
         } else {
-            /* línia desconeguda: ignora o avisa */
-            fprintf(stderr, "Warning: unknown record type '%s' in %s:%d -> ignored\n", token, filename, lineno);
+            fprintf(stderr, "Unknown record type '%s' in %s:%d -> ignored\n", token, filename, lineno);
             continue;
         }
     }
@@ -216,8 +203,6 @@ int main(void)
         fprintf(stderr, "Failed to load contact plan file (err=%d)\n", err);
     }
 
-    print_all_contacts(cgr); //contacts print
-
     rc = UniboCGR_contact_plan_close(cgr);
     check_and_exit_if_error(rc, "UniboCGR_contact_plan_close");
 
@@ -242,8 +227,6 @@ int main(void)
     UniboCGR_Bundle_set_creation_time(bundle, (uint64_t) now * 1000); //in milliseconds
     UniboCGR_Bundle_set_lifetime(bundle, 10000000000); //in milliseconds
     UniboCGR_Bundle_set_bundle_protocol_version(bundle, 7);
-    UniboCGR_Bundle_set_payload_length(bundle, 500); /* bytes */
-    UniboCGR_Bundle_set_total_application_data_unit_length(bundle, 500);
 
     //excluded neighbors list is null
     UniboCGR_excluded_neighbors_list excluded = NULL;
